@@ -94,7 +94,14 @@ export function AreaChart({ title, points, color, format, domain, markerTime }: 
         {hovered && (
           <div
             className="chart-tooltip"
-            style={{ left: `${(x(hovered.time) / WIDTH) * 100}%` }}
+            // Near either edge, pin the tooltip to that edge instead of centring
+            // it on the pointer, so it never spills out of the sidebar.
+            style={(() => {
+              const fraction = x(hovered.time) / WIDTH;
+              if (fraction < 0.25) return { left: 0, transform: 'none' };
+              if (fraction > 0.75) return { right: 0, transform: 'none' };
+              return { left: `${fraction * 100}%` };
+            })()}
             role="status"
           >
             <strong>{format(hovered.value)}</strong>

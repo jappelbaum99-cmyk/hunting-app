@@ -25,6 +25,8 @@ export interface Property extends Syncable {
   notes: string | null;
   // Set once its map tiles have been downloaded for offline use.
   offline?: { downloadedAt: string; tileCount: number; layers: string } | null;
+  // Overrides the property line color from Settings.
+  color?: string | null;
 }
 
 export type MarkerType =
@@ -47,6 +49,24 @@ export interface MapMarker extends Syncable {
   notes: string | null;
   // Winds a stand can be hunted on, e.g. ['N', 'NW'].
   goodWinds: CompassPoint[];
+  // Overrides the category color from Settings.
+  color?: string | null;
+}
+
+export type MarkerShape = 'circle' | 'square' | 'diamond' | 'triangle' | 'pin';
+
+export interface MarkerStyle {
+  color: string;
+  shape: MarkerShape;
+  // Diameter in pixels.
+  size: number;
+}
+
+// App-wide look, set in Settings. Anything left out uses the built-in default.
+export interface HubSettings {
+  markerStyles: Partial<Record<MarkerType, Partial<MarkerStyle>>>;
+  areaColors: Partial<Record<AreaType, string>>;
+  propertyLineColor: string | null;
 }
 
 export type AreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
@@ -148,6 +168,7 @@ export interface HubData {
   overlays: MapImageOverlay[];
   sections: Section[];
   plans: Plan[];
+  settings: HubSettings;
 }
 
 export type Selection =

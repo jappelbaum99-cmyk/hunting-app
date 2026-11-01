@@ -9,6 +9,7 @@ import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
 import { SectionPanel } from '@/components/SectionPanel';
+import { SettingsPanel } from '@/components/SettingsPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { imageFileName, readImageSize, saveImage } from '@/data/images';
@@ -21,6 +22,7 @@ import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
+import { areaColor, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
@@ -73,6 +75,8 @@ export function App() {
   const [savingAlign, setSavingAlign] = useState(false);
   const imageUrls = useImageUrls(hub.overlays);
   const [forecastOpen, setForecastOpen] = useState(false);
+  // Settings shows in the sidebar over the lists (and over the forecast, if open).
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // null = rate stands for all properties.
   const [forecastPropertyId, setForecastPropertyId] = useState<string | null>(null);
   // null = now.
@@ -381,11 +385,11 @@ export function App() {
   if (mode.kind === 'place') {
     modeTitle = MARKER_TYPES[mode.markerType].label.toLowerCase();
   } else if (mode.kind === 'draw' && mode.target === 'property') {
-    [draftColor, modeTitle] = ['#ffd400', 'property line'];
+    [draftColor, modeTitle] = [propertyColor(null, hub.settings), 'property line'];
   } else if (mode.kind === 'draw' && mode.target === 'section') {
     [draftColor, modeTitle] = ['#f7efe6', 'section'];
   } else if (mode.kind === 'draw') {
-    [draftColor, modeTitle] = [AREA_TYPES[mode.areaType].color, AREA_TYPES[mode.areaType].label.toLowerCase()];
+    [draftColor, modeTitle] = [areaColor(mode.areaType, hub.settings), AREA_TYPES[mode.areaType].label.toLowerCase()];
   }
 
   // Saved images, with the one being lined up swapped for its live preview.
@@ -470,7 +474,14 @@ export function App() {
         overlays={hub.overlays}
         selection={selection}
         dataPath={isDesktop ? dataPath : null}
-        forecastView={forecastView}
+        view={
+          settingsOpen ? (
+            <SettingsPanel settings={hub.settings} onChange={hub.saveSettings} onClose={() => setSettingsOpen(false)} />
+          ) : (
+            forecastView
+          )
+        }
+        settings={hub.settings}
         forecastTeaser={forecastTeaser}
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
@@ -478,6 +489,7 @@ export function App() {
           setForecastSitId('now');
           setForecastOpen(true);
         }}
+        onOpenSettings={() => setSettingsOpen(!settingsOpen)}
         onShowDataFolder={window.hub ? () => void window.hub?.showDataFolder() : null}
         onPick={(next) => {
           if (mode.kind === 'align') return;
@@ -495,6 +507,7 @@ export function App() {
           areas={hub.areas}
           markers={hub.markers}
           sections={hub.sections}
+          settings={hub.settings}
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}
@@ -616,6 +629,7 @@ export function App() {
           kind="property"
           record={record}
           propertyName={null}
+          defaultColor={propertyColor(null, hub.settings)}
           onChange={hub.saveProperty}
           offlineField={
             <OfflineField
@@ -657,6 +671,7 @@ export function App() {
         kind="marker"
         record={record}
         propertyName={propertyName(record.propertyId)}
+        defaultColor={categoryStyle(record.type, hub.settings).color}
         onChange={hub.saveMarker}
         onDelete={() => {
           hub.deleteMarker(record.id);

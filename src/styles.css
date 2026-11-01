@@ -288,6 +288,8 @@ input[type='checkbox'] {
 .sidebar-scroll {
   flex: 1;
   overflow-y: auto;
+  /* Never scroll sideways: a sideways scrollbar popping in shakes the panel. */
+  overflow-x: hidden;
   padding: 0 8px 12px;
 }
 
@@ -376,10 +378,11 @@ input[type='checkbox'] {
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 
+/* Property badge: outlined in the property's own line color (--line). */
 .swatch.outline {
   border-radius: 7px;
-  background: rgba(255, 212, 0, 0.18);
-  box-shadow: inset 0 0 0 2px var(--property);
+  background: color-mix(in srgb, var(--line, var(--property)) 18%, transparent);
+  box-shadow: inset 0 0 0 2px var(--line, var(--property));
 }
 
 .swatch.image {
@@ -1766,4 +1769,224 @@ input[type='number'] {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+
+/* Pin shapes and sizes (Settings). These come last so they win over the
+   earlier fixed-size pin rules. --pin-size and --pin-color are set per pin. */
+
+.map-pin-dot {
+  width: var(--pin-size, 16px);
+  height: var(--pin-size, 16px);
+}
+
+/* Pins are anchored on their left edge; pull the dot back by half its size
+   so its centre sits exactly on the location. */
+.map-pin .map-pin-dot {
+  margin-left: calc(var(--pin-size, 16px) / -2);
+}
+
+.map-pin-selected .map-pin-dot,
+.map-pin.rating-good .map-pin-dot {
+  width: var(--pin-size, 16px);
+  height: var(--pin-size, 16px);
+}
+
+.map-pin-dot.shape-circle {
+  border-radius: 50%;
+}
+
+.map-pin-dot.shape-square {
+  border-radius: 4px;
+}
+
+.map-pin-dot.shape-diamond {
+  border-radius: 3px;
+  transform: rotate(45deg) scale(0.82);
+}
+
+.map-pin-dot.shape-pin {
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+
+/* A triangle can't have a border, so draw it inside and outline it with
+   drop-shadows on the wrapper (filters apply after the inner clip). */
+.map-pin-dot.shape-triangle {
+  background: transparent !important;
+  border: none;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 1.2px #fff) drop-shadow(0 0 1.2px #fff) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+
+.map-pin-dot.shape-triangle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--pin-color);
+  clip-path: polygon(50% 4%, 100% 96%, 0 96%);
+}
+
+.map-pin-dot {
+  position: relative;
+}
+
+.map-pin.rating-good .map-pin-dot.shape-triangle::before {
+  background: #34c759;
+}
+
+.map-pin.rating-ok .map-pin-dot.shape-triangle::before {
+  background: #ffcc00;
+}
+
+.map-pin.rating-bad .map-pin-dot.shape-triangle::before {
+  background: #ff453a;
+}
+
+.pin-preview {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.pin-preview .map-pin-dot {
+  max-width: 28px;
+  max-height: 28px;
+}
+
+/* Settings */
+
+.brand {
+  position: relative;
+}
+
+.brand .settings-button {
+  margin-left: auto;
+}
+
+.settings .sidebar-section h2 {
+  margin-top: 14px;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-list li {
+  list-style: none;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+}
+
+.pin-setting {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pin-setting:last-child {
+  border-bottom: none;
+}
+
+.pin-setting .row-title {
+  flex: 1;
+}
+
+.pin-setting input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-row .row-title {
+  flex: 1;
+}
+
+.shape-picker {
+  display: flex;
+  gap: 2px;
+}
+
+.shape-picker button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+}
+
+.shape-picker button .pin-preview {
+  width: 20px;
+  height: 20px;
+}
+
+.shape-picker button .map-pin-dot {
+  border-width: 0;
+  box-shadow: none;
+}
+
+.shape-picker button.active {
+  background: var(--selected);
+  color: var(--accent);
+}
+
+/* Native color picker shown as a round swatch. */
+.color-input {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.color-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.color-swatch:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.color-swatch.active {
+  box-shadow:
+    0 0 0 2px var(--panel, #1c130d),
+    0 0 0 4px var(--accent);
+}
+
+.reset-look {
+  align-self: flex-start;
+  margin-top: 6px;
 }

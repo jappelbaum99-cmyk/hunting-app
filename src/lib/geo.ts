@@ -1,9 +1,9 @@
 import area from '@turf/area';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import type { Feature, FeatureCollection, Geometry, Point, Polygon, Position } from 'geojson';
+import type { Feature, FeatureCollection, Geometry, Polygon, Position } from 'geojson';
 
-import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
-import type { AreaGeometry, MapArea, MapMarker, Property } from '@/types/models';
+import { areaColor, propertyColor } from '@/lib/styles';
+import type { AreaGeometry, HubSettings, MapArea, Property } from '@/types/models';
 
 const SQ_METERS_PER_ACRE = 4046.8564224;
 
@@ -48,30 +48,18 @@ export function formatLatLng(lat: number, lng: number): string {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
-export function markersToFeatures(markers: MapMarker[], selectedId: string | null): FeatureCollection<Point> {
-  return {
-    type: 'FeatureCollection',
-    features: markers.map((m) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
-      properties: {
-        id: m.id,
-        name: m.name,
-        color: MARKER_TYPES[m.type].color,
-        selected: m.id === selectedId,
-      },
-    })),
-  };
-}
-
-export function areasToFeatures(areas: MapArea[], selectedId: string | null): FeatureCollection<AreaGeometry> {
+export function areasToFeatures(
+  areas: MapArea[],
+  selectedId: string | null,
+  settings: HubSettings,
+): FeatureCollection<AreaGeometry> {
   return {
     type: 'FeatureCollection',
     features: areas.map(
       (a): Feature<AreaGeometry> => ({
         type: 'Feature',
         geometry: a.geometry,
-        properties: { id: a.id, name: a.name, color: AREA_TYPES[a.type].color, selected: a.id === selectedId },
+        properties: { id: a.id, name: a.name, color: areaColor(a.type, settings), selected: a.id === selectedId },
       }),
     ),
   };
@@ -80,6 +68,7 @@ export function areasToFeatures(areas: MapArea[], selectedId: string | null): Fe
 export function propertiesToFeatures(
   properties: Property[],
   selectedId: string | null,
+  settings: HubSettings,
 ): FeatureCollection<AreaGeometry> {
   return {
     type: 'FeatureCollection',
@@ -87,7 +76,7 @@ export function propertiesToFeatures(
       (p): Feature<AreaGeometry> => ({
         type: 'Feature',
         geometry: p.boundary,
-        properties: { id: p.id, name: p.name, selected: p.id === selectedId },
+        properties: { id: p.id, name: p.name, color: propertyColor(p, settings), selected: p.id === selectedId },
       }),
     ),
   };

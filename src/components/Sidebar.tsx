@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 
-import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
+import { MARKER_TYPES } from '@/lib/featureTypes';
+import { areaColor, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
-import type { MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
+import type { HubSettings, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
@@ -13,11 +14,13 @@ interface SidebarProps {
   overlays: MapImageOverlay[];
   selection: Selection | null;
   dataPath: string | null;
-  // The open Hunt Forecast view, shown in place of the lists; null when closed.
-  forecastView: ReactNode | null;
+  // A full view (Hunt Forecast, Settings) shown in place of the lists; null when none is open.
+  view: ReactNode | null;
   // One-line summary for the Hunt Forecast card, e.g. "NW 8 mph · 2 good stands".
   forecastTeaser: string;
   onOpenForecast(): void;
+  onOpenSettings(): void;
+  settings: HubSettings;
   onPick(selection: Selection): void;
   onShowDataFolder: (() => void) | null;
 }
@@ -56,8 +59,14 @@ export function Sidebar(props: SidebarProps) {
         <div className="brand">
           <img src={LOGO_URL} alt="" />
           <h1>Hunting Hub</h1>
+          <button className="icon settings-button" onClick={props.onOpenSettings} title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-        {props.forecastView === null && (
+        {props.view === null && (
           <label className="search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
               <circle cx="10.5" cy="10.5" r="6.5" />
@@ -74,7 +83,7 @@ export function Sidebar(props: SidebarProps) {
         )}
       </header>
 
-      <div className="sidebar-scroll">{props.forecastView ?? renderLists()}</div>
+      <div className="sidebar-scroll">{props.view ?? renderLists()}</div>
 
       <footer className="sidebar-footer">
         {dataPath ? (
@@ -118,7 +127,7 @@ export function Sidebar(props: SidebarProps) {
               key={p.id}
               selected={isSelected('property', p.id)}
               onClick={() => onPick({ kind: 'property', id: p.id })}
-              swatch={<span className="swatch outline" />}
+              swatch={<span className="swatch outline" style={{ '--line': propertyColor(p, props.settings) } as CSSProperties} />}
               title={p.name}
               detail={formatAcres(acresOf(p.boundary))}
             />
@@ -144,7 +153,7 @@ export function Sidebar(props: SidebarProps) {
               key={m.id}
               selected={isSelected('marker', m.id)}
               onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch" style={{ background: MARKER_TYPES[m.type].color }} />}
+              swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
               title={m.name}
               detail={m.goodWinds.length ? m.goodWinds.join(' ') : 'no winds set'}
             />
@@ -157,7 +166,7 @@ export function Sidebar(props: SidebarProps) {
               key={a.id}
               selected={isSelected('area', a.id)}
               onClick={() => onPick({ kind: 'area', id: a.id })}
-              swatch={<span className="swatch" style={{ background: AREA_TYPES[a.type].color }} />}
+              swatch={<span className="swatch" style={{ background: areaColor(a.type, props.settings) }} />}
               title={a.name}
               detail={formatAcres(acresOf(a.geometry))}
             />
@@ -170,7 +179,7 @@ export function Sidebar(props: SidebarProps) {
               key={m.id}
               selected={isSelected('marker', m.id)}
               onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch" style={{ background: MARKER_TYPES[m.type].color }} />}
+              swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
               title={m.name}
               detail={MARKER_TYPES[m.type].label}
             />

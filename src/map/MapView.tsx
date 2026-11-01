@@ -7,9 +7,9 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import { createPortal } from 'react-dom';
 
 import { Compass } from '@/components/Compass';
-import { PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
 import type { StandRating } from '@/lib/standRating';
-import { areasToFeatures, boundsOf, markersToFeatures, propertiesToFeatures } from '@/lib/geo';
+import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
+import { markerStyle, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
   contourTiles,
@@ -19,7 +19,7 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import type { AreaGeometry, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
+import type { AreaGeometry, HubSettings, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
 const DEFAULT_ZOOM = 12;
@@ -61,6 +61,7 @@ interface MapViewProps {
   areas: MapArea[];
   markers: MapMarker[];
   sections: Section[];
+  settings: HubSettings;
   overlays: OverlayView[];
   alignMarkers: AlignMarker[];
   // Stand id -> forecast rating, while the Hunt Forecast is open.
@@ -113,7 +114,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'properties',
     // A light see-through tint. Not clickable: properties are picked from the
     // sidebar, so clicks inside one reach the stands and areas on it.
-    paint: { 'fill-color': PROPERTY_LINE_COLOR, 'fill-opacity': ['case', ['get', 'selected'], 0.16, 0.08] },
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['get', 'selected'], 0.16, 0.08] },
   });
   map.addLayer({
     id: 'property-casing',
@@ -125,7 +126,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'property-line',
     type: 'line',
     source: 'properties',
-    paint: { 'line-color': PROPERTY_LINE_COLOR, 'line-width': ['case', ['get', 'selected'], 3.5, 2.5] },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 3.5, 2.5] },
   });
   // Management sections: under areas, so a food plot inside a section stays clickable.
   map.addLayer({
@@ -225,7 +226,7 @@ function topCenterOf(geometry: AreaGeometry): [number, number] {
 
 export function MapView(props: MapViewProps) {
   const { ref, layers, properties, areas, markers, sections, overlays, alignMarkers, standRatings, selection, interaction } = props;
-  const { draftPoints, draftColor } = props;
+  const { draftPoints, draftColor, settings } = props;
   // The compass is a maplibre control (so it stacks with the zoom buttons)
   // whose contents React renders through a portal.
   const [compassHost, setCompassHost] = useState<HTMLElement | null>(null);
@@ -373,8 +374,8 @@ export function MapView(props: MapViewProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    map.getSource<GeoJSONSource>('properties')?.setData(propertiesToFeatures(properties, selectedId));
-    map.getSource<GeoJSONSource>('areas')?.setData(areasToFeatures(areas, selectedId));
+    map.getSource<GeoJSONSource>('properties')?.setData(propertiesToFeatures(properties, selectedId, settings));
+    map.getSource<GeoJSONSource>('areas')?.setData(areasToFeatures(areas, selectedId, settings));
     map.getSource<GeoJSONSource>('sections')?.setData({
       type: 'FeatureCollection',
       features: sections.map((s) => ({
@@ -385,8 +386,10 @@ export function MapView(props: MapViewProps) {
     });
 
     // Names for shapes, drawn as HTML so no font server is needed.
-    const wanted = new Map<string, { text: string; at: [number, number]; kind: string }>();
-    for (const p of properties) wanted.set(p.id, { text: p.name, at: topCenterOf(p.boundary), kind: 'property' });
+    const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string }>();
+    for (const p of properties) {
+      wanted.set(p.id, { text: p.name, at: topCenterOf(p.boundary), kind: 'property', color: propertyColor(p, settings) });
+    }
     // Section names sit at the top of the section so they don't cover areas in the middle.
     for (const s of sections) wanted.set(s.id, { text: s.name, at: topCenterOf(s.geometry), kind: 'section' });
     for (const a of areas) wanted.set(a.id, { text: a.name, at: centerOf(a.geometry), kind: 'area' });
@@ -395,19 +398,19 @@ export function MapView(props: MapViewProps) {
       // classList, not className: maplibre adds its own positioning class to this element.
       el.classList.add('map-label', `map-label-${item.kind}`);
       el.textContent = item.text;
+      el.style.color = item.color ?? '';
       return el;
     }, { anchor: 'center' });
-  }, [properties, areas, sections, selectedId, readyTick]);
+  }, [properties, areas, sections, selectedId, settings, readyTick]);
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    const features = markersToFeatures(markers, selectedId).features;
     const wanted = new Map(
-      features.map((f) => [
-        f.properties!.id as string,
-        { ...(f.properties as { id: string; name: string; color: string; selected: boolean }), at: f.geometry.coordinates as [number, number] },
+      markers.map((m) => [
+        m.id,
+        { id: m.id, name: m.name, selected: m.id === selectedId, style: markerStyle(m, settings), at: [m.lng, m.lat] as [number, number] },
       ]),
     );
     syncHtmlMarkers(
@@ -422,18 +425,20 @@ export function MapView(props: MapViewProps) {
         const rating = standRatings?.[item.id];
         for (const r of ['good', 'ok', 'bad', 'unset'] as const) el.classList.toggle(`rating-${r}`, rating === r);
         el.classList.toggle('rated', standRatings !== null);
-        el.style.setProperty('--pin-color', item.color);
+        el.style.setProperty('--pin-color', item.style.color);
+        el.style.setProperty('--pin-size', `${item.style.size}px`);
         el.innerHTML = '';
         const dot = document.createElement('span');
-        dot.className = 'map-pin-dot';
+        dot.className = `map-pin-dot shape-${item.style.shape}`;
         const label = document.createElement('span');
         label.className = 'map-pin-label';
         label.textContent = item.name;
         el.append(dot, label);
         return el;
       },
-      // Anchor on the left edge so the dot, not the label, sits on the location.
-      { anchor: 'left', offset: [-7, 0] },
+      // Anchored on the left edge; the dot's negative margin (styles.css)
+      // centres it on the location so the label hangs off to the right.
+      { anchor: 'left' },
       (marker, id) => {
         marker.setDraggable(true);
         marker.getElement().addEventListener('click', (event) => {
@@ -447,7 +452,7 @@ export function MapView(props: MapViewProps) {
         });
       },
     );
-  }, [markers, selectedId, standRatings, readyTick]);
+  }, [markers, selectedId, standRatings, settings, readyTick]);
 
   // Map images, drawn above the base maps and under property lines.
   useEffect(() => {

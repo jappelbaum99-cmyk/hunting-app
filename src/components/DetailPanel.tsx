@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
+import { COLOR_SWATCHES } from '@/lib/styles';
 import {
   COMPASS_POINTS,
   type AreaType,
@@ -16,6 +17,8 @@ import {
 
 interface Common {
   propertyName: string | null;
+  // The color this item gets when it has none of its own (from Settings).
+  defaultColor?: string;
   onZoom(): void;
   onDelete(): void;
   onClose(): void;
@@ -57,11 +60,27 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'property' && (
           <>
             <PropertyFields record={props.record} onChange={props.onChange} />
+            <ColorField
+              label="Line color"
+              value={props.record.color ?? null}
+              fallback={props.defaultColor ?? '#ffd400'}
+              onChange={(color) => props.onChange({ ...props.record, color })}
+            />
             <Field label="Offline maps">{props.offlineField}</Field>
           </>
         )}
         {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} />}
-        {props.kind === 'marker' && <MarkerFields record={props.record} onChange={props.onChange} />}
+        {props.kind === 'marker' && (
+          <>
+            <MarkerFields record={props.record} onChange={props.onChange} />
+            <ColorField
+              label="Color"
+              value={props.record.color ?? null}
+              fallback={props.defaultColor ?? MARKER_TYPES[props.record.type].color}
+              onChange={(color) => props.onChange({ ...props.record, color })}
+            />
+          </>
+        )}
         {props.kind === 'overlay' && (
           <OverlayFields record={props.record} onChange={props.onChange} onRealign={props.onRealign} />
         )}
@@ -245,6 +264,34 @@ function NotesField({ value, onChange }: { value: string | null; onChange(value:
   return (
     <Field label="Notes">
       <textarea rows={5} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)} />
+    </Field>
+  );
+}
+
+// An item's own color: quick swatches, a full picker, or back to the default.
+function ColorField(props: { label: string; value: string | null; fallback: string; onChange(color: string | null): void }) {
+  const { label, value, fallback, onChange } = props;
+  const current = value ?? fallback;
+  return (
+    <Field label={label} hint={value ? 'Its own color.' : 'Using the default from Settings.'}>
+      <div className="color-field">
+        {COLOR_SWATCHES.map((color) => (
+          <button
+            key={color}
+            className={`color-swatch${current.toLowerCase() === color ? ' active' : ''}`}
+            style={{ background: color }}
+            onClick={() => onChange(color)}
+            title={color}
+            aria-label={`Color ${color}`}
+          />
+        ))}
+        <input type="color" className="color-input" value={current} onChange={(e) => onChange(e.target.value)} aria-label="Pick any color" />
+        {value && (
+          <button className="link" onClick={() => onChange(null)}>
+            Use default
+          </button>
+        )}
+      </div>
     </Field>
   );
 }

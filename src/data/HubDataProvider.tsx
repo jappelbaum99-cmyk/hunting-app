@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { loadHubData, saveHubData } from '@/data/storage';
-import type { HubData, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section } from '@/types/models';
+import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
+import type { HubData, HubSettings, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section } from '@/types/models';
 
 const SAVE_DELAY_MS = 400;
 
@@ -17,6 +17,8 @@ interface HubDataValue {
   overlays: MapImageOverlay[];
   sections: Section[];
   plans: Plan[];
+  settings: HubSettings;
+  saveSettings(settings: HubSettings): void;
   saveProperty(property: Property): void;
   // Changes some fields of the stored property, whatever its latest version is.
   patchProperty(id: string, patch: Partial<Property>): void;
@@ -137,6 +139,8 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       overlays: live(data?.overlays),
       sections: live(data?.sections),
       plans: live(data?.plans),
+      settings: data?.settings ?? emptyHubData().settings,
+      saveSettings: (settings) => update((current) => ({ ...current, settings })),
       saveProperty: (p) => save('properties', p),
       patchProperty: (id, patch) =>
         update((current) => ({

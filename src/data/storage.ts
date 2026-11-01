@@ -26,7 +26,16 @@ const LOCAL_STORAGE_KEY = 'hunting-hub-data';
 export const isDesktop = typeof window !== 'undefined' && window.hub !== undefined;
 
 export function emptyHubData(): HubData {
-  return { schemaVersion: 1, properties: [], markers: [], areas: [], overlays: [], sections: [], plans: [] };
+  return {
+    schemaVersion: 1,
+    properties: [],
+    markers: [],
+    areas: [],
+    overlays: [],
+    sections: [],
+    plans: [],
+    settings: { markerStyles: {}, areaColors: {}, propertyLineColor: null },
+  };
 }
 
 // The desktop app stores data in Documents\Hunting Hub\hub-data.json.
@@ -35,7 +44,8 @@ export async function loadHubData(): Promise<HubData> {
   const json = window.hub ? await window.hub.loadData() : localStorage.getItem(LOCAL_STORAGE_KEY);
   if (!json) return emptyHubData();
   const parsed = JSON.parse(json) as Partial<HubData>;
-  return { ...emptyHubData(), ...parsed, schemaVersion: 1 };
+  const empty = emptyHubData();
+  return { ...empty, ...parsed, settings: { ...empty.settings, ...parsed.settings }, schemaVersion: 1 };
 }
 
 export async function saveHubData(data: HubData): Promise<void> {
