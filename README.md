@@ -27,6 +27,8 @@ npm start
   - Shows the wind, temperature, rain chance, pressure trend, and sunrise/sunset for now or any morning or evening sit in the next few days.
   - Rates every stand against its **Good winds**: Good, Maybe (the wind is close, very light, or gusty) or Bad.
   - While it's open, good stands glow green on the map and the rest fade.
+  - Each stand also gets a **scent cone**: the wedge downwind where deer could smell you. It's longer in a steady wind, and short and wide when the wind is light and swirly.
+  - If a cone reaches a bedding area or sanctuary, the stand is rated Bad and its cone turns red.
   - The forecast is free from Open-Meteo and needs internet.
 - **Compass** (bottom right): turns with the map. The blue arrow shows which way the wind is blowing, which is where your scent goes. Click the compass to face north again.
 - **Layers** (top right):

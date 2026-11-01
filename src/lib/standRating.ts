@@ -1,5 +1,10 @@
-// Rates stands against a forecast hour using each stand's "good winds".
-import { COMPASS_POINTS, type CompassPoint, type MapMarker } from '@/types/models';
+// Rates stands against a forecast hour using each stand's "good winds", then
+// checks its scent cone against bedding areas and sanctuaries.
+import booleanIntersects from '@turf/boolean-intersects';
+import type { Polygon } from 'geojson';
+
+import { scentCone } from '@/lib/scent';
+import { COMPASS_POINTS, type AreaType, type CompassPoint, type MapArea, type MapMarker } from '@/types/models';
 import type { Forecast, ForecastHour } from '@/lib/weather';
 
 export type StandRating = 'good' | 'ok' | 'bad' | 'unset';
@@ -8,7 +13,13 @@ export interface RatedStand {
   stand: MapMarker;
   rating: StandRating;
   reason: string;
+  cone: Polygon;
+  // Names of bedding areas / sanctuaries the scent drifts into.
+  scentInto: string[];
 }
+
+// Where deer shouldn't smell you.
+const SCENT_SENSITIVE: AreaType[] = ['bedding', 'sanctuary'];
 
 // Below this the wind is too light to carry scent predictably; thermals and
 // swirls take over.
@@ -33,10 +44,23 @@ function stepsApart(a: CompassPoint, b: CompassPoint): number {
   return Math.min(d, 8 - d);
 }
 
-export function rateStand(stand: MapMarker, hour: ForecastHour): RatedStand {
+export function rateStand(stand: MapMarker, hour: ForecastHour, areas: MapArea[] = []): RatedStand {
+  const cone = scentCone(stand.lng, stand.lat, hour);
+  const scentInto = areas
+    .filter((a) => SCENT_SENSITIVE.includes(a.type) && booleanIntersects(cone, a.geometry))
+    .map((a) => a.name);
+  const windRating = rateWind(stand, hour);
+  if (scentInto.length > 0) {
+    // Scent in a bedding area outweighs a "good" wind direction.
+    return { stand, cone, scentInto, rating: 'bad', reason: `Scent drifts into ${scentInto.join(' and ')}.` };
+  }
+  return { stand, cone, scentInto, ...windRating };
+}
+
+function rateWind(stand: MapMarker, hour: ForecastHour): { rating: StandRating; reason: string } {
   const wind = compassPointOf(hour.windFromDeg);
   if (stand.goodWinds.length === 0) {
-    return { stand, rating: 'unset', reason: 'Pick its good winds to rate it.' };
+    return { rating: 'unset', reason: 'Pick its good winds to rate it.' };
   }
 
   const closest = Math.min(...stand.goodWinds.map((w) => stepsApart(w, wind)));
@@ -55,14 +79,14 @@ export function rateStand(stand: MapMarker, hour: ForecastHour): RatedStand {
     rating = 'ok';
     reason = `Right direction, but gusts to ${Math.round(hour.gustMph)} mph.`;
   }
-  return { stand, rating, reason };
+  return { rating, reason };
 }
 
 const ORDER: Record<StandRating, number> = { good: 0, ok: 1, bad: 2, unset: 3 };
 
-export function rateStands(stands: MapMarker[], hour: ForecastHour): RatedStand[] {
+export function rateStands(stands: MapMarker[], hour: ForecastHour, areas: MapArea[] = []): RatedStand[] {
   return stands
-    .map((s) => rateStand(s, hour))
+    .map((s) => rateStand(s, hour, areas))
     .sort((a, b) => ORDER[a.rating] - ORDER[b.rating] || a.stand.name.localeCompare(b.stand.name, undefined, { numeric: true }));
 }
 

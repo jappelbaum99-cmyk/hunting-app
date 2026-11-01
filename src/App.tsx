@@ -390,7 +390,7 @@ export function App() {
   const isStand = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
   const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
   const ratingHour = forecast ? hourAt(forecast, forecastTime ?? now) : null;
-  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour) : [];
+  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, hub.areas) : [];
   const standRatings: Record<string, StandRating> | null =
     forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
 
@@ -400,7 +400,7 @@ export function App() {
     const nowHour = hourAt(forecast, now);
     const wind = `${compassPointOf(nowHour.windFromDeg)} ${Math.round(nowHour.windMph)} mph now`;
     const allStands = hub.markers.filter(isStand);
-    const good = rateStands(allStands, nowHour).filter((r) => r.rating === 'good').length;
+    const good = rateStands(allStands, nowHour, hub.areas).filter((r) => r.rating === 'good').length;
     forecastTeaser = allStands.length === 0 ? wind : `${wind} · ${good} good stand${good === 1 ? '' : 's'}`;
   }
 
@@ -462,6 +462,7 @@ export function App() {
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}
+          scentCones={standRatings ? ratedStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone })) : []}
           windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
           interaction={mode.kind}

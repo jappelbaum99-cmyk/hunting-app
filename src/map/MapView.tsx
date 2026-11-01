@@ -1,6 +1,6 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import type { FeatureCollection, Position } from 'geojson';
+import type { FeatureCollection, Polygon, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, ImageSource, RasterTileSource } from 'maplibre-gl';
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
@@ -64,6 +64,8 @@ interface MapViewProps {
   alignMarkers: AlignMarker[];
   // Stand id -> forecast rating, while the Hunt Forecast is open.
   standRatings: Record<string, StandRating> | null;
+  // Downwind scent wedges for rated stands.
+  scentCones: { id: string; rating: StandRating; cone: Polygon }[];
   // Shown as an arrow on the compass when known.
   windFromDeg: number | null;
   selection: Selection | null;
@@ -101,6 +103,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
   map.addSource('properties', { type: 'geojson', data: EMPTY });
   map.addSource('areas', { type: 'geojson', data: EMPTY });
   map.addSource('draft', { type: 'geojson', data: EMPTY });
+  map.addSource('scent', { type: 'geojson', data: EMPTY });
 
   map.addLayer({
     id: 'property-fill',
@@ -133,6 +136,19 @@ function addFeatureLayers(map: maplibregl.Map): void {
     type: 'line',
     source: 'areas',
     paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', ['get', 'color']], 'line-width': 2 },
+  });
+  // Scent cones sit over areas, so you can see one drifting into bedding.
+  map.addLayer({
+    id: 'scent-fill',
+    type: 'fill',
+    source: 'scent',
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.22 },
+  });
+  map.addLayer({
+    id: 'scent-line',
+    type: 'line',
+    source: 'scent',
+    paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] },
   });
   map.addLayer({
     id: 'draft-fill',
@@ -455,6 +471,21 @@ export function MapView(props: MapViewProps) {
       },
     );
   }, [alignMarkers, readyTick]);
+
+  // Scent cones: red when the scent reaches bedding (or the wind is wrong), orange otherwise.
+  const { scentCones } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    map.getSource<GeoJSONSource>('scent')?.setData({
+      type: 'FeatureCollection',
+      features: scentCones.map((c) => ({
+        type: 'Feature',
+        geometry: c.cone,
+        properties: { id: c.id, color: c.rating === 'bad' ? '#ff453a' : '#ffa53b' },
+      })),
+    });
+  }, [scentCones, readyTick]);
 
   // Shape being drawn.
   useEffect(() => {
