@@ -23,6 +23,12 @@ npm start
   2. Click **Add map image** and pick the file.
   3. Click a spot on the image (a road intersection, section corner or pond corner), then click the same spot on the map. Do this 2–4 times, with the spots spread out. With 3 or more points the panel shows how many feet off each one is.
   4. Save, then use **Draw property** to click along the lines in the image. Use **See-through** to fade the image in and out.
+- **Hunt Forecast** (top of the sidebar):
+  - Shows the wind, temperature, rain chance, pressure trend, and sunrise/sunset for now or any morning or evening sit in the next few days.
+  - Rates every stand against its **Good winds**: Good, Maybe (the wind is close, very light, or gusty) or Bad.
+  - While it's open, good stands glow green on the map and the rest fade.
+  - The forecast is free from Open-Meteo and needs internet.
+- **Compass** (bottom right): turns with the map. The blue arrow shows which way the wind is blowing, which is where your scent goes. Click the compass to face north again.
 - **Layers** (top right):
   - Satellite, Topo or Lidar base map.
   - **Lidar shading** blends the lidar hillshade over satellite.

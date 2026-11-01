@@ -11,6 +11,11 @@ interface SidebarProps {
   overlays: MapImageOverlay[];
   selection: Selection | null;
   dataPath: string | null;
+  // The open Hunt Forecast view, shown in place of the lists; null when closed.
+  forecastView: ReactNode | null;
+  // One-line summary for the Hunt Forecast card, e.g. "NW 8 mph · 2 good stands".
+  forecastTeaser: string;
+  onOpenForecast(): void;
   onPick(selection: Selection): void;
   onShowDataFolder: (() => void) | null;
 }
@@ -20,7 +25,8 @@ const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
-export function Sidebar({ properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder }: SidebarProps) {
+export function Sidebar(props: SidebarProps) {
+  const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
   const matches = <T extends { name: string }>(list: T[]) =>
@@ -43,22 +49,59 @@ export function Sidebar({ properties, areas, markers, overlays, selection, dataP
           <img src={LOGO_URL} alt="" />
           <h1>Hunting Hub</h1>
         </div>
-        <label className="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-            <circle cx="10.5" cy="10.5" r="6.5" />
-            <path d="m20 20-4.8-4.8" />
-          </svg>
-          <input
-            type="search"
-            placeholder="Search properties, stands, areas"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search"
-          />
-        </label>
+        {props.forecastView === null && (
+          <label className="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+              <circle cx="10.5" cy="10.5" r="6.5" />
+              <path d="m20 20-4.8-4.8" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Search properties, stands, areas"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search"
+            />
+          </label>
+        )}
       </header>
 
-      <div className="sidebar-scroll">
+      <div className="sidebar-scroll">{props.forecastView ?? renderLists()}</div>
+
+      <footer className="sidebar-footer">
+        {dataPath ? (
+          <button className="link" onClick={onShowDataFolder ?? undefined} title={dataPath}>
+            Saved to Documents\Hunting Hub
+          </button>
+        ) : (
+          <span>Browser preview: data is saved in this browser only.</span>
+        )}
+      </footer>
+    </aside>
+  );
+
+  function renderLists() {
+    return (
+      <>
+        {needle === '' && (
+          <button className="forecast-card" onClick={props.onOpenForecast}>
+            <span className="forecast-card-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 8h11a3 3 0 1 0-3-3" />
+                <path d="M3 12h15a3 3 0 1 1-3 3" />
+                <path d="M3 16h7" />
+              </svg>
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Hunt Forecast</span>
+              <span className="row-detail">{props.forecastTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
         {nothingFound && <p className="empty">Nothing matches “{query.trim()}”.</p>}
 
         <Section title="Properties" count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
@@ -125,19 +168,9 @@ export function Sidebar({ properties, areas, markers, overlays, selection, dataP
             />
           ))}
         </Section>
-      </div>
-
-      <footer className="sidebar-footer">
-        {dataPath ? (
-          <button className="link" onClick={onShowDataFolder ?? undefined} title={dataPath}>
-            Saved to Documents\Hunting Hub
-          </button>
-        ) : (
-          <span>Browser preview: data is saved in this browser only.</span>
-        )}
-      </footer>
-    </aside>
-  );
+      </>
+    );
+  }
 }
 
 interface SectionProps {

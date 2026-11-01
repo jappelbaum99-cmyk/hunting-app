@@ -4,20 +4,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { DrawBar } from '@/components/DrawBar';
+import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { imageFileName, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
+import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
+import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
+import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
+import { hourAt } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
-import { MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
-import type { AreaGeometry, AreaType, MapImageOverlay, MapMarker, MarkerType, Selection } from '@/types/models';
+import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
+import type { AreaGeometry, AreaType, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type Mode =
   | { kind: 'browse' }
@@ -36,6 +40,20 @@ function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
   return pointsToPolygon(corners);
 }
 
+// Where to get the weather: the chosen property, else the first one, else the
+// middle of the stands, else Salem.
+function forecastLocation(property: Property | null, properties: Property[], markers: MapMarker[]): [number, number] {
+  const target = property ?? properties[0];
+  if (target) {
+    const [w, s, e, n] = boundsOf(target.boundary);
+    return [(w + e) / 2, (s + n) / 2];
+  }
+  if (markers.length > 0) {
+    return [markers.reduce((t, m) => t + m.lng, 0) / markers.length, markers.reduce((t, m) => t + m.lat, 0) / markers.length];
+  }
+  return DEFAULT_CENTER;
+}
+
 export function App() {
   const hub = useHubData();
   const mapRef = useRef<MapViewHandle>(null);
@@ -50,6 +68,16 @@ export function App() {
   const [alignFile, setAlignFile] = useState<File | null>(null);
   const [savingAlign, setSavingAlign] = useState(false);
   const imageUrls = useImageUrls(hub.overlays);
+  const [forecastOpen, setForecastOpen] = useState(false);
+  // null = rate stands for all properties.
+  const [forecastPropertyId, setForecastPropertyId] = useState<string | null>(null);
+  // null = now.
+  const [forecastTime, setForecastTime] = useState<number | null>(null);
+  const forecastProperty = hub.properties.find((p) => p.id === forecastPropertyId) ?? null;
+  const [forecastState, refreshForecast] = useForecast(
+    forecastLocation(forecastProperty, hub.properties, hub.markers),
+    forecastOpen,
+  );
 
   useEffect(() => {
     window.hub?.dataPath().then(setDataPath).catch(() => undefined);
@@ -356,6 +384,48 @@ export function App() {
     });
   }
 
+  // Stand picks for the chosen sit (or now), from each stand's good winds.
+  const now = Date.now();
+  const forecast = forecastState.status === 'ready' ? forecastState.forecast : null;
+  const isStand = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
+  const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
+  const ratingHour = forecast ? hourAt(forecast, forecastTime ?? now) : null;
+  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour) : [];
+  const standRatings: Record<string, StandRating> | null =
+    forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
+
+  let forecastTeaser = 'Wind and stand picks';
+  if (forecastState.status === 'loading') forecastTeaser = 'Getting the wind…';
+  if (forecast) {
+    const nowHour = hourAt(forecast, now);
+    const wind = `${compassPointOf(nowHour.windFromDeg)} ${Math.round(nowHour.windMph)} mph now`;
+    const allStands = hub.markers.filter(isStand);
+    const good = rateStands(allStands, nowHour).filter((r) => r.rating === 'good').length;
+    forecastTeaser = allStands.length === 0 ? wind : `${wind} · ${good} good stand${good === 1 ? '' : 's'}`;
+  }
+
+  const forecastView = forecastOpen ? (
+    <ForecastPanel
+      state={forecastState}
+      properties={hub.properties}
+      propertyId={forecastPropertyId}
+      sits={forecast ? sitsFor(forecast, now) : []}
+      selectedTime={forecastTime ?? now}
+      ratedStands={ratedStands}
+      onPropertyChange={setForecastPropertyId}
+      onTimeChange={setForecastTime}
+      onPickStand={(id) => {
+        setSelection({ kind: 'marker', id });
+        zoomTo({ kind: 'marker', id });
+      }}
+      onRefresh={refreshForecast}
+      onClose={() => {
+        setForecastOpen(false);
+        setForecastTime(null);
+      }}
+    />
+  ) : null;
+
   const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
     <div className={appClass}>
@@ -366,6 +436,13 @@ export function App() {
         overlays={hub.overlays}
         selection={selection}
         dataPath={isDesktop ? dataPath : null}
+        forecastView={forecastView}
+        forecastTeaser={forecastTeaser}
+        onOpenForecast={() => {
+          if (mode.kind === 'align') return;
+          setForecastTime(null);
+          setForecastOpen(true);
+        }}
         onShowDataFolder={window.hub ? () => void window.hub?.showDataFolder() : null}
         onPick={(next) => {
           if (mode.kind === 'align') return;
@@ -384,6 +461,8 @@ export function App() {
           markers={hub.markers}
           overlays={overlayViews}
           alignMarkers={alignMarkers}
+          standRatings={standRatings}
+          windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
           interaction={mode.kind}
           draftPoints={draftPoints}

@@ -603,18 +603,7 @@ input[type='checkbox'] {
   line-height: 1.4;
 }
 
-/* maplibre zoom / compass buttons, restyled to match. */
-.map-area .maplibregl-ctrl-top-right {
-  /* Below the map chooser button. */
-  top: calc(var(--gap) + 52px);
-  right: calc(var(--gap) - 10px);
-}
-
-.app.has-detail .maplibregl-ctrl-top-right,
-.app.has-align .maplibregl-ctrl-top-right {
-  right: calc(var(--detail-width) + var(--gap) * 2 - 10px);
-}
-
+/* maplibre zoom buttons, restyled to match. */
 .map-area .maplibregl-ctrl-group {
   border-radius: 12px !important;
   box-shadow: var(--shadow-control) !important;
@@ -1020,4 +1009,344 @@ input[type='checkbox'] {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* Compass (bottom right, above the zoom buttons) */
+
+.map-area .compass-host {
+  margin-bottom: 8px;
+}
+
+.compass {
+  display: block;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-control);
+}
+
+.compass:hover:not(:disabled) {
+  background: var(--glass-strong);
+}
+
+.compass svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.compass .tick {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  opacity: 0.6;
+}
+
+.compass .tick.major {
+  stroke: var(--text);
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.compass .needle-north {
+  fill: var(--accent);
+}
+
+.compass .needle-south {
+  fill: rgba(247, 239, 230, 0.35);
+}
+
+.compass .cardinal {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.compass .cardinal.north {
+  fill: var(--accent);
+  font-size: 13px;
+}
+
+.compass .hub {
+  fill: var(--text);
+}
+
+.compass .wind-arrow line {
+  stroke: #5ac8fa;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.compass .wind-arrow path {
+  fill: #5ac8fa;
+}
+
+/* Hunt Forecast card (sidebar) */
+
+.forecast-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(240, 138, 36, 0.28), rgba(139, 90, 47, 0.32));
+  border: 1px solid rgba(240, 138, 36, 0.35);
+}
+
+.forecast-card:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(240, 138, 36, 0.38), rgba(139, 90, 47, 0.42));
+}
+
+.forecast-card-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  flex-shrink: 0;
+}
+
+.forecast-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.forecast-card-text,
+.rated-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.forecast-card-text .row-title {
+  font-weight: 700;
+}
+
+.chevron {
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Hunt Forecast view */
+
+.forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.forecast-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.forecast-header h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+button.back {
+  padding: 2px 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+button.back:hover:not(:disabled) {
+  background: none;
+  color: var(--accent-hover);
+}
+
+.forecast-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sit-chips button {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.sit-chips button.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.weather-card {
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.weather-main .wind-mini {
+  color: #5ac8fa;
+  flex-shrink: 0;
+}
+
+.weather-wind {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.weather-main .muted {
+  font-size: 12px;
+}
+
+.weather-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.hour-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 46px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.hour .wind-mini {
+  color: #5ac8fa;
+}
+
+.hour.active {
+  background: var(--selected);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.hour-time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.hour-wind {
+  font-weight: 600;
+}
+
+.row.rated {
+  align-items: flex-start;
+}
+
+.row.rated .row-detail {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.forecast-source .link {
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+/* Rating colors: badges in the list, and pins on the map while the forecast is open. */
+
+.swatch.rating-good {
+  background: #34c759;
+}
+
+.swatch.rating-ok {
+  background: #ffcc00;
+}
+
+.swatch.rating-bad {
+  background: #ff453a;
+}
+
+.swatch.rating-unset {
+  background: #8e8e93;
+}
+
+.map-pin.rated:not([class*='rating-']) {
+  opacity: 0.35;
+}
+
+.map-pin.rating-good .map-pin-dot {
+  width: 22px;
+  height: 22px;
+  background: #34c759;
+  animation: stand-glow 1.8s ease-in-out infinite;
+}
+
+.map-pin.rating-ok .map-pin-dot {
+  background: #ffcc00;
+}
+
+.map-pin.rating-bad {
+  opacity: 0.55;
+}
+
+.map-pin.rating-bad .map-pin-dot {
+  background: #ff453a;
+}
+
+.map-pin.rating-unset {
+  opacity: 0.55;
+}
+
+.map-pin.rating-unset .map-pin-dot {
+  background: #8e8e93;
+}
+
+@keyframes stand-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(52, 199, 89, 0.45),
+      0 2px 6px rgba(0, 0, 0, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 9px rgba(52, 199, 89, 0.15),
+      0 2px 6px rgba(0, 0, 0, 0.55);
+  }
 }

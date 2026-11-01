@@ -4,8 +4,11 @@ import type { FeatureCollection, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, ImageSource, RasterTileSource } from 'maplibre-gl';
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 
+import { Compass } from '@/components/Compass';
 import { PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
+import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, markersToFeatures, propertiesToFeatures } from '@/lib/geo';
 import {
   buildBaseStyle,
@@ -59,6 +62,10 @@ interface MapViewProps {
   markers: MapMarker[];
   overlays: OverlayView[];
   alignMarkers: AlignMarker[];
+  // Stand id -> forecast rating, while the Hunt Forecast is open.
+  standRatings: Record<string, StandRating> | null;
+  // Shown as an arrow on the compass when known.
+  windFromDeg: number | null;
   selection: Selection | null;
   interaction: MapInteraction;
   draftPoints: Position[];
@@ -99,7 +106,9 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'property-fill',
     type: 'fill',
     source: 'properties',
-    paint: { 'fill-color': PROPERTY_LINE_COLOR, 'fill-opacity': ['case', ['get', 'selected'], 0.12, 0.03] },
+    // A light see-through tint. Not clickable: properties are picked from the
+    // sidebar, so clicks inside one reach the stands and areas on it.
+    paint: { 'fill-color': PROPERTY_LINE_COLOR, 'fill-opacity': ['case', ['get', 'selected'], 0.16, 0.08] },
   });
   map.addLayer({
     id: 'property-casing',
@@ -179,8 +188,12 @@ function topCenterOf(geometry: AreaGeometry): [number, number] {
 }
 
 export function MapView(props: MapViewProps) {
-  const { ref, layers, properties, areas, markers, overlays, alignMarkers, selection, interaction, draftPoints, draftColor } =
-    props;
+  const { ref, layers, properties, areas, markers, overlays, alignMarkers, standRatings, selection, interaction } = props;
+  const { draftPoints, draftColor } = props;
+  // The compass is a maplibre control (so it stacks with the zoom buttons)
+  // whose contents React renders through a portal.
+  const [compassHost, setCompassHost] = useState<HTMLElement | null>(null);
+  const [bearing, setBearing] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
@@ -231,8 +244,14 @@ export function MapView(props: MapViewProps) {
     });
     mapRef.current = map;
     if (import.meta.env.DEV) Object.assign(window, { __map: map });
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-right');
+    // Bottom right, bottom to top: attribution, zoom buttons, compass.
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    const host = document.createElement('div');
+    host.className = 'maplibregl-ctrl compass-host';
+    map.addControl({ onAdd: () => host, onRemove: () => host.remove() }, 'bottom-right');
+    setCompassHost(host);
+    map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-left');
+    map.on('rotate', () => setBearing(map.getBearing()));
 
     // 'style.load' fires before tiles arrive, unlike 'load', which waits on the slow USGS servers.
     map.once('style.load', () => {
@@ -249,10 +268,9 @@ export function MapView(props: MapViewProps) {
         onMapClick(position);
         return;
       }
-      const hit = map.queryRenderedFeatures(event.point, { layers: ['area-fill', 'property-fill'] })[0];
+      const hit = map.queryRenderedFeatures(event.point, { layers: ['area-fill'] })[0];
       const id = hit?.properties?.id as string | undefined;
-      if (!id) onSelect(null);
-      else onSelect({ kind: hit.layer.id === 'area-fill' ? 'area' : 'property', id });
+      onSelect(id ? { kind: 'area', id } : null);
     });
 
     map.on('mousemove', (event) => {
@@ -262,14 +280,12 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor));
     });
 
-    for (const layer of ['area-fill', 'property-fill']) {
-      map.on('mouseenter', layer, () => {
-        if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', layer, () => {
-        if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = '';
-      });
-    }
+    map.on('mouseenter', 'area-fill', () => {
+      if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', 'area-fill', () => {
+      if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = '';
+    });
 
     const markersById = markerElements.current;
     const labelsById = labelElements.current;
@@ -352,6 +368,10 @@ export function MapView(props: MapViewProps) {
         const el = existing ?? document.createElement('div');
         el.classList.add('map-pin');
         el.classList.toggle('map-pin-selected', item.selected);
+        // Forecast highlight: good stands glow, bad ones fade.
+        const rating = standRatings?.[item.id];
+        for (const r of ['good', 'ok', 'bad', 'unset'] as const) el.classList.toggle(`rating-${r}`, rating === r);
+        el.classList.toggle('rated', standRatings !== null);
         el.style.setProperty('--pin-color', item.color);
         el.innerHTML = '';
         const dot = document.createElement('span');
@@ -377,7 +397,7 @@ export function MapView(props: MapViewProps) {
         });
       },
     );
-  }, [markers, selectedId, readyTick]);
+  }, [markers, selectedId, standRatings, readyTick]);
 
   // Map images, drawn above the base maps and under property lines.
   useEffect(() => {
@@ -445,7 +465,19 @@ export function MapView(props: MapViewProps) {
     map.getCanvas().style.cursor = interaction === 'browse' ? '' : 'crosshair';
   }, [draftPoints, draftColor, interaction, readyTick]);
 
-  return <div ref={containerRef} className="map" />;
+  return (
+    <div ref={containerRef} className="map">
+      {compassHost &&
+        createPortal(
+          <Compass
+            bearing={bearing}
+            windFromDeg={props.windFromDeg}
+            onResetNorth={() => mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 500 })}
+          />,
+          compassHost,
+        )}
+    </div>
+  );
 }
 
 interface HtmlItem {
