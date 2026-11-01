@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react';
+
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
 import type { MapArea, MapImageOverlay, MapMarker, Property, Selection } from '@/types/models';
@@ -13,22 +15,54 @@ interface SidebarProps {
   onShowDataFolder: (() => void) | null;
 }
 
+// Swap public/logo.svg (or point this at another file in public/) to change the logo.
+const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
+
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
 export function Sidebar({ properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder }: SidebarProps) {
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const matches = <T extends { name: string }>(list: T[]) =>
+    [...list].filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort(byName);
+
   const isSelected = (kind: Selection['kind'], id: string) => selection?.kind === kind && selection.id === id;
-  const stands = markers.filter((m) => m.type === 'stand' || m.type === 'blind').sort(byName);
-  const otherPins = markers.filter((m) => m.type !== 'stand' && m.type !== 'blind').sort(byName);
+  const isStand = (m: MapMarker) => m.type === 'stand' || m.type === 'blind';
+  const shownProperties = matches(properties);
+  const stands = matches(markers.filter(isStand));
+  const otherPins = matches(markers.filter((m) => !isStand(m)));
+  const shownAreas = matches(areas);
+  const shownOverlays = matches(overlays);
+  const nothingFound =
+    needle !== '' && shownProperties.length + stands.length + otherPins.length + shownAreas.length + shownOverlays.length === 0;
 
   return (
     <aside className="sidebar">
       <header className="sidebar-header">
-        <h1>Hunting Hub</h1>
+        <div className="brand">
+          <img src={LOGO_URL} alt="" />
+          <h1>Hunting Hub</h1>
+        </div>
+        <label className="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="m20 20-4.8-4.8" />
+          </svg>
+          <input
+            type="search"
+            placeholder="Search properties, stands, areas"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search"
+          />
+        </label>
       </header>
 
       <div className="sidebar-scroll">
-        <Section title="Properties" count={properties.length} empty="Draw your property line or import a KML file.">
-          {[...properties].sort(byName).map((p) => (
+        {nothingFound && <p className="empty">Nothing matches “{query.trim()}”.</p>}
+
+        <Section title="Properties" count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
+          {shownProperties.map((p) => (
             <Row
               key={p.id}
               selected={isSelected('property', p.id)}
@@ -40,21 +74,21 @@ export function Sidebar({ properties, areas, markers, overlays, selection, dataP
           ))}
         </Section>
 
-        <Section title="Stands & blinds" count={stands.length} empty="Add a stand pin from the toolbar.">
+        <Section title="Stands & Blinds" count={stands.length} searching={needle !== ''} empty="Add a stand pin from the toolbar.">
           {stands.map((m) => (
             <Row
               key={m.id}
               selected={isSelected('marker', m.id)}
               onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch round" style={{ background: MARKER_TYPES[m.type].color }} />}
+              swatch={<span className="swatch" style={{ background: MARKER_TYPES[m.type].color }} />}
               title={m.name}
               detail={m.goodWinds.length ? m.goodWinds.join(' ') : 'no winds set'}
             />
           ))}
         </Section>
 
-        <Section title="Areas" count={areas.length} empty="Draw food plots, bedding and sanctuaries.">
-          {[...areas].sort(byName).map((a) => (
+        <Section title="Areas" count={shownAreas.length} searching={needle !== ''} empty="Draw food plots, bedding and sanctuaries.">
+          {shownAreas.map((a) => (
             <Row
               key={a.id}
               selected={isSelected('area', a.id)}
@@ -66,21 +100,21 @@ export function Sidebar({ properties, areas, markers, overlays, selection, dataP
           ))}
         </Section>
 
-        <Section title="Other pins" count={otherPins.length} empty="Cameras, scrapes, rubs, water and parking.">
+        <Section title="Other Pins" count={otherPins.length} searching={needle !== ''} empty="Cameras, scrapes, rubs, water and parking.">
           {otherPins.map((m) => (
             <Row
               key={m.id}
               selected={isSelected('marker', m.id)}
               onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch round" style={{ background: MARKER_TYPES[m.type].color }} />}
+              swatch={<span className="swatch" style={{ background: MARKER_TYPES[m.type].color }} />}
               title={m.name}
               detail={MARKER_TYPES[m.type].label}
             />
           ))}
         </Section>
 
-        <Section title="Map images" count={overlays.length} empty="Lay a parcel map screenshot over the map to trace from.">
-          {[...overlays].sort(byName).map((o) => (
+        <Section title="Map Images" count={shownOverlays.length} searching={needle !== ''} empty="Lay a parcel map screenshot over the map to trace from.">
+          {shownOverlays.map((o) => (
             <Row
               key={o.id}
               selected={isSelected('overlay', o.id)}
@@ -106,7 +140,17 @@ export function Sidebar({ properties, areas, markers, overlays, selection, dataP
   );
 }
 
-function Section({ title, count, empty, children }: { title: string; count: number; empty: string; children: React.ReactNode }) {
+interface SectionProps {
+  title: string;
+  count: number;
+  // While searching, empty sections are hidden instead of showing their hint.
+  searching: boolean;
+  empty: string;
+  children: ReactNode;
+}
+
+function Section({ title, count, searching, empty, children }: SectionProps) {
+  if (searching && count === 0) return null;
   return (
     <section className="sidebar-section">
       <h2>
@@ -117,7 +161,7 @@ function Section({ title, count, empty, children }: { title: string; count: numb
   );
 }
 
-function Row(props: { selected: boolean; onClick(): void; swatch: React.ReactNode; title: string; detail: string }) {
+function Row(props: { selected: boolean; onClick(): void; swatch: ReactNode; title: string; detail: string }) {
   return (
     <li>
       <button className={`row${props.selected ? ' selected' : ''}`} onClick={props.onClick}>

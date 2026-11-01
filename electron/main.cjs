@@ -63,7 +63,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Hunting Hub',
-    backgroundColor: '#141814',
+    backgroundColor: '#1c130d',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

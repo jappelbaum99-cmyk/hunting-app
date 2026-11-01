@@ -28,8 +28,8 @@ type Mode =
 
 const MAX_IMPORTED_SHAPES = 50;
 const STAND_NAME = /\b(stand|blind|tree ?stand|ladder|box)\b/i;
-// Matches --align-width in styles.css.
-const ALIGN_PANEL_WIDTH = 520;
+// The align panel's width (--detail-width under .has-align in styles.css) plus its gaps.
+const ALIGN_PANEL_INSET = 520 + 24;
 const DEFAULT_OVERLAY_OPACITY = 0.6;
 
 function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
@@ -144,7 +144,7 @@ export function App() {
     });
     setMode({ kind: 'align' });
     const corners = overlayCorners(overlay.controlPoints, overlay.imageWidth, overlay.imageHeight);
-    if (corners) mapRef.current?.fitTo(cornersPolygon(corners), ALIGN_PANEL_WIDTH);
+    if (corners) mapRef.current?.fitTo(cornersPolygon(corners), ALIGN_PANEL_INSET);
   };
 
   const endAlign = () => {

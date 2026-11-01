@@ -21,10 +21,13 @@ import type { AreaGeometry, MapArea, MapMarker, Property, Selection } from '@/ty
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
 const DEFAULT_ZOOM = 12;
 const CAMERA_KEY = 'hunting-hub-camera';
-// Zooming always goes with a selection, so leave room for the detail panel
-// (--detail-width in styles.css) that floats over the right side of the map.
-const DETAIL_PANEL_WIDTH = 320;
-const FIT_PADDING = { top: 80, bottom: 80, left: 80, right: 80 };
+// Panels float over the map, so zooming centres things in the space between
+// them. Each inset is a panel's width plus its gaps (see styles.css): the
+// sidebar on the left (--sidebar-width), and on the right the detail panel
+// (--detail-width), which is open whenever we zoom to a selection.
+const SIDEBAR_INSET = 300 + 24;
+export const DETAIL_PANEL_INSET = 340 + 24;
+const FIT_MARGIN = 60;
 
 export interface MapViewHandle {
   // rightInset: width of whatever panel covers the right side of the map.
@@ -196,13 +199,20 @@ export function MapView(props: MapViewProps) {
   latest.current = props;
 
   useImperativeHandle(ref, () => ({
-    fitTo(geometry, rightInset = DETAIL_PANEL_WIDTH) {
+    fitTo(geometry, rightInset = DETAIL_PANEL_INSET) {
       const [w, s, e, n] = boundsOf(geometry);
-      mapRef.current?.fitBounds([w, s, e, n], { padding: { ...FIT_PADDING, right: FIT_PADDING.right + rightInset }, maxZoom: 17, duration: 800 });
+      const padding = {
+        top: FIT_MARGIN + 50, // clear of the toolbar
+        bottom: FIT_MARGIN,
+        left: FIT_MARGIN + SIDEBAR_INSET,
+        right: FIT_MARGIN + rightInset,
+      };
+      mapRef.current?.fitBounds([w, s, e, n], { padding, maxZoom: 17, duration: 800 });
     },
     flyTo(lng, lat) {
       const map = mapRef.current;
-      map?.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16), offset: [-DETAIL_PANEL_WIDTH / 2, 0], duration: 800 });
+      const offset: [number, number] = [(SIDEBAR_INSET - DETAIL_PANEL_INSET) / 2, 0];
+      map?.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16), offset, duration: 800 });
     },
   }));
 
