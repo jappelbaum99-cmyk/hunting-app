@@ -33,9 +33,9 @@ npm run build:site
 
 That builds it into `site-dist`. To put it online, one time:
 
-1. Make a free account at github.com, then a new **public** repository named `hunting-hub` (free Pages needs public; the code holds no personal data).
-2. Push this project to it: `git remote add origin https://github.com/<you>/hunting-hub.git`, then `git push -u origin master:main`.
-3. On GitHub: **Settings → Pages → Source: GitHub Actions**. The site appears at `https://<you>.github.io/hunting-hub/` a minute or two later, and updates on every push to `main`.
+1. Make a free account at github.com, then a new **public** repository (this one is `hunting-app`) (free Pages needs public; the code holds no personal data).
+2. Push this project to it: `git remote add origin https://github.com/<you>/hunting-app.git`, then `git push -u origin master:main`.
+3. On GitHub: **Settings → Pages → Source: GitHub Actions**. The site appears at `https://<you>.github.io/hunting-app/` a minute or two later, and updates on every push to `main`.
 4. Put the installer on it: `git tag v0.1.0`, then `git push origin v0.1.0`. GitHub builds the installer and attaches it to a release; the site's Download button always gets the newest one. Bump `version` in `package.json` before each new tag.
 
 ## Using it
