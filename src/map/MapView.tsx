@@ -175,6 +175,23 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'scent',
     paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] },
   });
+  // Arrows drifting downwind inside each cone (moved by the animation in MapView).
+  map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2 });
+  map.addSource('scent-arrows', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'scent-arrows',
+    type: 'symbol',
+    source: 'scent-arrows',
+    layout: {
+      'icon-image': 'wind-chevron',
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-size': 1.6,
+    },
+    paint: { 'icon-opacity': ['get', 'opacity'] },
+  });
   map.addLayer({
     id: 'draft-fill',
     type: 'fill',
@@ -209,6 +226,71 @@ function addFeatureLayers(map: maplibregl.Map): void {
       'circle-stroke-width': 2.5,
     },
   });
+}
+
+// A soft white chevron pointing up (north); the layer rotates it downwind.
+// Drawn on a canvas so no icon files or sprite server are needed.
+function windChevronImage(): ImageData {
+  const size = 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const chevron = () => {
+    ctx.beginPath();
+    ctx.moveTo(10, 26);
+    ctx.lineTo(20, 14);
+    ctx.lineTo(30, 26);
+  };
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.lineWidth = 7;
+  chevron();
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.lineWidth = 3.5;
+  chevron();
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// Where the drifting arrows are at time `now`: a few lanes across each cone,
+// each with arrows staggered along it, moving from the stand out to the tip.
+const ARROW_LANES = [-0.55, 0, 0.55];
+const ARROWS_PER_LANE = 2;
+const ARROW_PERIOD_MS = 3200;
+
+function scentArrowFeatures(cones: { cone: Polygon }[], now: number | null): FeatureCollection {
+  const features: FeatureCollection['features'] = [];
+  for (const { cone } of cones) {
+    const ring = cone.coordinates[0];
+    const origin = ring[0];
+    // Ring is: origin, arc points (left to right), origin.
+    const arc = ring.slice(1, -1);
+    if (arc.length < 3) continue;
+    const mid = (arc.length - 1) / 2;
+    ARROW_LANES.forEach((lane, laneIndex) => {
+      const tip = arc[Math.round(mid + lane * mid)];
+      const cosLat = Math.cos((origin[1] * Math.PI) / 180);
+      const bearing = (Math.atan2((tip[0] - origin[0]) * cosLat, tip[1] - origin[1]) * 180) / Math.PI;
+      for (let k = 0; k < ARROWS_PER_LANE; k++) {
+        // Still arrows (reduced motion) sit at fixed spots along the lane.
+        const phase =
+          now === null
+            ? (k + 1) / (ARROWS_PER_LANE + 1)
+            : (now / ARROW_PERIOD_MS + k / ARROWS_PER_LANE + laneIndex * 0.17) % 1;
+        // Keep arrows off the stand itself and fade them in and out at the ends.
+        const t = 0.12 + phase * 0.8;
+        const opacity = now === null ? 0.7 : Math.sin(phase * Math.PI) * 0.85;
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [origin[0] + (tip[0] - origin[0]) * t, origin[1] + (tip[1] - origin[1]) * t] },
+          properties: { bearing, opacity },
+        });
+      }
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 function draftFeatures(points: Position[], cursor: Position | null, color: string, snap: Snap['kind'] | null = null): FeatureCollection {
@@ -554,6 +636,37 @@ export function MapView(props: MapViewProps) {
       })),
     });
   }, [scentCones, readyTick]);
+
+  // Drifting arrows: one animation loop for the map's life, reading the
+  // latest cones from a ref. About 20 updates a second is smooth enough and
+  // light on the PC; with "reduce motion" on, the arrows hold still.
+  const conesRef = useRef(scentCones);
+  conesRef.current = scentCones;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let frame = 0;
+    let last = 0;
+    let shown = 0;
+    const tick = (now: number) => {
+      frame = requestAnimationFrame(tick);
+      const cones = conesRef.current;
+      // Nothing to animate: clear once, then idle.
+      if (cones.length === 0) {
+        if (shown > 0) map.getSource<GeoJSONSource>('scent-arrows')?.setData(EMPTY);
+        shown = 0;
+        return;
+      }
+      // Still arrows only need to follow the slider, so update them less often.
+      if (now - last < (reduceMotion ? 250 : 50)) return;
+      last = now;
+      shown = cones.length;
+      map.getSource<GeoJSONSource>('scent-arrows')?.setData(scentArrowFeatures(cones, reduceMotion ? null : now));
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [readyTick]);
 
   // Shape being drawn.
   useEffect(() => {
