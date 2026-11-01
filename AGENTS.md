@@ -17,7 +17,8 @@ npm run dev        # desktop window with live reload
 npm run dev:web    # same UI in a normal browser at http://localhost:5173
 npm start          # production build, then open it in Electron
 npm run typecheck  # tsc --noEmit
-npm run dist       # Windows installer in release\nnpm run build:site # website (home page + phone page) in site-dist
+npm run dist       # Windows installer in release/
+npm run build:site # website (home page + phone page) in site-dist/
 npm run icon       # remake the app and iPhone icons from public/logo.svg
 ```
 
