@@ -19,7 +19,7 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import type { AreaGeometry, MapArea, MapMarker, Property, Selection } from '@/types/models';
+import type { AreaGeometry, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
 const DEFAULT_ZOOM = 12;
@@ -60,6 +60,7 @@ interface MapViewProps {
   properties: Property[];
   areas: MapArea[];
   markers: MapMarker[];
+  sections: Section[];
   overlays: OverlayView[];
   alignMarkers: AlignMarker[];
   // Stand id -> forecast rating, while the Hunt Forecast is open.
@@ -104,6 +105,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
   map.addSource('areas', { type: 'geojson', data: EMPTY });
   map.addSource('draft', { type: 'geojson', data: EMPTY });
   map.addSource('scent', { type: 'geojson', data: EMPTY });
+  map.addSource('sections', { type: 'geojson', data: EMPTY });
 
   map.addLayer({
     id: 'property-fill',
@@ -124,6 +126,24 @@ function addFeatureLayers(map: maplibregl.Map): void {
     type: 'line',
     source: 'properties',
     paint: { 'line-color': PROPERTY_LINE_COLOR, 'line-width': ['case', ['get', 'selected'], 3.5, 2.5] },
+  });
+  // Management sections: under areas, so a food plot inside a section stays clickable.
+  map.addLayer({
+    id: 'section-fill',
+    type: 'fill',
+    source: 'sections',
+    paint: { 'fill-color': '#f7efe6', 'fill-opacity': ['case', ['get', 'selected'], 0.16, 0.05] },
+  });
+  map.addLayer({
+    id: 'section-line',
+    type: 'line',
+    source: 'sections',
+    paint: {
+      'line-color': ['case', ['get', 'selected'], '#f08a24', '#f7efe6'],
+      'line-width': ['case', ['get', 'selected'], 3, 2],
+      'line-dasharray': [4, 2],
+      'line-opacity': 0.9,
+    },
   });
   map.addLayer({
     id: 'area-fill',
@@ -204,7 +224,7 @@ function topCenterOf(geometry: AreaGeometry): [number, number] {
 }
 
 export function MapView(props: MapViewProps) {
-  const { ref, layers, properties, areas, markers, overlays, alignMarkers, standRatings, selection, interaction } = props;
+  const { ref, layers, properties, areas, markers, sections, overlays, alignMarkers, standRatings, selection, interaction } = props;
   const { draftPoints, draftColor } = props;
   // The compass is a maplibre control (so it stacks with the zoom buttons)
   // whose contents React renders through a portal.
@@ -284,9 +304,11 @@ export function MapView(props: MapViewProps) {
         onMapClick(position);
         return;
       }
-      const hit = map.queryRenderedFeatures(event.point, { layers: ['area-fill'] })[0];
+      // Areas win over the sections they sit in.
+      const hits = map.queryRenderedFeatures(event.point, { layers: ['area-fill', 'section-fill'] });
+      const hit = hits.find((h) => h.layer.id === 'area-fill') ?? hits[0];
       const id = hit?.properties?.id as string | undefined;
-      onSelect(id ? { kind: 'area', id } : null);
+      onSelect(id ? { kind: hit.layer.id === 'area-fill' ? 'area' : 'section', id } : null);
     });
 
     map.on('mousemove', (event) => {
@@ -296,12 +318,14 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor));
     });
 
-    map.on('mouseenter', 'area-fill', () => {
-      if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'area-fill', () => {
-      if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = '';
-    });
+    for (const layer of ['area-fill', 'section-fill']) {
+      map.on('mouseenter', layer, () => {
+        if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', layer, () => {
+        if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = '';
+      });
+    }
 
     const markersById = markerElements.current;
     const labelsById = labelElements.current;
@@ -351,10 +375,20 @@ export function MapView(props: MapViewProps) {
     if (!map || !readyRef.current) return;
     map.getSource<GeoJSONSource>('properties')?.setData(propertiesToFeatures(properties, selectedId));
     map.getSource<GeoJSONSource>('areas')?.setData(areasToFeatures(areas, selectedId));
+    map.getSource<GeoJSONSource>('sections')?.setData({
+      type: 'FeatureCollection',
+      features: sections.map((s) => ({
+        type: 'Feature',
+        geometry: s.geometry,
+        properties: { id: s.id, selected: s.id === selectedId },
+      })),
+    });
 
     // Names for shapes, drawn as HTML so no font server is needed.
     const wanted = new Map<string, { text: string; at: [number, number]; kind: string }>();
     for (const p of properties) wanted.set(p.id, { text: p.name, at: topCenterOf(p.boundary), kind: 'property' });
+    // Section names sit at the top of the section so they don't cover areas in the middle.
+    for (const s of sections) wanted.set(s.id, { text: s.name, at: topCenterOf(s.geometry), kind: 'section' });
     for (const a of areas) wanted.set(a.id, { text: a.name, at: centerOf(a.geometry), kind: 'area' });
     syncHtmlMarkers(map, labelElements.current, wanted, (item, existing) => {
       const el = existing ?? document.createElement('div');
@@ -363,7 +397,7 @@ export function MapView(props: MapViewProps) {
       el.textContent = item.text;
       return el;
     }, { anchor: 'center' });
-  }, [properties, areas, selectedId, readyTick]);
+  }, [properties, areas, sections, selectedId, readyTick]);
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {

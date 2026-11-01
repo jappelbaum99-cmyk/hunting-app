@@ -8,13 +8,15 @@ import type { AreaType, MarkerType } from '@/types/models';
 interface MapToolbarProps {
   disabled: boolean;
   onDrawProperty(): void;
+  onDrawSection(): void;
   onDrawArea(type: AreaType): void;
   onPlaceMarker(type: MarkerType): void;
   onImport(file: File): void;
   onAddImage(file: File): void;
 }
 
-export function MapToolbar({ disabled, onDrawProperty, onDrawArea, onPlaceMarker, onImport, onAddImage }: MapToolbarProps) {
+export function MapToolbar(props: MapToolbarProps) {
+  const { disabled, onDrawProperty, onDrawSection, onDrawArea, onPlaceMarker, onImport, onAddImage } = props;
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
 
@@ -28,6 +30,14 @@ export function MapToolbar({ disabled, onDrawProperty, onDrawArea, onPlaceMarker
     <div className="map-toolbar">
       <button disabled={disabled} onClick={onDrawProperty}>
         Draw property
+      </button>
+
+      <button
+        disabled={disabled}
+        onClick={onDrawSection}
+        title="A named unit of the property (e.g. North Ridge) you can attach burn and timber plans to"
+      >
+        Draw section
       </button>
 
       <details className="dropdown">

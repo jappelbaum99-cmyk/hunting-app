@@ -21,7 +21,7 @@ const LOCAL_STORAGE_KEY = 'hunting-hub-data';
 export const isDesktop = typeof window !== 'undefined' && window.hub !== undefined;
 
 export function emptyHubData(): HubData {
-  return { schemaVersion: 1, properties: [], markers: [], areas: [], overlays: [] };
+  return { schemaVersion: 1, properties: [], markers: [], areas: [], overlays: [], sections: [], plans: [] };
 }
 
 // The desktop app stores data in Documents\Hunting Hub\hub-data.json.

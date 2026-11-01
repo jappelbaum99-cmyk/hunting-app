@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { loadHubData, saveHubData } from '@/data/storage';
-import type { HubData, MapArea, MapImageOverlay, MapMarker, Property } from '@/types/models';
+import type { HubData, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section } from '@/types/models';
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas' | 'overlays';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans';
 
 interface HubDataValue {
   loaded: boolean;
@@ -15,14 +15,20 @@ interface HubDataValue {
   markers: MapMarker[];
   areas: MapArea[];
   overlays: MapImageOverlay[];
+  sections: Section[];
+  plans: Plan[];
   saveProperty(property: Property): void;
   saveMarker(marker: MapMarker): void;
   saveArea(area: MapArea): void;
   saveOverlay(overlay: MapImageOverlay): void;
+  saveSection(section: Section): void;
+  savePlan(plan: Plan): void;
   deleteProperty(id: string): void;
   deleteMarker(id: string): void;
   deleteArea(id: string): void;
   deleteOverlay(id: string): void;
+  deleteSection(id: string): void;
+  deletePlan(id: string): void;
 }
 
 const HubDataContext = createContext<HubDataValue | null>(null);
@@ -104,6 +110,11 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
             r.propertyId === id ? { ...r, propertyId: null, updatedAt: at } : r;
           next.markers = next.markers.map(unlink);
           next.areas = next.areas.map(unlink);
+          next.sections = next.sections.map(unlink);
+        }
+        if (collection === 'sections') {
+          // A section's plans go with it.
+          next.plans = next.plans.map((p) => (p.sectionId === id && !p.deletedAt ? { ...p, deletedAt: at, updatedAt: at } : p));
         }
         return next;
       });
@@ -122,14 +133,20 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       markers: live(data?.markers),
       areas: live(data?.areas),
       overlays: live(data?.overlays),
+      sections: live(data?.sections),
+      plans: live(data?.plans),
       saveProperty: (p) => save('properties', p),
       saveMarker: (m) => save('markers', m),
       saveArea: (a) => save('areas', a),
       saveOverlay: (o) => save('overlays', o),
+      saveSection: (s) => save('sections', s),
+      savePlan: (p) => save('plans', p),
       deleteProperty: (id) => remove('properties', id),
       deleteMarker: (id) => remove('markers', id),
       deleteArea: (id) => remove('areas', id),
       deleteOverlay: (id) => remove('overlays', id),
+      deleteSection: (id) => remove('sections', id),
+      deletePlan: (id) => remove('plans', id),
     };
   }, [data, loadError, saveError, save, remove]);
 

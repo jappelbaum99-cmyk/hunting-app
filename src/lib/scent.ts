@@ -16,10 +16,10 @@ export interface ConeShape {
 }
 
 export function coneShape(hour: ForecastHour): ConeShape {
-  if (hour.windMph < 3) return { lengthM: 150, halfAngleDeg: 60 };
+  if (hour.windMph < 3) return { lengthM: 150, halfAngleDeg: 45 };
   const lengthM = Math.min(600, 250 + hour.windMph * 25);
   const gusty = hour.gustMph > hour.windMph * 1.6 && hour.gustMph > 12;
-  return { lengthM, halfAngleDeg: gusty ? 32 : 22 };
+  return { lengthM, halfAngleDeg: gusty ? 22 : 15 };
 }
 
 // Point `distanceM` meters from [lng, lat] toward `bearingDeg` (0 = north).

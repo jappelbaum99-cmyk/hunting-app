@@ -93,23 +93,40 @@ export function rateStands(stands: MapMarker[], hour: ForecastHour, areas: MapAr
 export interface Sit {
   id: string;
   label: string;
-  // The hour used to rate stands.
-  time: number;
+  // The time window of the sit, epoch ms.
+  start: number;
+  end: number;
+  // Where the time slider starts: the moment deer are most likely moving.
+  peak: number;
 }
 
 const HOUR = 3600_000;
 
-// Morning and evening sits for the forecast days, plus "Now". A morning sit is
-// rated at sunrise; an evening sit 2 hours before sunset, when deer start moving.
+// Morning and evening sits for the forecast days, plus "Now".
+// Morning: an hour before sunrise to 3 hours after, peaking at sunrise.
+// Evening: 3 hours before sunset to 30 minutes after, peaking 1 hour before sunset.
 export function sitsFor(forecast: Forecast, now: number): Sit[] {
-  const sits: Sit[] = [{ id: 'now', label: 'Now', time: now }];
+  const sits: Sit[] = [{ id: 'now', label: 'Now', start: now, end: now + 4 * HOUR, peak: now }];
   const lastHour = forecast.hours[forecast.hours.length - 1]?.time ?? now;
   forecast.days.forEach((day, i) => {
     const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(day.sunrise).toLocaleDateString(undefined, { weekday: 'long' });
-    const morning = day.sunrise;
-    const evening = day.sunset - 2 * HOUR;
-    if (morning > now && morning <= lastHour) sits.push({ id: `${day.date}-am`, label: `${dayName} AM`, time: morning });
-    if (evening > now && evening <= lastHour) sits.push({ id: `${day.date}-pm`, label: `${dayName} PM`, time: evening });
+    const morning: Sit = {
+      id: `${day.date}-am`,
+      label: `${dayName} AM`,
+      start: day.sunrise - HOUR,
+      end: day.sunrise + 3 * HOUR,
+      peak: day.sunrise,
+    };
+    const evening: Sit = {
+      id: `${day.date}-pm`,
+      label: `${dayName} PM`,
+      start: day.sunset - 3 * HOUR,
+      end: day.sunset + HOUR / 2,
+      peak: day.sunset - HOUR,
+    };
+    for (const sit of [morning, evening]) {
+      if (sit.end > now && sit.end <= lastHour) sits.push(sit);
+    }
   });
   return sits;
 }

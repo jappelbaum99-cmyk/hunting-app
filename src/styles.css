@@ -1350,3 +1350,385 @@ button.back:hover:not(:disabled) {
       0 2px 6px rgba(0, 0, 0, 0.55);
   }
 }
+
+/* Sit weather: ranges, area graphs, slider */
+
+.sit-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.sit-title .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.sit-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.sit-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sit-stats dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sit-stats dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.area-chart {
+  margin: 0 0 10px;
+}
+
+.area-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.chart-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chart-range {
+  color: var(--muted);
+}
+
+.chart-plot {
+  position: relative;
+}
+
+.chart-plot svg {
+  display: block;
+  width: 100%;
+  height: 64px;
+  overflow: visible;
+  cursor: crosshair;
+}
+
+.chart-baseline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart-marker {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: -30px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--glass-strong);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-control);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.chart-tooltip span {
+  color: var(--muted);
+}
+
+.wind-track {
+  display: flex;
+  justify-content: space-between;
+  margin: -4px 0 10px;
+  color: #5ac8fa;
+}
+
+.sit-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.sit-slider input {
+  flex: 1;
+}
+
+button.play {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+button.play:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.slider-readout {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.slider-readout .muted {
+  font-size: 12px;
+}
+
+.stands-at {
+  margin-top: 2px;
+}
+
+/* Sections and plans */
+
+.swatch.section {
+  border-radius: 7px;
+  background: rgba(247, 239, 230, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(247, 239, 230, 0.85);
+  outline: 1px dashed rgba(247, 239, 230, 0.5);
+  outline-offset: -5px;
+}
+
+.map-label-section {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f7efe6;
+  /* Sits just inside the section's top edge. */
+  margin-top: 14px;
+}
+
+.plan-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--fill);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  padding: 8px;
+  border-radius: 9px;
+}
+
+.plan-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--fill-hover);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.plan-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.status-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--fill-hover);
+  color: var(--muted);
+}
+
+.status-pill.status-planned,
+.status-chips .active.status-planned {
+  background: rgba(31, 151, 201, 0.25);
+  color: #8fd3f5;
+}
+
+.status-pill.status-in_progress,
+.status-chips .active.status-in_progress {
+  background: rgba(240, 138, 36, 0.28);
+  color: #ffc58a;
+}
+
+.status-pill.status-done,
+.status-chips .active.status-done {
+  background: rgba(52, 199, 89, 0.25);
+  color: #8ee6a6;
+}
+
+.status-chips .active.status-idea {
+  background: var(--fill-hover);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+
+.add-plan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.add-plan button {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.plan-header {
+  padding-top: 12px;
+}
+
+.plan-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plan-title input {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-chips button {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.range-row > .muted {
+  flex: 0 0 auto;
+}
+
+input[type='date'],
+input[type='number'] {
+  width: 100%;
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 8px 10px;
+  color-scheme: dark;
+}
+
+.burn-windows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.burn-windows li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(52, 199, 89, 0.14);
+  border: 1px solid rgba(52, 199, 89, 0.35);
+  font-size: 13px;
+}
+
+.burn-windows .muted {
+  font-size: 12px;
+}
+
+.checklist {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.checklist .check {
+  align-items: flex-start;
+  line-height: 1.35;
+}
+
+.checklist .check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.checklist li.done span {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.checklist button.icon {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  flex-shrink: 0;
+}

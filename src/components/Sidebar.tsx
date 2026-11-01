@@ -2,10 +2,12 @@ import { useState, type ReactNode } from 'react';
 
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
-import type { MapArea, MapImageOverlay, MapMarker, Property, Selection } from '@/types/models';
+import type { MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
+  sections: Section[];
+  plans: Plan[];
   areas: MapArea[];
   markers: MapMarker[];
   overlays: MapImageOverlay[];
@@ -39,8 +41,14 @@ export function Sidebar(props: SidebarProps) {
   const otherPins = matches(markers.filter((m) => !isStand(m)));
   const shownAreas = matches(areas);
   const shownOverlays = matches(overlays);
+  const shownSections = matches(props.sections);
   const nothingFound =
-    needle !== '' && shownProperties.length + stands.length + otherPins.length + shownAreas.length + shownOverlays.length === 0;
+    needle !== '' &&
+    shownProperties.length + shownSections.length + stands.length + otherPins.length + shownAreas.length + shownOverlays.length === 0;
+  const planSummary = (sectionId: string) => {
+    const open = props.plans.filter((p) => p.sectionId === sectionId && p.status !== 'done').length;
+    return open === 0 ? 'no plans' : `${open} plan${open === 1 ? '' : 's'}`;
+  };
 
   return (
     <aside className="sidebar">
@@ -113,6 +121,19 @@ export function Sidebar(props: SidebarProps) {
               swatch={<span className="swatch outline" />}
               title={p.name}
               detail={formatAcres(acresOf(p.boundary))}
+            />
+          ))}
+        </Section>
+
+        <Section title="Sections" count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
+          {shownSections.map((s) => (
+            <Row
+              key={s.id}
+              selected={isSelected('section', s.id)}
+              onClick={() => onPick({ kind: 'section', id: s.id })}
+              swatch={<span className="swatch section" />}
+              title={s.name}
+              detail={`${formatAcres(acresOf(s.geometry))} · ${planSummary(s.id)}`}
             />
           ))}
         </Section>

@@ -77,16 +77,80 @@ export interface MapImageOverlay extends Syncable {
   visible: boolean;
 }
 
+// A named management unit within a property ("North Ridge", "Unit 3"),
+// which plans like burns and timber work are attached to.
+export interface Section extends Syncable {
+  propertyId: string | null;
+  name: string;
+  geometry: AreaGeometry;
+  notes: string | null;
+}
+
+export type PlanKind = 'burn' | 'timber' | 'habitat' | 'other';
+export type PlanStatus = 'idea' | 'planned' | 'in_progress' | 'done';
+
+export interface PlanTask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+// Conditions a prescribed burn needs; the forecast is checked against them.
+export interface BurnDetails {
+  // Burn season, as yyyy-mm-dd dates.
+  windowStart: string | null;
+  windowEnd: string | null;
+  // Winds that push smoke and fire the safe way. Empty = any direction.
+  goodWinds: CompassPoint[];
+  minWindMph: number;
+  maxWindMph: number;
+  minHumidity: number;
+  maxHumidity: number;
+}
+
+export type TimberPractice =
+  | 'thinning'
+  | 'selective_harvest'
+  | 'clearcut'
+  | 'tsi'
+  | 'hinge_cut'
+  | 'edge_feathering'
+  | 'planting'
+  | 'other';
+
+export interface TimberDetails {
+  practice: TimberPractice;
+  contractor: string | null;
+  estimatedCost: number | null;
+  estimatedIncome: number | null;
+}
+
+export interface Plan extends Syncable {
+  sectionId: string;
+  kind: PlanKind;
+  title: string;
+  status: PlanStatus;
+  // When it should happen, yyyy-mm-dd.
+  targetDate: string | null;
+  notes: string | null;
+  tasks: PlanTask[];
+  burn: BurnDetails | null;
+  timber: TimberDetails | null;
+}
+
 export interface HubData {
   schemaVersion: 1;
   properties: Property[];
   markers: MapMarker[];
   areas: MapArea[];
   overlays: MapImageOverlay[];
+  sections: Section[];
+  plans: Plan[];
 }
 
 export type Selection =
   | { kind: 'property'; id: string }
   | { kind: 'marker'; id: string }
   | { kind: 'area'; id: string }
-  | { kind: 'overlay'; id: string };
+  | { kind: 'overlay'; id: string }
+  | { kind: 'section'; id: string };

@@ -7,6 +7,7 @@ import { DrawBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
+import { SectionPanel } from '@/components/SectionPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { imageFileName, readImageSize, saveImage } from '@/data/images';
@@ -17,8 +18,9 @@ import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes'
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
+import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
-import { hourAt } from '@/lib/weather';
+import { hourAt, weatherAt } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
 import type { AreaGeometry, AreaType, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
@@ -27,6 +29,7 @@ type Mode =
   | { kind: 'browse' }
   | { kind: 'place'; markerType: MarkerType }
   | { kind: 'draw'; target: 'property' }
+  | { kind: 'draw'; target: 'section' }
   | { kind: 'draw'; target: 'area'; areaType: AreaType }
   | { kind: 'align' };
 
@@ -73,6 +76,10 @@ export function App() {
   const [forecastPropertyId, setForecastPropertyId] = useState<string | null>(null);
   // null = now.
   const [forecastTime, setForecastTime] = useState<number | null>(null);
+  // The plan open in a section's panel.
+  const [openPlan, setOpenPlan] = useState<{ sectionId: string; planId: string } | null>(null);
+  // The picked sit ('now', '2026-11-02-am', ...), or null for a single picked hour.
+  const [forecastSitId, setForecastSitId] = useState<string | null>('now');
   const forecastProperty = hub.properties.find((p) => p.id === forecastPropertyId) ?? null;
   const [forecastState, refreshForecast] = useForecast(
     forecastLocation(forecastProperty, hub.properties, hub.markers),
@@ -113,6 +120,16 @@ export function App() {
       };
       hub.saveProperty(record);
       setSelection({ kind: 'property', id: record.id });
+    } else if (mode.target === 'section') {
+      const record = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, draftPoints[0])?.id ?? null,
+        name: nextName('Section', hub.sections),
+        geometry,
+        notes: null,
+      };
+      hub.saveSection(record);
+      setSelection({ kind: 'section', id: record.id });
     } else {
       const label = AREA_TYPES[mode.areaType].label;
       const record = {
@@ -318,7 +335,9 @@ export function App() {
       const geometry =
         target.kind === 'property'
           ? hub.properties.find((r) => r.id === target.id)?.boundary
-          : hub.areas.find((r) => r.id === target.id)?.geometry;
+          : target.kind === 'section'
+            ? hub.sections.find((r) => r.id === target.id)?.geometry
+            : hub.areas.find((r) => r.id === target.id)?.geometry;
       if (geometry) mapRef.current?.fitTo(geometry);
     }
   };
@@ -356,16 +375,17 @@ export function App() {
   if (!hub.loaded) return <div className="fatal">Loading…</div>;
 
   const propertyName = (id: string | null) => hub.properties.find((p) => p.id === id)?.name ?? null;
-  const draftColor =
-    mode.kind === 'draw' ? (mode.target === 'area' ? AREA_TYPES[mode.areaType].color : '#ffd400') : '#ffffff';
-  const modeTitle =
-    mode.kind === 'place'
-      ? MARKER_TYPES[mode.markerType].label.toLowerCase()
-      : mode.kind === 'draw'
-        ? mode.target === 'property'
-          ? 'property line'
-          : AREA_TYPES[mode.areaType].label.toLowerCase()
-        : '';
+  let draftColor = '#ffffff';
+  let modeTitle = '';
+  if (mode.kind === 'place') {
+    modeTitle = MARKER_TYPES[mode.markerType].label.toLowerCase();
+  } else if (mode.kind === 'draw' && mode.target === 'property') {
+    [draftColor, modeTitle] = ['#ffd400', 'property line'];
+  } else if (mode.kind === 'draw' && mode.target === 'section') {
+    [draftColor, modeTitle] = ['#f7efe6', 'section'];
+  } else if (mode.kind === 'draw') {
+    [draftColor, modeTitle] = [AREA_TYPES[mode.areaType].color, AREA_TYPES[mode.areaType].label.toLowerCase()];
+  }
 
   // Saved images, with the one being lined up swapped for its live preview.
   const overlayViews: OverlayView[] = [];
@@ -389,7 +409,8 @@ export function App() {
   const forecast = forecastState.status === 'ready' ? forecastState.forecast : null;
   const isStand = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
   const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
-  const ratingHour = forecast ? hourAt(forecast, forecastTime ?? now) : null;
+  // Blended, not snapped to the hour, so cones glide as the sit slider moves.
+  const ratingHour = forecast ? weatherAt(forecast, forecastTime ?? now) : null;
   const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, hub.areas) : [];
   const standRatings: Record<string, StandRating> | null =
     forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
@@ -410,10 +431,19 @@ export function App() {
       properties={hub.properties}
       propertyId={forecastPropertyId}
       sits={forecast ? sitsFor(forecast, now) : []}
+      sitId={forecastSitId}
       selectedTime={forecastTime ?? now}
       ratedStands={ratedStands}
       onPropertyChange={setForecastPropertyId}
+      onSitChange={(sit) => {
+        setForecastSitId(sit.id);
+        setForecastTime(sit.peak);
+      }}
       onTimeChange={setForecastTime}
+      onHourPick={(time) => {
+        setForecastSitId(null);
+        setForecastTime(time);
+      }}
       onPickStand={(id) => {
         setSelection({ kind: 'marker', id });
         zoomTo({ kind: 'marker', id });
@@ -422,6 +452,7 @@ export function App() {
       onClose={() => {
         setForecastOpen(false);
         setForecastTime(null);
+        setForecastSitId('now');
       }}
     />
   ) : null;
@@ -431,6 +462,8 @@ export function App() {
     <div className={appClass}>
       <Sidebar
         properties={hub.properties}
+        sections={hub.sections}
+        plans={hub.plans}
         areas={hub.areas}
         markers={hub.markers}
         overlays={hub.overlays}
@@ -441,6 +474,7 @@ export function App() {
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
           setForecastTime(null);
+          setForecastSitId('now');
           setForecastOpen(true);
         }}
         onShowDataFolder={window.hub ? () => void window.hub?.showDataFolder() : null}
@@ -459,6 +493,7 @@ export function App() {
           properties={hub.properties}
           areas={hub.areas}
           markers={hub.markers}
+          sections={hub.sections}
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}
@@ -481,6 +516,7 @@ export function App() {
           <MapToolbar
             disabled={mode.kind !== 'browse'}
             onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
+            onDrawSection={() => startMode({ kind: 'draw', target: 'section' })}
             onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
             onPlaceMarker={(markerType) => startMode({ kind: 'place', markerType })}
             onImport={(file) => void handleImport(file)}
@@ -524,6 +560,35 @@ export function App() {
       onZoom: () => zoomTo(selection),
       onClose: () => setSelection(null),
     };
+    if (selection.kind === 'section') {
+      const record = hub.sections.find((r) => r.id === selection.id);
+      if (!record) return null;
+      // A plan only stays open while its own section is selected.
+      const planId = openPlan?.sectionId === record.id ? openPlan.planId : null;
+      return (
+        <SectionPanel
+          section={record}
+          plans={hub.plans.filter((p) => p.sectionId === record.id)}
+          propertyName={propertyName(record.propertyId)}
+          forecast={forecast}
+          openPlanId={planId}
+          onChange={hub.saveSection}
+          onDelete={() => {
+            hub.deleteSection(record.id);
+            setSelection(null);
+          }}
+          onAddPlan={(kind) => {
+            const plan = newPlan(record.id, kind, newRecordFields());
+            hub.savePlan(plan);
+            setOpenPlan({ sectionId: record.id, planId: plan.id });
+          }}
+          onOpenPlan={(id) => setOpenPlan(id ? { sectionId: record.id, planId: id } : null)}
+          onChangePlan={hub.savePlan}
+          onDeletePlan={hub.deletePlan}
+          {...common}
+        />
+      );
+    }
     if (selection.kind === 'overlay') {
       const record = hub.overlays.find((r) => r.id === selection.id);
       if (!record) return null;
