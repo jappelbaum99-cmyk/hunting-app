@@ -1,18 +1,28 @@
-// Shared data models. These mirror the SQLite tables in src/db/database.ts.
-// Ids are text (UUIDs) so records can be synced between devices later.
+// Shared data models for the hub (and later the phone site).
+// Ids are UUIDs and deletes are soft (deletedAt) so records can sync between devices.
+import type { MultiPolygon, Polygon } from 'geojson';
+
+export type AreaGeometry = Polygon | MultiPolygon;
 
 export type CompassPoint = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
+export const COMPASS_POINTS: CompassPoint[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+interface Syncable {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 export type PropertySource = 'drawn' | 'imported' | 'parcel';
 
-export interface Property {
-  id: string;
+export interface Property extends Syncable {
   name: string;
-  boundaryGeoJson: string | null;
-  source: PropertySource;
-  parcelId: string | null;
   owner: string | null;
-  acres: number | null;
+  source: PropertySource;
+  boundary: AreaGeometry;
+  notes: string | null;
 }
 
 export type MarkerType =
@@ -26,8 +36,7 @@ export type MarkerType =
   | 'parking'
   | 'other';
 
-export interface MapMarker {
-  id: string;
+export interface MapMarker extends Syncable {
   propertyId: string | null;
   type: MarkerType;
   name: string;
@@ -40,37 +49,22 @@ export interface MapMarker {
 
 export type AreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
 
-export interface MapArea {
-  id: string;
+export interface MapArea extends Syncable {
   propertyId: string | null;
   type: AreaType;
   name: string;
-  geoJson: string;
-  acres: number | null;
+  geometry: AreaGeometry;
   notes: string | null;
 }
 
-export interface Hunt {
-  id: string;
-  standId: string;
-  startedAt: string;
-  endedAt: string | null;
-  weatherJson: string | null;
-  notes: string | null;
+export interface HubData {
+  schemaVersion: 1;
+  properties: Property[];
+  markers: MapMarker[];
+  areas: MapArea[];
 }
 
-export type DeerType = 'buck' | 'doe' | 'fawn' | 'unknown';
-
-export interface Sighting {
-  id: string;
-  huntId: string;
-  seenAt: string;
-  deerType: DeerType;
-  count: number;
-  antlerPoints: number | null;
-  lat: number | null;
-  lng: number | null;
-  // Direction of travel in degrees (0 = north).
-  headingDeg: number | null;
-  notes: string | null;
-}
+export type Selection =
+  | { kind: 'property'; id: string }
+  | { kind: 'marker'; id: string }
+  | { kind: 'area'; id: string };

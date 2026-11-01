@@ -1,0 +1,41 @@
+import type { HubData } from '@/types/models';
+
+// Provided by electron/preload.cjs when running as the desktop app.
+interface HubBridge {
+  loadData(): Promise<string | null>;
+  saveData(json: string): Promise<void>;
+  dataPath(): Promise<string>;
+  showDataFolder(): Promise<string>;
+}
+
+declare global {
+  interface Window {
+    hub?: HubBridge;
+  }
+}
+
+const LOCAL_STORAGE_KEY = 'hunting-hub-data';
+
+export const isDesktop = typeof window !== 'undefined' && window.hub !== undefined;
+
+export function emptyHubData(): HubData {
+  return { schemaVersion: 1, properties: [], markers: [], areas: [] };
+}
+
+// The desktop app stores data in Documents\Hunting Hub\hub-data.json.
+// In a plain browser (dev only) it falls back to localStorage.
+export async function loadHubData(): Promise<HubData> {
+  const json = window.hub ? await window.hub.loadData() : localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (!json) return emptyHubData();
+  const parsed = JSON.parse(json) as Partial<HubData>;
+  return { ...emptyHubData(), ...parsed, schemaVersion: 1 };
+}
+
+export async function saveHubData(data: HubData): Promise<void> {
+  const json = JSON.stringify(data, null, 2);
+  if (window.hub) {
+    await window.hub.saveData(json);
+  } else {
+    localStorage.setItem(LOCAL_STORAGE_KEY, json);
+  }
+}

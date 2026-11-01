@@ -1,9 +1,8 @@
 import { gpx, kml } from '@tmcw/togeojson';
-import { DOMParser } from '@xmldom/xmldom';
-import { File } from 'expo-file-system';
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry, Position } from 'geojson';
 
-import { isAreaGeometry, type AreaGeometry } from '@/map/geo';
+import { isAreaGeometry } from '@/lib/geo';
+import type { AreaGeometry } from '@/types/models';
 
 export interface ImportedShape {
   name: string | null;
@@ -21,13 +20,13 @@ export interface ImportResult {
   points: ImportedPoint[];
 }
 
-export const IMPORT_EXTENSIONS = ['kml', 'gpx', 'geojson', 'json'];
+export const IMPORT_ACCEPT = '.kml,.gpx,.geojson,.json';
 
 // Reads a KML, GPX or GeoJSON file (e.g. exported from Google Earth, onX or a
 // county GIS site) and pulls out polygons and waypoints. Lines are skipped.
-export async function importGeoFile(uri: string, fileName: string): Promise<ImportResult> {
-  const text = await new File(uri).text();
-  const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+export async function importGeoFile(file: File): Promise<ImportResult> {
+  const text = await file.text();
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
 
   let collection: FeatureCollection<Geometry | null>;
   if (extension === 'kml' || extension === 'gpx') {
@@ -36,7 +35,7 @@ export async function importGeoFile(uri: string, fileName: string): Promise<Impo
   } else if (extension === 'geojson' || extension === 'json') {
     collection = toFeatureCollection(JSON.parse(text));
   } else {
-    throw new Error(`Unsupported file type ".${extension}". Use ${IMPORT_EXTENSIONS.map((e) => `.${e}`).join(', ')}.`);
+    throw new Error(`Unsupported file type ".${extension}". Use ${IMPORT_ACCEPT.replaceAll(',', ', ')}.`);
   }
 
   const result: ImportResult = { shapes: [], points: [] };
