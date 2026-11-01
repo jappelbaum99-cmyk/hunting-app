@@ -1,0 +1,9 @@
+{
+  "name": "Hunting Hub Field",
+  "short_name": "Hunting Hub",
+  "start_url": "./field.html",
+  "display": "standalone",
+  "background_color": "#1c130d",
+  "theme_color": "#1c130d",
+  "icons": [{ "src": "./logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

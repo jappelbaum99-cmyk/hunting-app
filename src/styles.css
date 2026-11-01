@@ -2218,3 +2218,36 @@ button.log-hunt {
 .detail-panel button.log-hunt {
   margin-top: 4px;
 }
+
+/* Phone section of the sidebar */
+
+.phone-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.phone-buttons button {
+  padding: 7px 8px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.field-pin-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-pin-row .row {
+  flex: 1;
+  min-width: 0;
+}
+
+button.mini {
+  padding: 4px 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}

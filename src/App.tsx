@@ -9,6 +9,7 @@ import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
 import { ReportPanel } from '@/components/ReportPanel';
+import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Sidebar } from '@/components/Sidebar';
@@ -269,6 +270,62 @@ export function App() {
         ...s,
         [report.id]: `Couldn't get the weather (${error instanceof Error ? error.message : String(error)}). It needs internet, and only goes back about 3 months.`,
       }));
+    }
+  };
+
+  // Brings in a file saved by the phone's Send tab.
+  const importPhone = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as PhoneFile;
+      if (parsed.kind !== PHONE_FILE_KIND) throw new Error("That isn't a file from the phone's Send tab.");
+      // Phone hunts know their stand; link the property from it here.
+      const reports = parsed.reports.map((r) => ({
+        ...r,
+        propertyId: r.propertyId ?? hub.markers.find((m) => m.id === r.standId)?.propertyId ?? null,
+      }));
+      const { added, updated } = hub.mergeFromPhone({ reports, fieldPins: parsed.pins });
+      setNotice(
+        added + updated === 0
+          ? 'Nothing new in that file.'
+          : `Brought in ${parsed.pins.length} pin${parsed.pins.length === 1 ? '' : 's'} and ${reports.length} hunt${reports.length === 1 ? '' : 's'} (${added} new, ${updated} updated).`,
+      );
+      // The phone has no internet in the stand, so look up weather for its hunts now.
+      for (const r of reports) if (!r.weather && !hub.reports.some((h) => h.id === r.id && h.weather)) void fillWeather(r);
+    } catch (error) {
+      setNotice(`Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const sendStandsToPhone = () => {
+    const stands = hub.markers.filter(isStandMarker).map((m) => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, goodWinds: m.goodWinds }));
+    const file: StandsFile = { kind: STANDS_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), stands };
+    void shareJsonFile('hunting-hub-stands.json', file).then(() =>
+      setNotice(`Saved hunting-hub-stands.json with ${stands.length} stands. Get it onto the phone (email or iCloud Drive), then load it on the phone's Send tab.`),
+    );
+  };
+
+  const handleFieldPin = (id: string, action: 'show' | 'add' | 'dismiss') => {
+    const pin = hub.fieldPins.find((p) => p.id === id);
+    if (!pin) return;
+    if (action === 'show') {
+      mapRef.current?.flyTo(pin.lng, pin.lat);
+    } else if (action === 'dismiss') {
+      hub.saveFieldPin({ ...pin, status: 'dismissed' });
+    } else {
+      const marker: MapMarker = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, [pin.lng, pin.lat])?.id ?? null,
+        type: pin.type,
+        name: nextName(MARKER_TYPES[pin.type].label, hub.markers),
+        lng: pin.lng,
+        lat: pin.lat,
+        notes: pin.note,
+        goodWinds: [],
+      };
+      hub.saveMarker(marker);
+      hub.saveFieldPin({ ...pin, status: 'added', markerId: marker.id });
+      setSelection({ kind: 'marker', id: marker.id });
+      zoomTo({ kind: 'marker', id: marker.id });
     }
   };
 
@@ -574,6 +631,10 @@ export function App() {
         sections={hub.sections}
         plans={hub.plans}
         reports={hub.reports}
+        newFieldPins={hub.fieldPins.filter((p) => p.status === 'new')}
+        onImportPhone={(file) => void importPhone(file)}
+        onSendStands={sendStandsToPhone}
+        onFieldPin={handleFieldPin}
         onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
         areas={hub.areas}
         markers={hub.markers}

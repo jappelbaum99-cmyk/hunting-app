@@ -1,11 +1,11 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { sightingSummary } from '@/lib/reports';
-import type { HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
+import type { FieldPin, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
@@ -13,6 +13,11 @@ interface SidebarProps {
   plans: Plan[];
   reports: HuntReport[];
   onLogHunt(): void;
+  // GPS pins from the phone that haven't been added or dismissed yet.
+  newFieldPins: FieldPin[];
+  onImportPhone(file: File): void;
+  onSendStands(): void;
+  onFieldPin(id: string, action: 'show' | 'add' | 'dismiss'): void;
   areas: MapArea[];
   markers: MapMarker[];
   overlays: MapImageOverlay[];
@@ -40,6 +45,7 @@ const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(
 export function Sidebar(props: SidebarProps) {
   const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
+  const phoneInput = useRef<HTMLInputElement>(null);
   const needle = query.trim().toLowerCase();
   const matches = <T extends { name: string }>(list: T[]) =>
     [...list].filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort(byName);
@@ -158,6 +164,55 @@ export function Sidebar(props: SidebarProps) {
             />
           ))}
         </Section>
+
+        {needle === '' && (
+          <section className="sidebar-section">
+            <h2>
+              Phone <span className="count">{props.newFieldPins.length ? `${props.newFieldPins.length} new` : ''}</span>
+            </h2>
+            <div className="phone-buttons">
+              <button onClick={() => phoneInput.current?.click()} title="Bring in pins and hunts sent from the phone">
+                Import from phone
+              </button>
+              <button onClick={props.onSendStands} title="Make the file the phone loads for its stand list and Apple Maps buttons">
+                Send stands to phone
+              </button>
+            </div>
+            <input
+              ref={phoneInput}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) props.onImportPhone(file);
+              }}
+            />
+            {props.newFieldPins.length > 0 && (
+              <ul>
+                {props.newFieldPins.map((p) => (
+                  <li key={p.id} className="field-pin-row">
+                    <button className="row" onClick={() => props.onFieldPin(p.id, 'show')}>
+                      <span className="swatch" style={{ background: MARKER_TYPES[p.type].color }} />
+                      <span className="row-title">
+                        {MARKER_TYPES[p.type].label}
+                        {p.note ? ` · ${p.note}` : ''}
+                      </span>
+                      <span className="row-detail">{p.accuracyM !== null ? `±${p.accuracyM} m` : ''}</span>
+                    </button>
+                    <button className="mini primary" onClick={() => props.onFieldPin(p.id, 'add')} title="Add to the map">
+                      Add
+                    </button>
+                    <button className="mini" onClick={() => props.onFieldPin(p.id, 'dismiss')} title="Dismiss">
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         {needle === '' && (
           <section className="sidebar-section">
