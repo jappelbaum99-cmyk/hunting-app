@@ -1990,3 +1990,21 @@ input[type='number'] {
   align-self: flex-start;
   margin-top: 6px;
 }
+
+/* Menu items with a second line of explanation. */
+.dropdown-menu.wide {
+  min-width: 260px;
+}
+
+.menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-weight: 600;
+}
+
+.menu-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}

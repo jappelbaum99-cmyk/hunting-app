@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
+import { findSnap, type Snap } from '@/lib/snap';
 import { markerStyle, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
@@ -62,6 +63,9 @@ interface MapViewProps {
   markers: MapMarker[];
   sections: Section[];
   settings: HubSettings;
+  // Outlines that drawing snaps onto, and how close (screen pixels) counts; 0 = off.
+  snapRings: Position[][];
+  snapPx: number;
   overlays: OverlayView[];
   alignMarkers: AlignMarker[];
   // Stand id -> forecast rating, while the Hunt Forecast is open.
@@ -189,18 +193,35 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'draft-vertex',
     type: 'circle',
     source: 'draft',
-    filter: ['==', ['geometry-type'], 'Point'],
+    filter: ['all', ['==', ['geometry-type'], 'Point'], ['!', ['has', 'snap']]],
     paint: { 'circle-radius': 5, 'circle-color': '#fff', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2 },
+  });
+  map.addLayer({
+    id: 'draft-snap',
+    type: 'circle',
+    source: 'draft',
+    filter: ['has', 'snap'],
+    paint: {
+      // Bigger ring on a corner, smaller on a straight edge.
+      'circle-radius': ['case', ['==', ['get', 'snap'], 'vertex'], 9, 6],
+      'circle-color': 'rgba(240, 138, 36, 0.25)',
+      'circle-stroke-color': '#f08a24',
+      'circle-stroke-width': 2.5,
+    },
   });
 }
 
-function draftFeatures(points: Position[], cursor: Position | null, color: string): FeatureCollection {
+function draftFeatures(points: Position[], cursor: Position | null, color: string, snap: Snap['kind'] | null = null): FeatureCollection {
   const ring = cursor ? [...points, cursor] : points;
   const features: FeatureCollection['features'] = points.map((p) => ({
     type: 'Feature',
     geometry: { type: 'Point', coordinates: p },
     properties: { color },
   }));
+  // A ring under the cursor shows the next click will snap onto a line.
+  if (cursor && snap) {
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: cursor }, properties: { color, snap } });
+  }
   if (ring.length >= 3) {
     features.push({
       type: 'Feature',
@@ -298,9 +319,16 @@ export function MapView(props: MapViewProps) {
     });
     map.on('moveend', () => saveCamera(map));
 
+    // While drawing, a point near an existing line lands exactly on it.
+    const snapAt = (point: { x: number; y: number }): Snap | null => {
+      const { interaction: mode, snapRings, snapPx } = latest.current;
+      if (mode !== 'draw') return null;
+      return findSnap(point, snapRings, snapPx, (lngLat) => map.project(lngLat));
+    };
+
     map.on('click', (event) => {
       const { interaction: mode, onMapClick, onSelect } = latest.current;
-      const position: Position = [event.lngLat.lng, event.lngLat.lat];
+      const position: Position = snapAt(event.point)?.position ?? [event.lngLat.lng, event.lngLat.lat];
       if (mode !== 'browse') {
         onMapClick(position);
         return;
@@ -314,9 +342,10 @@ export function MapView(props: MapViewProps) {
 
     map.on('mousemove', (event) => {
       if (latest.current.interaction !== 'draw') return;
-      cursorRef.current = [event.lngLat.lng, event.lngLat.lat];
+      const snap = snapAt(event.point);
+      cursorRef.current = snap?.position ?? [event.lngLat.lng, event.lngLat.lat];
       const source = map.getSource<GeoJSONSource>('draft');
-      source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor));
+      source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
     });
 
     for (const layer of ['area-fill', 'section-fill']) {

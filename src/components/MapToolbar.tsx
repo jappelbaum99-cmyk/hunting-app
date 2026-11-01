@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type MouseEvent } from 'react';
 
 import { IMAGE_ACCEPT } from '@/data/images';
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
@@ -21,16 +21,37 @@ export function MapToolbar(props: MapToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null);
 
   // Closes the <details> dropdown after picking an option.
-  const pick = (event: React.MouseEvent, action: () => void) => {
+  const pick = (event: MouseEvent, action: () => void) => {
     event.currentTarget.closest('details')?.removeAttribute('open');
     action();
   };
 
   return (
     <div className="map-toolbar">
-      <button disabled={disabled} onClick={onDrawProperty}>
-        Draw property
-      </button>
+      {/* Everything for getting a property line onto the map. */}
+      <details className="dropdown">
+        <summary className={disabled ? 'disabled' : ''}>Property ▾</summary>
+        <div className="dropdown-menu wide">
+          <button onClick={(e) => pick(e, onDrawProperty)}>
+            <span className="menu-text">
+              <span>Draw property</span>
+              <span className="menu-hint">Click each corner of the property line</span>
+            </span>
+          </button>
+          <button onClick={(e) => pick(e, () => fileInput.current?.click())}>
+            <span className="menu-text">
+              <span>Import KML/GPX</span>
+              <span className="menu-hint">Boundaries and waypoints from Google Earth, onX, a survey…</span>
+            </span>
+          </button>
+          <button onClick={(e) => pick(e, () => imageInput.current?.click())}>
+            <span className="menu-text">
+              <span>Add map image</span>
+              <span className="menu-hint">Line up a parcel map screenshot, then trace it</span>
+            </span>
+          </button>
+        </div>
+      </details>
 
       <button
         disabled={disabled}
@@ -64,9 +85,6 @@ export function MapToolbar(props: MapToolbarProps) {
         </div>
       </details>
 
-      <button disabled={disabled} onClick={() => fileInput.current?.click()}>
-        Import KML/GPX
-      </button>
       <input
         ref={fileInput}
         type="file"
@@ -78,14 +96,6 @@ export function MapToolbar(props: MapToolbarProps) {
           if (file) onImport(file);
         }}
       />
-
-      <button
-        disabled={disabled}
-        onClick={() => imageInput.current?.click()}
-        title="Lay a screenshot of a parcel map, plat or survey over the map, then trace it"
-      >
-        Add map image
-      </button>
       <input
         ref={imageInput}
         type="file"

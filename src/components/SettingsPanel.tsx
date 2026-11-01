@@ -41,6 +41,41 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
       </div>
 
       <section className="sidebar-section">
+        <h2>Drawing</h2>
+        <ul className="settings-list">
+          <li className="setting-row">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={settings.snapping.enabled}
+                onChange={(e) => onChange({ ...settings, snapping: { ...settings.snapping, enabled: e.target.checked } })}
+              />
+              <span>Snap to property and section lines</span>
+            </label>
+          </li>
+          {settings.snapping.enabled && (
+            <li className="setting-row">
+              <span className="row-title">How close</span>
+              <input
+                type="range"
+                min={6}
+                max={30}
+                step={2}
+                value={settings.snapping.distancePx}
+                onChange={(e) => onChange({ ...settings, snapping: { ...settings.snapping, distancePx: Number(e.target.value) } })}
+                aria-label="Snap distance"
+              />
+              <span className="muted">{settings.snapping.distancePx} px</span>
+            </li>
+          )}
+        </ul>
+        <p className="hint">
+          While drawing a section or area, a click near the property line (or another section) lands exactly on it, and on its corners
+          first. An orange ring shows when it will snap.
+        </p>
+      </section>
+
+      <section className="sidebar-section">
         <h2>Pins</h2>
         <p className="hint">Each type's color, shape and size. A single stand or pin can still get its own color.</p>
         <ul className="settings-list">
@@ -131,7 +166,7 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
         className="reset-look"
         onClick={() => {
           if (window.confirm('Put every color, shape and size back to the defaults? Colors set on single stands and properties stay.')) {
-            onChange({ markerStyles: {}, areaColors: {}, propertyLineColor: null });
+            onChange({ ...settings, markerStyles: {}, areaColors: {}, propertyLineColor: null });
           }
         }}
       >

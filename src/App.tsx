@@ -22,6 +22,7 @@ import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
+import { ringsOf } from '@/lib/snap';
 import { areaColor, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
@@ -462,6 +463,13 @@ export function App() {
     />
   ) : null;
 
+  // Lines a new shape can snap onto: property lines always, plus section
+  // edges when drawing a section or area, so neighbors share an edge.
+  const snapRings =
+    mode.kind === 'draw'
+      ? ringsOf([...hub.properties.map((p) => p.boundary), ...(mode.target === 'property' ? [] : hub.sections.map((s) => s.geometry))])
+      : [];
+
   const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
     <div className={appClass}>
@@ -508,6 +516,8 @@ export function App() {
           markers={hub.markers}
           sections={hub.sections}
           settings={hub.settings}
+          snapRings={snapRings}
+          snapPx={hub.settings.snapping.enabled ? hub.settings.snapping.distancePx : 0}
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}

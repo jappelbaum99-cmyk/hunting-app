@@ -67,6 +67,8 @@ export interface HubSettings {
   markerStyles: Partial<Record<MarkerType, Partial<MarkerStyle>>>;
   areaColors: Partial<Record<AreaType, string>>;
   propertyLineColor: string | null;
+  // Drawing snaps onto property and section lines within this many screen pixels.
+  snapping: { enabled: boolean; distancePx: number };
 }
 
 export type AreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';

@@ -23,6 +23,8 @@ declare global {
 
 const LOCAL_STORAGE_KEY = 'hunting-hub-data';
 
+export const DEFAULT_SNAPPING = { enabled: true, distancePx: 14 };
+
 export const isDesktop = typeof window !== 'undefined' && window.hub !== undefined;
 
 export function emptyHubData(): HubData {
@@ -34,7 +36,7 @@ export function emptyHubData(): HubData {
     overlays: [],
     sections: [],
     plans: [],
-    settings: { markerStyles: {}, areaColors: {}, propertyLineColor: null },
+    settings: { markerStyles: {}, areaColors: {}, propertyLineColor: null, snapping: DEFAULT_SNAPPING },
   };
 }
 
