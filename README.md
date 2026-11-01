@@ -13,6 +13,16 @@ npm start
 
 `npm start` builds the app and opens the Hunting Hub window. While making changes, use `npm run dev` instead. It reloads the window when files change.
 
+## Installer for family PCs
+
+```bash
+npm run dist
+```
+
+This makes `release\Hunting-Hub-Setup-<version>.exe` (about 120 MB). Send that file (Google Drive, a USB stick...) and they run it. The app isn't code-signed (that costs money), so Windows shows "Windows protected your PC" the first time: click **More info**, then **Run anyway**. Each PC keeps its own data; send a map file to share yours.
+
+To change the icon, replace `public/logo.svg` and run `npm run icon` before `npm run dist`. Bump `version` in `package.json` for each new installer you send.
+
 ## Using it
 
 - **Draw property** and **Draw area**: click each corner on the map, then press **Done** (or Enter). Backspace undoes the last corner and Esc cancels.
