@@ -4,12 +4,15 @@ import { MARKER_TYPES } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
-import type { HubSettings, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
+import { sightingSummary } from '@/lib/reports';
+import type { HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
   sections: Section[];
   plans: Plan[];
+  reports: HuntReport[];
+  onLogHunt(): void;
   areas: MapArea[];
   markers: MapMarker[];
   overlays: MapImageOverlay[];
@@ -28,6 +31,9 @@ interface SidebarProps {
 
 // Swap public/logo.svg (or point this at another file in public/) to change the logo.
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
+
+// The newest reports; the rest are still kept.
+const REPORTS_SHOWN = 8;
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
@@ -152,6 +158,34 @@ export function Sidebar(props: SidebarProps) {
             />
           ))}
         </Section>
+
+        {needle === '' && (
+          <section className="sidebar-section">
+            <h2>
+              Hunt Reports <span className="count">{props.reports.length}</span>
+            </h2>
+            <button className="log-hunt" onClick={props.onLogHunt}>
+              + Log a hunt
+            </button>
+            {props.reports.length > 0 && (
+              <ul>
+                {[...props.reports]
+                  .sort((a, b) => b.start.localeCompare(a.start))
+                  .slice(0, REPORTS_SHOWN)
+                  .map((r) => (
+                    <Row
+                      key={r.id}
+                      selected={isSelected('report', r.id)}
+                      onClick={() => onPick({ kind: 'report', id: r.id })}
+                      swatch={<span className="swatch report">🦌</span>}
+                      title={`${markers.find((m) => m.id === r.standId)?.name ?? 'No stand'} · ${new Date(r.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                      detail={sightingSummary(r)}
+                    />
+                  ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         <Section title="Stands & Blinds" count={stands.length} searching={needle !== ''} empty="Add a stand pin from the toolbar.">
           {stands.map((m) => (

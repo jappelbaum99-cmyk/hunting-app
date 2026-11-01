@@ -2079,3 +2079,142 @@ input.inline-name {
 .add-type {
   margin-top: 8px;
 }
+
+/* Hunt reports */
+
+.swatch.report {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(224, 123, 31, 0.25);
+  box-shadow: inset 0 0 0 1.5px rgba(224, 123, 31, 0.7);
+  font-size: 13px;
+}
+
+button.log-hunt {
+  width: 100%;
+  margin: 0 0 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.report-weather {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.report-weather .muted {
+  font-weight: 400;
+  font-size: 13px;
+}
+
+.sightings {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sighting {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+.sighting-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kind-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kind-chips button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.kind-chips button.active {
+  background: var(--deer);
+  color: #1c130d;
+  font-weight: 700;
+}
+
+.sighting .range-row label {
+  display: flex;
+  flex-direction: column;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.stepper strong {
+  min-width: 18px;
+  text-align: center;
+}
+
+.points input {
+  max-width: 80px;
+}
+
+.heading-picker {
+  grid-template-areas:
+    'NW N NE'
+    'W C E'
+    'SW S SE';
+}
+
+.heading-center {
+  grid-area: C;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.heading-center span {
+  display: inline-block;
+}
+
+.sighting-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.sighting-where .link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.detail-panel button.log-hunt {
+  margin-top: 4px;
+}

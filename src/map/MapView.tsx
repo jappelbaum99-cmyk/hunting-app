@@ -49,6 +49,17 @@ export interface OverlayView {
   opacity: number;
 }
 
+// A deer sighting ready to draw.
+export interface SightingView {
+  reportId: string;
+  id: string;
+  lng: number;
+  lat: number;
+  // Travel direction, 0 = north; null = not moving.
+  headingDeg: number | null;
+  color: string;
+}
+
 // A map-side control point while lining up an image.
 export interface AlignMarker {
   index: number;
@@ -72,6 +83,8 @@ interface MapViewProps {
   standRatings: Record<string, StandRating> | null;
   // Downwind scent wedges for rated stands.
   scentCones: { id: string; rating: StandRating; cone: Polygon }[];
+  // Deer seen in hunt reports.
+  sightings: SightingView[];
   // Shown as an arrow on the compass when known.
   windFromDeg: number | null;
   selection: Selection | null;
@@ -175,6 +188,34 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'scent',
     paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] },
   });
+  // Deer sightings from hunt reports: a colored arrow the way the deer were
+  // heading, or a dot when they weren't moving. The arrow is a signed-distance
+  // icon so one image can be tinted per deer kind.
+  map.addImage('deer-arrow', deerArrowImage(), { pixelRatio: 2, sdf: true });
+  map.addSource('sightings', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'sighting-dots',
+    type: 'circle',
+    source: 'sightings',
+    filter: ['!', ['has', 'heading']],
+    paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#1c130d', 'circle-stroke-width': 2 },
+  });
+  map.addLayer({
+    id: 'sighting-arrows',
+    type: 'symbol',
+    source: 'sightings',
+    filter: ['has', 'heading'],
+    layout: {
+      'icon-image': 'deer-arrow',
+      'icon-rotate': ['get', 'heading'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-size': 1.1,
+    },
+    paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#1c130d', 'icon-halo-width': 1.5 },
+  });
+
   // Arrows drifting downwind inside each cone (moved by the animation in MapView).
   map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2 });
   map.addSource('scent-arrows', { type: 'geojson', data: EMPTY });
@@ -226,6 +267,26 @@ function addFeatureLayers(map: maplibregl.Map): void {
       'circle-stroke-width': 2.5,
     },
   });
+}
+
+// A solid arrow pointing up (north), white so it can be tinted (sdf icon).
+function deerArrowImage(): ImageData {
+  const size = 44;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(22, 4);
+  ctx.lineTo(36, 22);
+  ctx.lineTo(27, 22);
+  ctx.lineTo(27, 40);
+  ctx.lineTo(17, 40);
+  ctx.lineTo(17, 22);
+  ctx.lineTo(8, 22);
+  ctx.closePath();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
 }
 
 // A soft white chevron pointing up (north); the layer rotates it downwind.
@@ -416,6 +477,12 @@ export function MapView(props: MapViewProps) {
         return;
       }
       // Areas win over the sections they sit in.
+      // A deer sighting opens its hunt report.
+      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-arrows', 'sighting-dots'] })[0];
+      if (deer) {
+        onSelect({ kind: 'report', id: deer.properties.reportId as string });
+        return;
+      }
       const hits = map.queryRenderedFeatures(event.point, { layers: ['area-fill', 'section-fill'] });
       const hit = hits.find((h) => h.layer.id === 'area-fill') ?? hits[0];
       const id = hit?.properties?.id as string | undefined;
@@ -430,7 +497,7 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
     });
 
-    for (const layer of ['area-fill', 'section-fill']) {
+    for (const layer of ['area-fill', 'section-fill', 'sighting-arrows', 'sighting-dots']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
       });
@@ -638,6 +705,22 @@ export function MapView(props: MapViewProps) {
       })),
     });
   }, [scentCones, readyTick]);
+
+  // Deer sightings.
+  const { sightings } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    map.getSource<GeoJSONSource>('sightings')?.setData({
+      type: 'FeatureCollection',
+      features: sightings.map((s) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+        // `heading` is left out (not null) for still deer, so the layer filters can test for it.
+        properties: { reportId: s.reportId, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}) },
+      })),
+    });
+  }, [sightings, readyTick]);
 
   // Drifting arrows: one animation loop for the map's life, reading the
   // latest cones from a ref. About 20 updates a second is smooth enough and

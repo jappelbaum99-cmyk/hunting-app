@@ -27,7 +27,7 @@ interface Common {
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
-  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void } & Common)
+  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
 
 function headingFor(props: DetailPanelProps): string {
@@ -73,6 +73,11 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'marker' && (
           <>
             <MarkerFields record={props.record} onChange={props.onChange} />
+            {props.onLogHunt && (
+              <button className="primary log-hunt" onClick={props.onLogHunt}>
+                Log a hunt here
+              </button>
+            )}
             <ColorField
               label="Color"
               value={props.record.color ?? null}

@@ -8,6 +8,7 @@ import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
+import { ReportPanel } from '@/components/ReportPanel';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Sidebar } from '@/components/Sidebar';
@@ -20,14 +21,15 @@ import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
+import { DEER_KINDS, reportWeather } from '@/lib/reports';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { ringsOf } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
-import { hourAt, weatherAt } from '@/lib/weather';
+import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
-import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
-import type { AreaGeometry, AreaType, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView, type SightingView } from '@/map/MapView';
+import type { AreaGeometry, AreaType, HuntReport, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type Mode =
   | { kind: 'browse' }
@@ -35,7 +37,9 @@ type Mode =
   | { kind: 'draw'; target: 'property' }
   | { kind: 'draw'; target: 'section' }
   | { kind: 'draw'; target: 'area'; areaType: AreaType }
-  | { kind: 'align' };
+  | { kind: 'align' }
+  // Clicking the map sets where a sighting in a hunt report happened.
+  | { kind: 'placeSighting'; reportId: string; sightingId: string };
 
 const MAX_IMPORTED_SHAPES = 50;
 const STAND_NAME = /\b(stand|blind|tree ?stand|ladder|box)\b/i;
@@ -49,6 +53,9 @@ function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
 
 // Where to get the weather: the chosen property, else the first one, else the
 // middle of the stands, else Salem.
+// Stands and blinds: the pins you hunt from.
+const isStandMarker = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
+
 function forecastLocation(property: Property | null, properties: Property[], markers: MapMarker[]): [number, number] {
   const target = property ?? properties[0];
   if (target) {
@@ -84,6 +91,8 @@ export function App() {
   const [forecastTime, setForecastTime] = useState<number | null>(null);
   // The plan open in a section's panel.
   const [openPlan, setOpenPlan] = useState<{ sectionId: string; planId: string } | null>(null);
+  // Report id -> weather lookup state ('loading' or an error message).
+  const [weatherStatus, setWeatherStatus] = useState<Record<string, string>>({});
   // The picked sit ('now', '2026-11-02-am', ...), or null for a single picked hour.
   const [forecastSitId, setForecastSitId] = useState<string | null>('now');
   const forecastProperty = hub.properties.find((p) => p.id === forecastPropertyId) ?? null;
@@ -241,7 +250,60 @@ export function App() {
     }
   };
 
+  // Where a report's weather is looked up: its stand, else the first property.
+  const reportLocation = (report: HuntReport): [number, number] => {
+    const stand = hub.markers.find((m) => m.id === report.standId);
+    return stand ? [stand.lng, stand.lat] : forecastLocation(null, hub.properties, hub.markers);
+  };
+
+  const fillWeather = async (report: HuntReport) => {
+    setWeatherStatus((s) => ({ ...s, [report.id]: 'loading' }));
+    try {
+      const [lng, lat] = reportLocation(report);
+      const hour = await weatherFor(lat, lng, Date.parse(report.start));
+      // Merge into the latest copy, so edits made while waiting aren't lost.
+      hub.patchReport(report.id, { weather: reportWeather(hour) });
+      setWeatherStatus((s) => ({ ...s, [report.id]: 'idle' }));
+    } catch (error) {
+      setWeatherStatus((s) => ({
+        ...s,
+        [report.id]: `Couldn't get the weather (${error instanceof Error ? error.message : String(error)}). It needs internet, and only goes back about 3 months.`,
+      }));
+    }
+  };
+
+  const startReport = (standId: string | null) => {
+    const stand = hub.markers.find((m) => m.id === standId) ?? null;
+    const report: HuntReport = {
+      ...newRecordFields(),
+      standId: stand?.id ?? null,
+      propertyId: stand?.propertyId ?? null,
+      start: new Date().toISOString(),
+      end: null,
+      weather: null,
+      sightings: [],
+      notes: null,
+      source: 'hub',
+    };
+    hub.saveReport(report);
+    cancelMode();
+    setSelection({ kind: 'report', id: report.id });
+    void fillWeather(report);
+  };
+
   const handleMapClick = (position: Position) => {
+    if (mode.kind === 'placeSighting') {
+      const report = hub.reports.find((r) => r.id === mode.reportId);
+      if (report) {
+        hub.saveReport({
+          ...report,
+          sightings: report.sightings.map((s) => (s.id === mode.sightingId ? { ...s, lng: position[0], lat: position[1] } : s)),
+        });
+      }
+      cancelMode();
+      setSelection({ kind: 'report', id: mode.reportId });
+      return;
+    }
     if (mode.kind === 'align' && alignDraft) {
       const waiting = alignDraft.points.findIndex((p) => p.map === null);
       if (waiting === -1) {
@@ -330,6 +392,14 @@ export function App() {
   };
 
   const zoomTo = (target: Selection) => {
+    if (target.kind === 'report') {
+      const report = hub.reports.find((r) => r.id === target.id);
+      if (report) {
+        const [lng, lat] = reportLocation(report);
+        mapRef.current?.flyTo(lng, lat);
+      }
+      return;
+    }
     if (target.kind === 'marker') {
       const m = hub.markers.find((r) => r.id === target.id);
       if (m) mapRef.current?.flyTo(m.lng, m.lat);
@@ -383,7 +453,9 @@ export function App() {
   const propertyName = (id: string | null) => hub.properties.find((p) => p.id === id)?.name ?? null;
   let draftColor = '#ffffff';
   let modeTitle = '';
-  if (mode.kind === 'place') {
+  if (mode.kind === 'placeSighting') {
+    modeTitle = 'deer you saw';
+  } else if (mode.kind === 'place') {
     modeTitle = MARKER_TYPES[mode.markerType].label.toLowerCase();
   } else if (mode.kind === 'draw' && mode.target === 'property') {
     [draftColor, modeTitle] = [propertyColor(null, hub.settings), 'property line'];
@@ -466,6 +538,27 @@ export function App() {
     />
   ) : null;
 
+  // Deer from hunt reports. Ones not placed on the map are spread in a small
+  // ring around their stand so several sightings don't hide each other.
+  const SIGHTING_RING_M = 18;
+  const sightingViews: SightingView[] = [];
+  if (layers.sightings) {
+    for (const report of hub.reports) {
+      const stand = hub.markers.find((m) => m.id === report.standId);
+      const unplaced = report.sightings.filter((s) => s.lat === null);
+      for (const s of report.sightings) {
+        let at: [number, number] | null = s.lat !== null && s.lng !== null ? [s.lng, s.lat] : null;
+        if (!at && stand) {
+          const angle = (2 * Math.PI * unplaced.indexOf(s)) / Math.max(1, unplaced.length);
+          const dLat = (SIGHTING_RING_M * Math.cos(angle)) / 111_320;
+          const dLng = (SIGHTING_RING_M * Math.sin(angle)) / (111_320 * Math.cos((stand.lat * Math.PI) / 180));
+          at = [stand.lng + dLng, stand.lat + dLat];
+        }
+        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, color: DEER_KINDS[s.kind].color });
+      }
+    }
+  }
+
   // Lines a new shape can snap onto: property lines always, plus section
   // edges when drawing a section or area, so neighbors share an edge.
   const snapRings =
@@ -480,6 +573,8 @@ export function App() {
         properties={hub.properties}
         sections={hub.sections}
         plans={hub.plans}
+        reports={hub.reports}
+        onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
         areas={hub.areas}
         markers={hub.markers}
         overlays={hub.overlays}
@@ -525,9 +620,10 @@ export function App() {
           alignMarkers={alignMarkers}
           standRatings={standRatings}
           scentCones={standRatings ? ratedStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone })) : []}
+          sightings={sightingViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
-          interaction={mode.kind}
+          interaction={mode.kind === 'placeSighting' ? 'place' : mode.kind}
           draftPoints={draftPoints}
           draftColor={draftColor}
           onMapClick={handleMapClick}
@@ -552,9 +648,9 @@ export function App() {
           />
         )}
         <LayerPanel layers={layers} onChange={setLayers} />
-        {(mode.kind === 'draw' || mode.kind === 'place') && (
+        {(mode.kind === 'draw' || mode.kind === 'place' || mode.kind === 'placeSighting') && (
           <DrawBar
-            kind={mode.kind}
+            kind={mode.kind === 'draw' ? 'draw' : 'place'}
             title={modeTitle}
             points={draftPoints}
             onUndo={() => setDraftPoints((points) => points.slice(0, -1))}
@@ -588,6 +684,25 @@ export function App() {
       onZoom: () => zoomTo(selection),
       onClose: () => setSelection(null),
     };
+    if (selection.kind === 'report') {
+      const record = hub.reports.find((r) => r.id === selection.id);
+      if (!record) return null;
+      return (
+        <ReportPanel
+          report={record}
+          stands={hub.markers.filter(isStandMarker)}
+          weatherStatus={weatherStatus[record.id] ?? 'idle'}
+          onChange={hub.saveReport}
+          onFillWeather={() => void fillWeather(record)}
+          onPlaceSighting={(sightingId) => setMode({ kind: 'placeSighting', reportId: record.id, sightingId })}
+          onDelete={() => {
+            hub.deleteReport(record.id);
+            setSelection(null);
+          }}
+          {...common}
+        />
+      );
+    }
     if (selection.kind === 'section') {
       const record = hub.sections.find((r) => r.id === selection.id);
       if (!record) return null;
@@ -685,6 +800,7 @@ export function App() {
       <DetailPanel
         kind="marker"
         record={record}
+        onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
         propertyName={propertyName(record.propertyId)}
         defaultColor={categoryStyle(record.type, hub.settings).color}
         onChange={hub.saveMarker}

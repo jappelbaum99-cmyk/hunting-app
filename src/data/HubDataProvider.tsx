@@ -1,11 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
-import type { HubData, HubSettings, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section } from '@/types/models';
+import type {
+  FieldPin,
+  HubData,
+  HubSettings,
+  HuntReport,
+  MapArea,
+  MapImageOverlay,
+  MapMarker,
+  Plan,
+  Property,
+  Section,
+} from '@/types/models';
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins';
 
 interface HubDataValue {
   loaded: boolean;
@@ -17,6 +28,8 @@ interface HubDataValue {
   overlays: MapImageOverlay[];
   sections: Section[];
   plans: Plan[];
+  reports: HuntReport[];
+  fieldPins: FieldPin[];
   settings: HubSettings;
   saveSettings(settings: HubSettings): void;
   saveProperty(property: Property): void;
@@ -27,12 +40,20 @@ interface HubDataValue {
   saveOverlay(overlay: MapImageOverlay): void;
   saveSection(section: Section): void;
   savePlan(plan: Plan): void;
+  saveReport(report: HuntReport): void;
+  // Changes some fields of the stored report, whatever its latest version is.
+  patchReport(id: string, patch: Partial<HuntReport>): void;
+  saveFieldPin(pin: FieldPin): void;
+  // Brings in records from the phone: new ones are added, and ones already
+  // here are replaced only when the incoming copy is newer.
+  mergeFromPhone(incoming: { reports: HuntReport[]; fieldPins: FieldPin[] }): { added: number; updated: number };
   deleteProperty(id: string): void;
   deleteMarker(id: string): void;
   deleteArea(id: string): void;
   deleteOverlay(id: string): void;
   deleteSection(id: string): void;
   deletePlan(id: string): void;
+  deleteReport(id: string): void;
 }
 
 const HubDataContext = createContext<HubDataValue | null>(null);
@@ -139,6 +160,8 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       overlays: live(data?.overlays),
       sections: live(data?.sections),
       plans: live(data?.plans),
+      reports: live(data?.reports),
+      fieldPins: live(data?.fieldPins),
       settings: data?.settings ?? emptyHubData().settings,
       saveSettings: (settings) => update((current) => ({ ...current, settings })),
       saveProperty: (p) => save('properties', p),
@@ -152,12 +175,50 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       saveOverlay: (o) => save('overlays', o),
       saveSection: (s) => save('sections', s),
       savePlan: (p) => save('plans', p),
+      saveReport: (r) => save('reports', r),
+      patchReport: (id, patch) =>
+        update((current) => ({
+          ...current,
+          reports: current.reports.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: nowIso() } : r)),
+        })),
+      saveFieldPin: (p) => save('fieldPins', p),
+      mergeFromPhone: (incoming) => {
+        // Counted from the data as it is now; the update below applies the same rule.
+        const result = { added: 0, updated: 0 };
+        const plan = <T extends { id: string; updatedAt: string }>(current: T[], next: T[]) => {
+          const byId = new Map(current.map((r) => [r.id, r]));
+          for (const r of next) {
+            const have = byId.get(r.id);
+            if (!have) result.added += 1;
+            else if (r.updatedAt > have.updatedAt) result.updated += 1;
+          }
+        };
+        if (data) {
+          plan(data.reports, incoming.reports);
+          plan(data.fieldPins, incoming.fieldPins);
+        }
+        const merge = <T extends { id: string; updatedAt: string }>(current: T[], next: T[]) => {
+          const byId = new Map(current.map((r) => [r.id, r]));
+          for (const r of next) {
+            const have = byId.get(r.id);
+            if (!have || r.updatedAt > have.updatedAt) byId.set(r.id, r);
+          }
+          return [...byId.values()];
+        };
+        update((current) => ({
+          ...current,
+          reports: merge(current.reports, incoming.reports),
+          fieldPins: merge(current.fieldPins, incoming.fieldPins),
+        }));
+        return result;
+      },
       deleteProperty: (id) => remove('properties', id),
       deleteMarker: (id) => remove('markers', id),
       deleteArea: (id) => remove('areas', id),
       deleteOverlay: (id) => remove('overlays', id),
       deleteSection: (id) => remove('sections', id),
       deletePlan: (id) => remove('plans', id),
+      deleteReport: (id) => remove('reports', id),
     };
   }, [data, loadError, saveError, save, remove, update]);
 

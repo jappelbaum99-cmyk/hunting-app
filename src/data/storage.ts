@@ -36,6 +36,8 @@ export function emptyHubData(): HubData {
     overlays: [],
     sections: [],
     plans: [],
+    reports: [],
+    fieldPins: [],
     settings: {
       markerStyles: {},
       areaColors: {},

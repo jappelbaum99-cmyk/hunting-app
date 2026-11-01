@@ -113,6 +113,11 @@ export function LayerPanel({ layers, onChange }: LayerPanelProps) {
             </select>
           </label>
           {layers.contours !== 'off' && <p className="hint">Contours show when zoomed in close.</p>}
+
+          <label className="check">
+            <input type="checkbox" checked={layers.sightings} onChange={(e) => set({ sightings: e.target.checked })} />
+            <span>Deer sightings from hunt reports</span>
+          </label>
         </div>
       )}
     </div>

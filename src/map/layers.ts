@@ -15,6 +15,8 @@ export interface MapLayersState {
   // Lidar shading blended over satellite/topo, 0-1. The lidar base map ignores it.
   lidarBlend: number;
   contours: ContourInterval;
+  // Deer sighting arrows from hunt reports.
+  sightings: boolean;
 }
 
 export const DEFAULT_LAYERS: MapLayersState = {
@@ -22,6 +24,7 @@ export const DEFAULT_LAYERS: MapLayersState = {
   lidarStyle: 'stretch',
   lidarBlend: 0,
   contours: 'off',
+  sightings: true,
 };
 
 export const BASE_MAPS: { id: BaseMapId; label: string }[] = [

@@ -51,7 +51,15 @@ interface OpenMeteoResponse {
   daily: { time: string[]; sunrise: string[]; sunset: string[] };
 }
 
-export async function fetchForecast(lat: number, lng: number, signal?: AbortSignal): Promise<Forecast> {
+// The next few days, or (with `days`) a given range of local dates,
+// e.g. { start: '2026-10-28', end: '2026-10-28' }. The service covers about
+// the last three months and the next two weeks.
+export async function fetchForecast(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+  days?: { start: string; end: string },
+): Promise<Forecast> {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lng.toFixed(4),
@@ -71,8 +79,13 @@ export async function fetchForecast(lat: number, lng: number, signal?: AbortSign
     temperature_unit: 'fahrenheit',
     precipitation_unit: 'inch',
     timezone: 'auto',
-    forecast_days: String(FORECAST_DAYS),
   });
+  if (days) {
+    params.set('start_date', days.start);
+    params.set('end_date', days.end);
+  } else {
+    params.set('forecast_days', String(FORECAST_DAYS));
+  }
   const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal });
   if (!response.ok) throw new Error(`Weather service answered ${response.status}`);
   const data = (await response.json()) as OpenMeteoResponse;
@@ -149,4 +162,17 @@ export function weatherAt(forecast: Forecast, time: number): ForecastHour {
 export function hoursBetween(forecast: Forecast, start: number, end: number): ForecastHour[] {
   const inside = forecast.hours.filter((h) => h.time > start && h.time < end);
   return [weatherAt(forecast, start), ...inside, weatherAt(forecast, end)];
+}
+
+function localDate(time: number): string {
+  const d = new Date(time);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// The weather at one place and moment, for filling in a hunt report.
+// Uses the PC's local date, which matches the property's for local hunts.
+export async function weatherFor(lat: number, lng: number, time: number): Promise<ForecastHour> {
+  const day = localDate(time);
+  const forecast = await fetchForecast(lat, lng, undefined, { start: day, end: day });
+  return weatherAt(forecast, time);
 }

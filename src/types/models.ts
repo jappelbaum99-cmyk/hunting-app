@@ -178,6 +178,58 @@ export interface Plan extends Syncable {
   timber: TimberDetails | null;
 }
 
+export type DeerKind = 'buck' | 'doe' | 'fawn' | 'unknown';
+
+export interface Sighting {
+  id: string;
+  time: string;
+  kind: DeerKind;
+  count: number;
+  // Bucks only.
+  buckName: string | null;
+  antlerPoints: number | null;
+  // Which way the deer were traveling, 0 = north. Null = not moving / unknown.
+  headingDeg: number | null;
+  // Where they were seen; null = not placed (drawn at the stand).
+  lat: number | null;
+  lng: number | null;
+  notes: string | null;
+}
+
+export interface ReportWeather {
+  tempF: number;
+  windFromDeg: number;
+  windMph: number;
+  gustMph: number;
+  precipChance: number;
+}
+
+// One sit: where, when, the weather, and what was seen.
+export interface HuntReport extends Syncable {
+  standId: string | null;
+  propertyId: string | null;
+  start: string;
+  end: string | null;
+  weather: ReportWeather | null;
+  sightings: Sighting[];
+  notes: string | null;
+  // Logged here, or on the phone and brought in.
+  source: 'hub' | 'phone';
+}
+
+// A GPS pin dropped on the phone, waiting to become a stand or pin here.
+export interface FieldPin extends Syncable {
+  lat: number;
+  lng: number;
+  // How sure the phone was of its position, meters.
+  accuracyM: number | null;
+  type: MarkerType;
+  note: string | null;
+  status: 'new' | 'added' | 'dismissed';
+  // The stand or pin made from it.
+  markerId: string | null;
+}
+
 export interface HubData {
   schemaVersion: 1;
   properties: Property[];
@@ -186,6 +238,8 @@ export interface HubData {
   overlays: MapImageOverlay[];
   sections: Section[];
   plans: Plan[];
+  reports: HuntReport[];
+  fieldPins: FieldPin[];
   settings: HubSettings;
 }
 
@@ -194,4 +248,5 @@ export type Selection =
   | { kind: 'marker'; id: string }
   | { kind: 'area'; id: string }
   | { kind: 'overlay'; id: string }
-  | { kind: 'section'; id: string };
+  | { kind: 'section'; id: string }
+  | { kind: 'report'; id: string };
