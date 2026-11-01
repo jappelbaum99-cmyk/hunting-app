@@ -16,14 +16,14 @@ import { imageFileName, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
+import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { ringsOf } from '@/lib/snap';
-import { areaColor, categoryStyle, propertyColor } from '@/lib/styles';
+import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
@@ -137,7 +137,7 @@ export function App() {
       hub.saveSection(record);
       setSelection({ kind: 'section', id: record.id });
     } else {
-      const label = AREA_TYPES[mode.areaType].label;
+      const label = areaTypeInfo(mode.areaType, hub.settings).label;
       const record = {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, draftPoints[0])?.id ?? null,
@@ -390,7 +390,8 @@ export function App() {
   } else if (mode.kind === 'draw' && mode.target === 'section') {
     [draftColor, modeTitle] = ['#f7efe6', 'section'];
   } else if (mode.kind === 'draw') {
-    [draftColor, modeTitle] = [areaColor(mode.areaType, hub.settings), AREA_TYPES[mode.areaType].label.toLowerCase()];
+    const info = areaTypeInfo(mode.areaType, hub.settings);
+    [draftColor, modeTitle] = [info.color, info.label.toLowerCase()];
   }
 
   // Saved images, with the one being lined up swapped for its live preview.
@@ -414,10 +415,12 @@ export function App() {
   const now = Date.now();
   const forecast = forecastState.status === 'ready' ? forecastState.forecast : null;
   const isStand = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
+  // Areas deer bed or hide in (per area type in Settings); scent into them is bad.
+  const sensitiveAreas = hub.areas.filter((a) => areaTypeInfo(a.type, hub.settings).scentSensitive);
   const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
   // Blended, not snapped to the hour, so cones glide as the sit slider moves.
   const ratingHour = forecast ? weatherAt(forecast, forecastTime ?? now) : null;
-  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, hub.areas) : [];
+  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, sensitiveAreas) : [];
   const standRatings: Record<string, StandRating> | null =
     forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
 
@@ -427,7 +430,7 @@ export function App() {
     const nowHour = hourAt(forecast, now);
     const wind = `${compassPointOf(nowHour.windFromDeg)} ${Math.round(nowHour.windMph)} mph now`;
     const allStands = hub.markers.filter(isStand);
-    const good = rateStands(allStands, nowHour, hub.areas).filter((r) => r.rating === 'good').length;
+    const good = rateStands(allStands, nowHour, sensitiveAreas).filter((r) => r.rating === 'good').length;
     forecastTeaser = allStands.length === 0 ? wind : `${wind} · ${good} good stand${good === 1 ? '' : 's'}`;
   }
 
@@ -539,6 +542,7 @@ export function App() {
         {mode.kind !== 'align' && (
           <MapToolbar
             disabled={mode.kind !== 'browse'}
+            areaTypes={areaTypeList(hub.settings)}
             onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
             onDrawSection={() => startMode({ kind: 'draw', target: 'section' })}
             onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
@@ -664,6 +668,7 @@ export function App() {
         <DetailPanel
           kind="area"
           record={record}
+          areaTypes={areaTypeList(hub.settings)}
           propertyName={propertyName(record.propertyId)}
           onChange={hub.saveArea}
           onDelete={() => {

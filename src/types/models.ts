@@ -66,12 +66,28 @@ export interface MarkerStyle {
 export interface HubSettings {
   markerStyles: Partial<Record<MarkerType, Partial<MarkerStyle>>>;
   areaColors: Partial<Record<AreaType, string>>;
+  // Icon overrides for built-in area types.
+  areaIcons: Partial<Record<AreaType, string>>;
+  customAreaTypes: CustomAreaType[];
   propertyLineColor: string | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
 }
 
-export type AreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
+export type BuiltInAreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
+// A built-in type, or the id of a custom type added in Settings.
+export type AreaType = BuiltInAreaType | (string & {});
+
+export interface CustomAreaType {
+  id: string;
+  label: string;
+  color: string;
+  icon: string;
+  // Deer bed or hide here, so scent drifting in makes a stand Bad.
+  scentSensitive: boolean;
+  // Removed types stay so existing areas keep their look; they're hidden from pickers.
+  deletedAt: string | null;
+}
 
 export interface MapArea extends Syncable {
   propertyId: string | null;

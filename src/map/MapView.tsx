@@ -10,7 +10,7 @@ import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
 import { findSnap, type Snap } from '@/lib/snap';
-import { markerStyle, propertyColor } from '@/lib/styles';
+import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
   contourTiles,
@@ -503,7 +503,9 @@ export function MapView(props: MapViewProps) {
     }
     // Section names sit at the top of the section so they don't cover areas in the middle.
     for (const s of sections) wanted.set(s.id, { text: s.name, at: topCenterOf(s.geometry), kind: 'section' });
-    for (const a of areas) wanted.set(a.id, { text: a.name, at: centerOf(a.geometry), kind: 'area' });
+    for (const a of areas) {
+      wanted.set(a.id, { text: `${areaTypeInfo(a.type, settings).icon} ${a.name}`, at: centerOf(a.geometry), kind: 'area' });
+    }
     syncHtmlMarkers(map, labelElements.current, wanted, (item, existing) => {
       const el = existing ?? document.createElement('div');
       // classList, not className: maplibre adds its own positioning class to this element.

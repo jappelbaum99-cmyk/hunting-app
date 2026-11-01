@@ -1,12 +1,16 @@
 import { useRef, type MouseEvent } from 'react';
 
 import { IMAGE_ACCEPT } from '@/data/images';
-import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
+import { AreaBadge } from '@/components/AreaBadge';
+import { MARKER_TYPES } from '@/lib/featureTypes';
 import { IMPORT_ACCEPT } from '@/lib/importGeo';
+import type { AreaTypeView } from '@/lib/styles';
 import type { AreaType, MarkerType } from '@/types/models';
 
 interface MapToolbarProps {
   disabled: boolean;
+  // Built-in and custom area types, as set in Settings.
+  areaTypes: AreaTypeView[];
   onDrawProperty(): void;
   onDrawSection(): void;
   onDrawArea(type: AreaType): void;
@@ -64,10 +68,10 @@ export function MapToolbar(props: MapToolbarProps) {
       <details className="dropdown">
         <summary className={disabled ? 'disabled' : ''}>Draw area ▾</summary>
         <div className="dropdown-menu">
-          {(Object.keys(AREA_TYPES) as AreaType[]).map((type) => (
-            <button key={type} onClick={(e) => pick(e, () => onDrawArea(type))}>
-              <span className="swatch" style={{ background: AREA_TYPES[type].color }} />
-              {AREA_TYPES[type].label}
+          {props.areaTypes.map((type) => (
+            <button key={type.id} onClick={(e) => pick(e, () => onDrawArea(type.id))}>
+              <AreaBadge type={type} />
+              {type.label}
             </button>
           ))}
         </div>

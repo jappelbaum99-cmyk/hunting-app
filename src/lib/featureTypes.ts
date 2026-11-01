@@ -1,9 +1,18 @@
-import type { AreaType, MarkerType } from '@/types/models';
+import type { BuiltInAreaType, MarkerType } from '@/types/models';
 
 interface TypeInfo {
   label: string;
   color: string;
 }
+
+interface AreaTypeInfo extends TypeInfo {
+  icon: string;
+  // Deer bed or hide here, so scent drifting in makes a stand Bad.
+  scentSensitive: boolean;
+}
+
+// Icons offered for area types (emoji, so no icon files are needed).
+export const AREA_ICONS = ['🌾', '🌽', '🍀', '🍎', '🌳', '🌲', '🌿', '🍂', '🛏️', '🦌', '🚫', '💧', '🪨', '🔥', '🚜', '📍'];
 
 export const MARKER_TYPES: Record<MarkerType, TypeInfo> = {
   stand: { label: 'Stand', color: '#f28c28' },
@@ -17,12 +26,14 @@ export const MARKER_TYPES: Record<MarkerType, TypeInfo> = {
   other: { label: 'Other', color: '#ecf0f1' },
 };
 
-export const AREA_TYPES: Record<AreaType, TypeInfo> = {
-  food_plot: { label: 'Food plot', color: '#7bd34f' },
-  bedding: { label: 'Bedding', color: '#c9894a' },
-  sanctuary: { label: 'Sanctuary', color: '#e05252' },
-  timber: { label: 'Timber', color: '#2f8f4e' },
-  other: { label: 'Other', color: '#c8c8c8' },
+// Built-in area types. Settings can change their color and icon and add more
+// types; use areaTypeInfo() in lib/styles.ts rather than reading this directly.
+export const AREA_TYPES: Record<BuiltInAreaType, AreaTypeInfo> = {
+  food_plot: { label: 'Food plot', color: '#7bd34f', icon: '🌾', scentSensitive: false },
+  bedding: { label: 'Bedding', color: '#c9894a', icon: '🛏️', scentSensitive: true },
+  sanctuary: { label: 'Sanctuary', color: '#e05252', icon: '🚫', scentSensitive: true },
+  timber: { label: 'Timber', color: '#2f8f4e', icon: '🌲', scentSensitive: false },
+  other: { label: 'Other', color: '#c8c8c8', icon: '📍', scentSensitive: false },
 };
 
 export const PROPERTY_LINE_COLOR = '#ffd400';

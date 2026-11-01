@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
 
-import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
+import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
-import { COLOR_SWATCHES } from '@/lib/styles';
+import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
 import {
   COMPASS_POINTS,
   type AreaType,
@@ -26,7 +26,7 @@ interface Common {
 
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode } & Common)
-  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void } & Common)
+  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
 
@@ -35,7 +35,7 @@ function headingFor(props: DetailPanelProps): string {
     case 'property':
       return 'Property';
     case 'area':
-      return AREA_TYPES[props.record.type].label;
+      return props.areaTypes.find((t) => t.id === props.record.type)?.label ?? 'Area';
     case 'marker':
       return MARKER_TYPES[props.record.type].label;
     case 'overlay':
@@ -69,7 +69,7 @@ export function DetailPanel(props: DetailPanelProps) {
             <Field label="Offline maps">{props.offlineField}</Field>
           </>
         )}
-        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} />}
+        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} />}
         {props.kind === 'marker' && (
           <>
             <MarkerFields record={props.record} onChange={props.onChange} />
@@ -160,14 +160,16 @@ function OverlayFields(props: { record: MapImageOverlay; onChange(o: MapImageOve
   );
 }
 
-function AreaFields({ record, onChange }: { record: MapArea; onChange(a: MapArea): void }) {
+function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] }) {
+  // Keep a removed custom type selectable for an area that still uses it.
+  const options = areaTypes.some((t) => t.id === record.type) ? areaTypes : [...areaTypes, { id: record.type, label: 'Removed type' }];
   return (
     <>
       <Field label="Type">
         <select value={record.type} onChange={(e) => onChange({ ...record, type: e.target.value as AreaType })}>
-          {(Object.keys(AREA_TYPES) as AreaType[]).map((t) => (
-            <option key={t} value={t}>
-              {AREA_TYPES[t].label}
+          {options.map((t) => (
+            <option key={t.id} value={t.id}>
+              {'icon' in t ? `${t.icon}  ${t.label}` : t.label}
             </option>
           ))}
         </select>

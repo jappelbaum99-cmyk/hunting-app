@@ -1,15 +1,17 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 
-import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
+import { AreaBadge } from '@/components/AreaBadge';
+import { AREA_ICONS, MARKER_TYPES } from '@/lib/featureTypes';
 import {
-  areaColor,
+  areaTypeList,
   categoryStyle,
   MARKER_SHAPES,
   MAX_MARKER_SIZE,
   MIN_MARKER_SIZE,
   propertyColor,
+  type AreaTypeView,
 } from '@/lib/styles';
-import type { AreaType, HubSettings, MarkerShape, MarkerStyle, MarkerType } from '@/types/models';
+import type { CustomAreaType, HubSettings, MarkerShape, MarkerStyle, MarkerType } from '@/types/models';
 
 interface SettingsPanelProps {
   settings: HubSettings;
@@ -26,10 +28,36 @@ export function PinPreview({ style }: { style: MarkerStyle }) {
   );
 }
 
+// The area's badge; clicking it opens a grid of icons to choose from.
+function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string): void }) {
+  return (
+    <details className="icon-picker">
+      <summary title="Change icon" aria-label={`${type.label} icon`}>
+        <AreaBadge type={type} size={30} />
+      </summary>
+      <div className="icon-grid">
+        {AREA_ICONS.map((icon) => (
+          <button
+            key={icon}
+            className={icon === type.icon ? 'active' : ''}
+            onClick={(e) => {
+              e.currentTarget.closest('details')?.removeAttribute('open');
+              onPick(icon);
+            }}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
-  const setArea = (type: AreaType, color: string) => onChange({ ...settings, areaColors: { ...settings.areaColors, [type]: color } });
+  const setCustom = (id: string, patch: Partial<CustomAreaType>) =>
+    onChange({ ...settings, customAreaTypes: settings.customAreaTypes.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
 
   return (
     <div className="forecast settings">
@@ -128,21 +156,79 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
 
       <section className="sidebar-section">
         <h2>Areas</h2>
+        <p className="hint">Change any area type's color and icon, or add your own types.</p>
         <ul className="settings-list">
-          {(Object.keys(AREA_TYPES) as AreaType[]).map((type) => (
-            <li key={type} className="setting-row">
-              <span className="swatch" style={{ background: areaColor(type, settings) }} />
-              <span className="row-title">{AREA_TYPES[type].label}</span>
-              <input
-                type="color"
-                className="color-input"
-                value={areaColor(type, settings)}
-                onChange={(e) => setArea(type, e.target.value)}
-                aria-label={`${AREA_TYPES[type].label} color`}
-              />
+          {areaTypeList(settings).map((type) => (
+            <li key={type.id} className="pin-setting">
+              <div className="setting-row">
+                <IconPicker
+                  type={type}
+                  onPick={(icon) =>
+                    type.custom ? setCustom(type.id, { icon }) : onChange({ ...settings, areaIcons: { ...settings.areaIcons, [type.id]: icon } })
+                  }
+                />
+                {type.custom ? (
+                  <input
+                    type="text"
+                    className="inline-name"
+                    value={type.label}
+                    onChange={(e) => setCustom(type.id, { label: e.target.value })}
+                    aria-label="Area type name"
+                  />
+                ) : (
+                  <span className="row-title">{type.label}</span>
+                )}
+                <input
+                  type="color"
+                  className="color-input"
+                  value={type.color}
+                  onChange={(e) =>
+                    type.custom
+                      ? setCustom(type.id, { color: e.target.value })
+                      : onChange({ ...settings, areaColors: { ...settings.areaColors, [type.id]: e.target.value } })
+                  }
+                  aria-label={`${type.label} color`}
+                />
+              </div>
+              {type.custom && (
+                <div className="setting-row">
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={type.scentSensitive}
+                      onChange={(e) => setCustom(type.id, { scentSensitive: e.target.checked })}
+                    />
+                    <span>Deer bed here (warn about scent)</span>
+                  </label>
+                  <button
+                    className="link remove-type"
+                    onClick={() => {
+                      if (window.confirm(`Remove the "${type.label}" area type? Areas already using it keep their look.`)) {
+                        setCustom(type.id, { deletedAt: new Date().toISOString() });
+                      }
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        <button
+          className="add-type"
+          onClick={() =>
+            onChange({
+              ...settings,
+              customAreaTypes: [
+                ...settings.customAreaTypes,
+                { id: `custom-${crypto.randomUUID()}`, label: 'New area type', color: '#d4b04a', icon: '📍', scentSensitive: false, deletedAt: null },
+              ],
+            })
+          }
+        >
+          + Add area type
+        </button>
       </section>
 
       <section className="sidebar-section">
@@ -166,7 +252,7 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
         className="reset-look"
         onClick={() => {
           if (window.confirm('Put every color, shape and size back to the defaults? Colors set on single stands and properties stay.')) {
-            onChange({ ...settings, markerStyles: {}, areaColors: {}, propertyLineColor: null });
+            onChange({ ...settings, markerStyles: {}, areaColors: {}, areaIcons: {}, propertyLineColor: null });
           }
         }}
       >

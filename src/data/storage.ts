@@ -36,7 +36,14 @@ export function emptyHubData(): HubData {
     overlays: [],
     sections: [],
     plans: [],
-    settings: { markerStyles: {}, areaColors: {}, propertyLineColor: null, snapping: DEFAULT_SNAPPING },
+    settings: {
+      markerStyles: {},
+      areaColors: {},
+      areaIcons: {},
+      customAreaTypes: [],
+      propertyLineColor: null,
+      snapping: DEFAULT_SNAPPING,
+    },
   };
 }
 

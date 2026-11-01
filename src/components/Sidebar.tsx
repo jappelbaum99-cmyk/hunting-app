@@ -1,7 +1,8 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { MARKER_TYPES } from '@/lib/featureTypes';
-import { areaColor, markerStyle, propertyColor } from '@/lib/styles';
+import { AreaBadge } from '@/components/AreaBadge';
+import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import type { HubSettings, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
@@ -171,7 +172,7 @@ export function Sidebar(props: SidebarProps) {
               key={a.id}
               selected={isSelected('area', a.id)}
               onClick={() => onPick({ kind: 'area', id: a.id })}
-              swatch={<span className="swatch" style={{ background: areaColor(a.type, props.settings) }} />}
+              swatch={<AreaBadge type={areaTypeInfo(a.type, props.settings)} />}
               title={a.name}
               detail={formatAcres(acresOf(a.geometry))}
             />

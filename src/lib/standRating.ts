@@ -4,7 +4,7 @@ import booleanIntersects from '@turf/boolean-intersects';
 import type { Polygon } from 'geojson';
 
 import { scentCone } from '@/lib/scent';
-import { COMPASS_POINTS, type AreaType, type CompassPoint, type MapArea, type MapMarker } from '@/types/models';
+import { COMPASS_POINTS, type CompassPoint, type MapArea, type MapMarker } from '@/types/models';
 import type { Forecast, ForecastHour } from '@/lib/weather';
 
 export type StandRating = 'good' | 'ok' | 'bad' | 'unset';
@@ -18,8 +18,6 @@ export interface RatedStand {
   scentInto: string[];
 }
 
-// Where deer shouldn't smell you.
-const SCENT_SENSITIVE: AreaType[] = ['bedding', 'sanctuary'];
 
 // Below this the wind is too light to carry scent predictably; thermals and
 // swirls take over.
@@ -44,10 +42,12 @@ function stepsApart(a: CompassPoint, b: CompassPoint): number {
   return Math.min(d, 8 - d);
 }
 
-export function rateStand(stand: MapMarker, hour: ForecastHour, areas: MapArea[] = []): RatedStand {
+// sensitiveAreas: areas where deer bed or hide (bedding, sanctuaries, or custom
+// types marked that way in Settings); scent drifting into one makes a stand Bad.
+export function rateStand(stand: MapMarker, hour: ForecastHour, sensitiveAreas: MapArea[] = []): RatedStand {
   const cone = scentCone(stand.lng, stand.lat, hour);
-  const scentInto = areas
-    .filter((a) => SCENT_SENSITIVE.includes(a.type) && booleanIntersects(cone, a.geometry))
+  const scentInto = sensitiveAreas
+    .filter((a) => booleanIntersects(cone, a.geometry))
     .map((a) => a.name);
   const windRating = rateWind(stand, hour);
   if (scentInto.length > 0) {
@@ -84,9 +84,9 @@ function rateWind(stand: MapMarker, hour: ForecastHour): { rating: StandRating; 
 
 const ORDER: Record<StandRating, number> = { good: 0, ok: 1, bad: 2, unset: 3 };
 
-export function rateStands(stands: MapMarker[], hour: ForecastHour, areas: MapArea[] = []): RatedStand[] {
+export function rateStands(stands: MapMarker[], hour: ForecastHour, sensitiveAreas: MapArea[] = []): RatedStand[] {
   return stands
-    .map((s) => rateStand(s, hour, areas))
+    .map((s) => rateStand(s, hour, sensitiveAreas))
     .sort((a, b) => ORDER[a.rating] - ORDER[b.rating] || a.stand.name.localeCompare(b.stand.name, undefined, { numeric: true }));
 }
 
