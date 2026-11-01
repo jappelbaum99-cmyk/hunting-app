@@ -2228,6 +2228,12 @@ button.log-hunt {
   margin-bottom: 6px;
 }
 
+.share-hint {
+  margin: 0 2px 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .phone-buttons button {
   padding: 7px 8px;
   border-radius: 10px;

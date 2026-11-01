@@ -25,7 +25,7 @@ interface Common {
 }
 
 type DetailPanelProps =
-  | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode } & Common)
+  | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
@@ -99,6 +99,11 @@ export function DetailPanel(props: DetailPanelProps) {
 
       <footer className="detail-footer">
         <button onClick={onZoom}>Zoom to</button>
+        {props.kind === 'property' && (
+          <button onClick={props.onShare} title="Save this property with its stands, areas, sections, plans, hunts and map images as one file to send">
+            Share
+          </button>
+        )}
         <button
           className="danger"
           onClick={() => {

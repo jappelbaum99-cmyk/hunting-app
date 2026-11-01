@@ -47,6 +47,18 @@ export async function saveImage(fileName: string, file: Blob): Promise<void> {
   else await idb('readwrite', (store) => store.put(bytes, fileName));
 }
 
+// The stored bytes of an image, or null when it is missing.
+export async function loadImageBytes(fileName: string): Promise<Uint8Array | null> {
+  try {
+    const bytes = window.hub
+      ? await window.hub.loadImage(fileName)
+      : await idb<Uint8Array | undefined>('readonly', (store) => store.get(fileName));
+    return bytes ? new Uint8Array(bytes) : null;
+  } catch {
+    return null;
+  }
+}
+
 const urlCache = new Map<string, Promise<string>>();
 
 // Returns a blob: URL for a stored image. URLs are cached for the session.

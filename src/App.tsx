@@ -9,12 +9,13 @@ import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
 import { ReportPanel } from '@/components/ReportPanel';
+import { base64ToBytes, bytesToBase64, MAP_FILE_KIND, mapFileName, parseMapFile, pickRecords, type MapFile } from '@/lib/mapFile';
 import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
-import { imageFileName, readImageSize, saveImage } from '@/data/images';
+import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
@@ -291,6 +292,68 @@ export function App() {
       );
       // The phone has no internet in the stand, so look up weather for its hunts now.
       for (const r of reports) if (!r.weather && !hub.reports.some((h) => h.id === r.id && h.weather)) void fillWeather(r);
+    } catch (error) {
+      setNotice(`Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  // Saves one property (or the whole map, when propertyId is null) as a file to send to someone else's hub.
+  const exportMap = async (propertyId: string | null) => {
+    if (!hub.allData) return;
+    try {
+      const records = pickRecords(hub.allData, propertyId);
+      const title = propertyId ? (records.properties[0]?.name ?? 'Property') : 'Whole map';
+      const images: Record<string, string> = {};
+      let missing = 0;
+      for (const o of records.overlays) {
+        if (o.deletedAt) continue;
+        const bytes = await loadImageBytes(o.fileName);
+        if (bytes) images[o.fileName] = bytesToBase64(bytes);
+        else missing += 1;
+      }
+      const usedTypes = new Set(records.areas.map((a) => a.type));
+      const file: MapFile = {
+        kind: MAP_FILE_KIND,
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        title,
+        records,
+        customAreaTypes: hub.settings.customAreaTypes.filter((t) => usedTypes.has(t.id)),
+        images,
+      };
+      const name = mapFileName(title);
+      await shareJsonFile(name, file);
+      const count = <T extends { deletedAt: string | null }>(list: T[], word: string) => {
+        const n = list.filter((r) => !r.deletedAt).length;
+        return `${n} ${word}${n === 1 ? '' : 's'}`;
+      };
+      const imageCount = Object.keys(images).length;
+      setNotice(
+        `Saved "${name}" (${count(records.markers, 'pin')}, ${count(records.areas, 'area')}, ${count(records.reports, 'hunt')}, ${imageCount} map image${imageCount === 1 ? '' : 's'}).` +
+          (missing ? ` ${missing} map image file${missing === 1 ? ' was' : 's were'} missing and left out.` : '') +
+          ' Send it by email, text or a USB stick; they open it with Import a map file.',
+      );
+    } catch (error) {
+      if ((error as DOMException).name === 'AbortError') return;
+      setNotice(`Could not save the map file: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  // Brings in a map file saved by another hub (or this one).
+  const importMap = async (file: File) => {
+    try {
+      const parsed = parseMapFile(await file.text());
+      for (const [name, base64] of Object.entries(parsed.images)) {
+        await saveImage(name, new Blob([new Uint8Array(base64ToBytes(base64))]));
+      }
+      const { added, updated } = hub.mergeRecords(parsed.records, parsed.customAreaTypes);
+      setNotice(
+        added + updated === 0
+          ? `Nothing new in "${parsed.title}". This map already has all of it.`
+          : `Brought in "${parsed.title}": ${added} new and ${updated} updated items.`,
+      );
+      const shown = parsed.records.properties.filter((p) => !p.deletedAt);
+      if (shown.length) mapRef.current?.fitTo(combinedBounds(shown.map((p) => p.boundary)));
     } catch (error) {
       setNotice(`Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -634,6 +697,8 @@ export function App() {
         newFieldPins={hub.fieldPins.filter((p) => p.status === 'new')}
         onImportPhone={(file) => void importPhone(file)}
         onSendStands={sendStandsToPhone}
+        onExportMap={() => void exportMap(null)}
+        onImportMap={(file) => void importMap(file)}
         onFieldPin={handleFieldPin}
         onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
         areas={hub.areas}
@@ -821,6 +886,7 @@ export function App() {
           propertyName={null}
           defaultColor={propertyColor(null, hub.settings)}
           onChange={hub.saveProperty}
+          onShare={() => void exportMap(record.id)}
           offlineField={
             <OfflineField
               key={record.id}

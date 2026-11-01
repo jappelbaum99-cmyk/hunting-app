@@ -17,6 +17,9 @@ interface SidebarProps {
   newFieldPins: FieldPin[];
   onImportPhone(file: File): void;
   onSendStands(): void;
+  // Map files for sharing with someone else's hub.
+  onExportMap(): void;
+  onImportMap(file: File): void;
   onFieldPin(id: string, action: 'show' | 'add' | 'dismiss'): void;
   areas: MapArea[];
   markers: MapMarker[];
@@ -46,6 +49,7 @@ export function Sidebar(props: SidebarProps) {
   const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
   const phoneInput = useRef<HTMLInputElement>(null);
+  const mapInput = useRef<HTMLInputElement>(null);
   const needle = query.trim().toLowerCase();
   const matches = <T extends { name: string }>(list: T[]) =>
     [...list].filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort(byName);
@@ -164,6 +168,32 @@ export function Sidebar(props: SidebarProps) {
             />
           ))}
         </Section>
+
+        {needle === '' && (
+          <section className="sidebar-section">
+            <h2>Share</h2>
+            <div className="phone-buttons">
+              <button onClick={props.onExportMap} title="Save every property, pin, area, plan, hunt and map image as one file to send">
+                Export whole map
+              </button>
+              <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
+                Import a map file
+              </button>
+            </div>
+            <p className="share-hint">To share one property, open it and press Share.</p>
+            <input
+              ref={mapInput}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) props.onImportMap(file);
+              }}
+            />
+          </section>
+        )}
 
         {needle === '' && (
           <section className="sidebar-section">

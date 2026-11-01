@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
 import type {
+  CustomAreaType,
   FieldPin,
   HubData,
   HubSettings,
@@ -47,6 +48,11 @@ interface HubDataValue {
   // Brings in records from the phone: new ones are added, and ones already
   // here are replaced only when the incoming copy is newer.
   mergeFromPhone(incoming: { reports: HuntReport[]; fieldPins: FieldPin[] }): { added: number; updated: number };
+  // Brings in records from another hub's map file, by the same newer-wins rule.
+  // Deleted records come along so a delete there reaches this hub too.
+  mergeRecords(incoming: Partial<Pick<HubData, Collection>>, customAreaTypes?: CustomAreaType[]): { added: number; updated: number };
+  // Everything stored, deleted records included (for sharing).
+  allData: HubData | null;
   deleteProperty(id: string): void;
   deleteMarker(id: string): void;
   deleteArea(id: string): void;
@@ -150,6 +156,48 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<HubDataValue>(() => {
     const live = <T extends { deletedAt: string | null }>(list: T[] | undefined) =>
       (list ?? []).filter((r) => r.deletedAt === null);
+    function mergeRecords(incoming: Partial<Pick<HubData, Collection>>, customAreaTypes: CustomAreaType[] = []) {
+      // Counted from the data as it is now; the update below applies the same rule.
+      const result = { added: 0, updated: 0 };
+      const collections = Object.keys(incoming) as Collection[];
+      for (const collection of collections) {
+        const byId = new Map((data?.[collection] ?? []).map((r) => [r.id, r]));
+        for (const r of incoming[collection] ?? []) {
+          const have = byId.get(r.id);
+          if (!have) result.added += 1;
+          else if (r.updatedAt > have.updatedAt) result.updated += 1;
+        }
+      }
+      const merge = <T extends { id: string; updatedAt: string }>(current: T[], next: T[], keep?: (have: T, r: T) => T) => {
+        const byId = new Map(current.map((r) => [r.id, r]));
+        for (const r of next) {
+          const have = byId.get(r.id);
+          if (!have) byId.set(r.id, r);
+          else if (r.updatedAt > have.updatedAt) byId.set(r.id, keep ? keep(have, r) : r);
+        }
+        return [...byId.values()];
+      };
+      update((current) => {
+        const next = { ...current };
+        for (const collection of collections) {
+          const list = merge(
+            current[collection] as { id: string; updatedAt: string }[],
+            (incoming[collection] ?? []) as { id: string; updatedAt: string }[],
+            // This computer's offline tile download stays this computer's.
+            collection === 'properties' ? (have, r) => ({ ...r, offline: (have as Property).offline ?? null }) : undefined,
+          );
+          (next as Record<Collection, unknown>)[collection] = list;
+        }
+        const knownTypes = new Set(current.settings.customAreaTypes.map((t) => t.id));
+        const newTypes = customAreaTypes.filter((t) => !knownTypes.has(t.id));
+        if (newTypes.length) {
+          next.settings = { ...current.settings, customAreaTypes: [...current.settings.customAreaTypes, ...newTypes] };
+        }
+        return next;
+      });
+      return result;
+    }
+
     return {
       loaded: data !== null,
       loadError,
@@ -182,36 +230,9 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
           reports: current.reports.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: nowIso() } : r)),
         })),
       saveFieldPin: (p) => save('fieldPins', p),
-      mergeFromPhone: (incoming) => {
-        // Counted from the data as it is now; the update below applies the same rule.
-        const result = { added: 0, updated: 0 };
-        const plan = <T extends { id: string; updatedAt: string }>(current: T[], next: T[]) => {
-          const byId = new Map(current.map((r) => [r.id, r]));
-          for (const r of next) {
-            const have = byId.get(r.id);
-            if (!have) result.added += 1;
-            else if (r.updatedAt > have.updatedAt) result.updated += 1;
-          }
-        };
-        if (data) {
-          plan(data.reports, incoming.reports);
-          plan(data.fieldPins, incoming.fieldPins);
-        }
-        const merge = <T extends { id: string; updatedAt: string }>(current: T[], next: T[]) => {
-          const byId = new Map(current.map((r) => [r.id, r]));
-          for (const r of next) {
-            const have = byId.get(r.id);
-            if (!have || r.updatedAt > have.updatedAt) byId.set(r.id, r);
-          }
-          return [...byId.values()];
-        };
-        update((current) => ({
-          ...current,
-          reports: merge(current.reports, incoming.reports),
-          fieldPins: merge(current.fieldPins, incoming.fieldPins),
-        }));
-        return result;
-      },
+      mergeFromPhone: (incoming) => mergeRecords({ reports: incoming.reports, fieldPins: incoming.fieldPins }),
+      mergeRecords,
+      allData: data,
       deleteProperty: (id) => remove('properties', id),
       deleteMarker: (id) => remove('markers', id),
       deleteArea: (id) => remove('areas', id),

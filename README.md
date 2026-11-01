@@ -44,6 +44,7 @@ npm start
   - **Lidar shading** blends the lidar hillshade over satellite.
   - **Contours** come in 10, 5 or 2 ft intervals and show when zoomed in.
 - Click anything on the map or in the sidebar to edit it. Stands have a **Good winds** picker.
+- **Share** (sidebar): **Export whole map** saves everything as one file. **Share** on a property saves just that property with its stands, pins, areas, sections, plans, hunts and map images. Send the file however you like (email, text, USB stick); the other person opens it with **Import a map file**. Importing adds what's new and replaces only what's newer, so you can send updates back and forth.
 
 Your data is saved automatically to `Documents\Hunting Hub\hub-data.json`. The previous version is kept next to it as `hub-data.json.bak`, and map images go in `Documents\Hunting Hub\images`.
 
