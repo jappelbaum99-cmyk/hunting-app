@@ -1,0 +1,128 @@
+/* Website home page: same palette as the hub. */
+:root {
+  --dark-brown: #1c130d;
+  --panel: #2a1c12;
+  --fill: rgba(255, 232, 208, 0.08);
+  --border: rgba(255, 226, 196, 0.14);
+  --text: #f7efe6;
+  --muted: #c2a88e;
+  --accent: #f08a24;
+  --accent-hover: #ff9d42;
+  --on-accent: #2a1607;
+  color-scheme: dark;
+  font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--dark-brown);
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(ellipse at top, #3a2414 0%, var(--dark-brown) 60%) no-repeat, var(--dark-brown);
+  min-height: 100vh;
+}
+
+.home {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 16px 56px;
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  text-align: center;
+  padding: 8px 0 12px;
+}
+
+.hero img {
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(12, 6, 2, 0.5);
+}
+
+.hero h1 {
+  margin: 12px 0 4px;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  margin: 0 auto;
+  max-width: 420px;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.card h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.card p {
+  margin: 0 0 12px;
+}
+
+.card ol,
+.card ul {
+  margin: 12px 0;
+  padding-left: 22px;
+}
+
+.card li + li {
+  margin-top: 6px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.button {
+  display: inline-block;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--fill);
+  color: var(--text);
+}
+
+.button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.primary:hover {
+  background: var(--accent-hover);
+}
+
+.button.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.button + .muted {
+  margin-top: 8px;
+}
+
+details {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+details p {
+  margin: 8px 0 0;
+}

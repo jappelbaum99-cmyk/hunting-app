@@ -12,7 +12,8 @@
     "start": "vite build && electron .",
     "typecheck": "tsc --noEmit",
     "dist": "vite build && electron-builder --win",
-    "icon": "electron scripts/make-icon.cjs"
+    "icon": "electron scripts/make-icon.cjs",
+    "build:site": "node scripts/build-site.mjs"
   },
   "devDependencies": {
     "@tmcw/togeojson": "^7.1.3",
@@ -55,7 +56,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Hunting Hub",
-      "artifactName": "Hunting-Hub-Setup-${version}.${ext}"
-    }
+      "artifactName": "Hunting-Hub-Setup.${ext}"
+    },
+    "publish": null
   }
 }

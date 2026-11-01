@@ -1,9 +1,9 @@
 // Keeps the field page working with no signal: every file the page loads
 // from its own site is saved, and served from the save when offline.
-const CACHE = 'hunting-hub-field-v1';
+const CACHE = 'hunting-hub-field-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./field.html', './logo.svg', './field.webmanifest'])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./field.html', './logo.svg', './apple-touch-icon.png', './field.webmanifest'])));
   self.skipWaiting();
 });
 

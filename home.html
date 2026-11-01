@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1c130d" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="./logo.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <title>Hunting Hub</title>
+  </head>
+  <body>
+    <main class="home">
+      <header class="hero">
+        <img src="./logo.svg" alt="" width="72" height="72" />
+        <h1>Hunting Hub</h1>
+        <p>Map the property, plan stands and burns, and log every hunt. Free, with no accounts.</p>
+      </header>
+
+      <section class="card">
+        <h2><span aria-hidden="true">🖥️</span> On your PC</h2>
+        <p>The hub, where the mapping and planning happens. Windows 10 or 11.</p>
+        <a class="button primary" id="download" href="#">Download for Windows</a>
+        <p class="muted" id="download-note">About 120 MB.</p>
+        <details>
+          <summary>Windows says "Windows protected your PC"</summary>
+          <p>
+            That's normal for a free app that isn't code-signed. Click <b>More info</b>, then <b>Run anyway</b>. It installs just for
+            you, with no admin password.
+          </p>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2><span aria-hidden="true">📱</span> On your phone</h2>
+        <p>Drop GPS pins, log hunts from the stand, and open stands in Apple Maps. Works with no signal.</p>
+        <a class="button primary" href="./field.html">Open the field page</a>
+        <ol>
+          <li>Open this page on your iPhone in <b>Safari</b> and tap <b>Open the field page</b>.</li>
+          <li>Tap the Share button, then <b>Add to Home Screen</b>.</li>
+          <li>Open it once while you have signal, and allow location when it asks.</li>
+        </ol>
+        <p class="muted" id="phone-link"></p>
+      </section>
+
+      <section class="card">
+        <h2><span aria-hidden="true">🤝</span> Sharing with family</h2>
+        <ul>
+          <li><b>Property maps:</b> open a property in the hub and press <b>Share</b>, or use <b>Export whole map</b>. Send the file; they use <b>Import a map file</b>.</li>
+          <li><b>Stands to a phone:</b> <b>Send stands to phone</b> in the hub, then load that file on the phone's Send tab.</li>
+          <li><b>Pins and hunts from a phone:</b> the phone's Send tab saves a file; <b>Import from phone</b> brings it into the hub.</li>
+        </ul>
+        <p class="muted">Your maps, stands and hunts stay on your own PC and phone. This website only hands out the app.</p>
+      </section>
+    </main>
+    <script type="module" src="/src/home/home.ts"></script>
+  </body>
+</html>

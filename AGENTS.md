@@ -1,4 +1,4 @@
-Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapping hunting property. A small phone website for offline GPS pins comes later and will share `src/types` and `src/lib`.
+Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapping hunting property. The phone field page (`field.html`, `src/field`) shares `src/types` and `src/lib`. The website (`home.html` + the field page) is published to GitHub Pages by `.github/workflows/pages.yml`; tagged releases build the installer (`release.yml`).
 
 ## Rules
 
@@ -17,6 +17,8 @@ npm run dev        # desktop window with live reload
 npm run dev:web    # same UI in a normal browser at http://localhost:5173
 npm start          # production build, then open it in Electron
 npm run typecheck  # tsc --noEmit
+npm run dist       # Windows installer in release\nnpm run build:site # website (home page + phone page) in site-dist
+npm run icon       # remake the app and iPhone icons from public/logo.svg
 ```
 
 Run the typecheck before declaring a task done.
