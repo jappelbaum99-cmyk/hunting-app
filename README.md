@@ -23,8 +23,16 @@ npm start
   2. Click **Add map image** and pick the file.
   3. Click a spot on the image (a road intersection, section corner or pond corner), then click the same spot on the map. Do this 2–4 times, with the spots spread out. With 3 or more points the panel shows how many feet off each one is.
   4. Save, then use **Draw property** to click along the lines in the image. Use **See-through** to fade the image in and out.
+- **Draw section**: split a property into named units (e.g. "North Ridge"). Click a section to add plans:
+  - **Burn plans:** safe wind directions plus wind and humidity limits. The plan lists the hours in the forecast that meet them.
+  - **Timber plans:** the practice, contractor, and cost and income estimates.
+  - **Habitat and other plans.**
+  - Every plan has a status, target date, checklist and notes.
+- **Download for offline** (on a property): saves the maps for the property plus about ¼ mile around it, after showing the size. Every map tile you look at is also saved on your PC, so it doesn't load again.
+- **Settings** (gear next to the name): color, shape and size for each pin type, colors for area types, and the default property line color. A single stand, pin or property can also get its own color from its card.
 - **Hunt Forecast** (top of the sidebar):
-  - Shows the wind, temperature, rain chance, pressure trend, and sunrise/sunset for now or any morning or evening sit in the next few days.
+  - Pick a sit (now, or any morning or evening in the next few days) to see its low and high temperature, how the wind direction and speed change, gusts, and rain, with graphs.
+  - Drag the slider (or press play) to watch the scent cones move through the sit.
   - Rates every stand against its **Good winds**: Good, Maybe (the wind is close, very light, or gusty) or Bad.
   - While it's open, good stands glow green on the map and the rest fade.
   - Each stand also gets a **scent cone**: the wedge downwind where deer could smell you. It's longer in a steady wind, and short and wide when the wind is light and swirly.
