@@ -8,6 +8,11 @@ interface HubBridge {
   showDataFolder(): Promise<string>;
   saveImage(name: string, bytes: Uint8Array): Promise<void>;
   loadImage(name: string): Promise<Uint8Array>;
+  // Map tile from the on-disk cache, fetched and saved first if needed.
+  // With cacheOnly, returns null instead of fetching.
+  getTile(url: string, options?: { cacheOnly?: boolean }): Promise<{ bytes: Uint8Array; cached: boolean } | null>;
+  tileCacheInfo(): Promise<{ count: number; bytes: number }>;
+  clearTileCache(): Promise<void>;
 }
 
 declare global {

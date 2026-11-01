@@ -18,6 +18,8 @@ interface HubDataValue {
   sections: Section[];
   plans: Plan[];
   saveProperty(property: Property): void;
+  // Changes some fields of the stored property, whatever its latest version is.
+  patchProperty(id: string, patch: Partial<Property>): void;
   saveMarker(marker: MapMarker): void;
   saveArea(area: MapArea): void;
   saveOverlay(overlay: MapImageOverlay): void;
@@ -136,6 +138,11 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       sections: live(data?.sections),
       plans: live(data?.plans),
       saveProperty: (p) => save('properties', p),
+      patchProperty: (id, patch) =>
+        update((current) => ({
+          ...current,
+          properties: current.properties.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: nowIso() } : p)),
+        })),
       saveMarker: (m) => save('markers', m),
       saveArea: (a) => save('areas', a),
       saveOverlay: (o) => save('overlays', o),
@@ -148,7 +155,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       deleteSection: (id) => remove('sections', id),
       deletePlan: (id) => remove('plans', id),
     };
-  }, [data, loadError, saveError, save, remove]);
+  }, [data, loadError, saveError, save, remove, update]);
 
   return <HubDataContext.Provider value={value}>{children}</HubDataContext.Provider>;
 }

@@ -22,7 +22,7 @@ interface Common {
 }
 
 type DetailPanelProps =
-  | ({ kind: 'property'; record: Property; onChange(p: Property): void } & Common)
+  | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
@@ -54,7 +54,12 @@ export function DetailPanel(props: DetailPanelProps) {
       </header>
 
       <div className="detail-body">
-        {props.kind === 'property' && <PropertyFields record={props.record} onChange={props.onChange} />}
+        {props.kind === 'property' && (
+          <>
+            <PropertyFields record={props.record} onChange={props.onChange} />
+            <Field label="Offline maps">{props.offlineField}</Field>
+          </>
+        )}
         {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} />}
         {props.kind === 'marker' && <MarkerFields record={props.record} onChange={props.onChange} />}
         {props.kind === 'overlay' && (

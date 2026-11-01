@@ -23,6 +23,8 @@ export interface Property extends Syncable {
   source: PropertySource;
   boundary: AreaGeometry;
   notes: string | null;
+  // Set once its map tiles have been downloaded for offline use.
+  offline?: { downloadedAt: string; tileCount: number; layers: string } | null;
 }
 
 export type MarkerType =

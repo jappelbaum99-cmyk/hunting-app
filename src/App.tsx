@@ -7,6 +7,7 @@ import { DrawBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
+import { OfflineField } from '@/components/OfflineField';
 import { SectionPanel } from '@/components/SectionPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
@@ -616,6 +617,14 @@ export function App() {
           record={record}
           propertyName={null}
           onChange={hub.saveProperty}
+          offlineField={
+            <OfflineField
+              key={record.id}
+              property={record}
+              layers={layers}
+              onDownloaded={(offline) => hub.patchProperty(record.id, { offline })}
+            />
+          }
           onDelete={() => {
             hub.deleteProperty(record.id);
             setSelection(null);

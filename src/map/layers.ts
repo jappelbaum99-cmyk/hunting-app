@@ -48,6 +48,8 @@ export const CONTOUR_OPTIONS: { id: ContourInterval; label: string; rasterFuncti
 
 const BASEMAP_TILES = 'https://basemap.nationalmap.gov/arcgis/rest/services';
 const ELEVATION_EXPORT = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
+export const SATELLITE_TILE_URL = `${BASEMAP_TILES}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`;
+export const TOPO_TILE_URL = `${BASEMAP_TILES}/USGSTopo/MapServer/tile/{z}/{y}/{x}`;
 const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS The National Map</a>';
 
 // The USGS elevation server often answers 502/504 under load, so every USGS
@@ -57,7 +59,26 @@ const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-
 const RETRY_PROTOCOL = 'retry';
 const RETRY_DELAYS_MS = [800, 2000, 4000, 8000];
 
+// Lidar tiles are requested by bounding box. Rounding the box gives each tile
+// one exact URL, so the on-disk cache (and the property download, which
+// builds the same URLs itself) always agree on the name.
+export function normalizeTileUrl(url: string): string {
+  return url.replace(/bbox=([-\d.e,]+)/, (_, box: string) => `bbox=${box.split(',').map((n) => Number(n).toFixed(1)).join(',')}`);
+}
+
 async function fetchImage(url: string, signal: AbortSignal): Promise<ArrayBuffer | string> {
+  if (window.hub) {
+    // Desktop app: the main process serves the tile from disk, or fetches and saves it.
+    try {
+      const tile = await window.hub.getTile(url);
+      signal.throwIfAborted();
+      if (!tile) return 'missing';
+      return tile.bytes.buffer.slice(tile.bytes.byteOffset, tile.bytes.byteOffset + tile.bytes.byteLength) as ArrayBuffer;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return String(error);
+    }
+  }
   try {
     const response = await fetch(url, { signal });
     const isImage = response.headers.get('content-type')?.startsWith('image/');
@@ -76,7 +97,7 @@ export function setUpMapLibre(): void {
   setUp = true;
   maplibregl.setWorkerUrl(workerUrl);
   maplibregl.addProtocol(RETRY_PROTOCOL, async (params, abortController) => {
-    const url = params.url.slice(`${RETRY_PROTOCOL}://`.length);
+    const url = normalizeTileUrl(params.url.slice(`${RETRY_PROTOCOL}://`.length));
     for (let attempt = 0; ; attempt++) {
       const result = await fetchImage(url, abortController.signal);
       if (typeof result !== 'string') return { data: result };
@@ -117,14 +138,14 @@ export function buildBaseStyle(): StyleSpecification {
     sources: {
       satellite: {
         type: 'raster',
-        tiles: [`${RETRY_PROTOCOL}://${BASEMAP_TILES}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`],
+        tiles: [`${RETRY_PROTOCOL}://${SATELLITE_TILE_URL}`],
         tileSize: 256,
         maxzoom: 16,
         attribution: ATTRIBUTION,
       },
       topo: {
         type: 'raster',
-        tiles: [`${RETRY_PROTOCOL}://${BASEMAP_TILES}/USGSTopo/MapServer/tile/{z}/{y}/{x}`],
+        tiles: [`${RETRY_PROTOCOL}://${TOPO_TILE_URL}`],
         tileSize: 256,
         maxzoom: 16,
         attribution: ATTRIBUTION,
