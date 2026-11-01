@@ -2,11 +2,13 @@ import { useState, type ReactNode } from 'react';
 
 import { AREA_TYPES, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
+import { controlPointErrorsFeet } from '@/lib/georef';
 import {
   COMPASS_POINTS,
   type AreaType,
   type CompassPoint,
   type MapArea,
+  type MapImageOverlay,
   type MapMarker,
   type MarkerType,
   type Property,
@@ -22,11 +24,25 @@ interface Common {
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void } & Common)
-  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void } & Common);
+  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void } & Common)
+  | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
+
+function headingFor(props: DetailPanelProps): string {
+  switch (props.kind) {
+    case 'property':
+      return 'Property';
+    case 'area':
+      return AREA_TYPES[props.record.type].label;
+    case 'marker':
+      return MARKER_TYPES[props.record.type].label;
+    case 'overlay':
+      return 'Map image';
+  }
+}
 
 export function DetailPanel(props: DetailPanelProps) {
   const { kind, propertyName, onZoom, onDelete, onClose } = props;
-  const heading = kind === 'property' ? 'Property' : kind === 'area' ? AREA_TYPES[props.record.type].label : MARKER_TYPES[props.record.type].label;
+  const heading = headingFor(props);
 
   return (
     <aside className="detail-panel">
@@ -41,8 +57,11 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'property' && <PropertyFields record={props.record} onChange={props.onChange} />}
         {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} />}
         {props.kind === 'marker' && <MarkerFields record={props.record} onChange={props.onChange} />}
+        {props.kind === 'overlay' && (
+          <OverlayFields record={props.record} onChange={props.onChange} onRealign={props.onRealign} />
+        )}
 
-        {kind !== 'property' && (
+        {(kind === 'area' || kind === 'marker') && (
           <Field label="Property">
             <span className="muted">{propertyName ?? 'Not inside a saved property'}</span>
           </Field>
@@ -73,6 +92,46 @@ function PropertyFields({ record, onChange }: { record: Property; onChange(p: Pr
         <span>{formatAcres(acresOf(record.boundary))}</span>
       </Field>
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
+    </>
+  );
+}
+
+function OverlayFields(props: { record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void }) {
+  const { record, onChange, onRealign } = props;
+  const errors = controlPointErrorsFeet(record.controlPoints);
+  const worst = Math.max(...errors);
+  return (
+    <>
+      <TextField label="Name" value={record.name} onChange={(name) => onChange({ ...record, name })} />
+      <Field label="Show on map">
+        <label className="check">
+          <input type="checkbox" checked={record.visible} onChange={(e) => onChange({ ...record, visible: e.target.checked })} />
+          Visible
+        </label>
+      </Field>
+      <Field label="See-through">
+        <input
+          type="range"
+          min={0.1}
+          max={1}
+          step={0.05}
+          value={record.opacity}
+          onChange={(e) => onChange({ ...record, opacity: Number(e.target.value) })}
+        />
+      </Field>
+      <Field
+        label="Alignment"
+        hint={
+          record.controlPoints.length >= 3
+            ? `${record.controlPoints.length} points, worst one off by ${Math.round(worst)} ft.`
+            : `${record.controlPoints.length} points. Add a third to see how accurate it is.`
+        }
+      >
+        <button onClick={onRealign}>Adjust points</button>
+      </Field>
+      <p className="hint">
+        To trace from it, use <strong>Draw property</strong> and click along the lines in the image.
+      </p>
     </>
   );
 }

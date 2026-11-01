@@ -37,6 +37,25 @@ async function saveData(_event, json) {
   await fs.rename(temp, file);
 }
 
+// Map images (e.g. county parcel screenshots) live next to the data file.
+const IMAGE_NAME = /^[\w-]+\.(png|jpe?g|webp)$/i;
+
+function imagePath(name) {
+  // Only plain file names, so the UI can never read or write outside the folder.
+  if (typeof name !== 'string' || !IMAGE_NAME.test(name)) throw new Error(`Bad image name: ${name}`);
+  return path.join(dataDir(), 'images', name);
+}
+
+async function saveImage(_event, name, bytes) {
+  const file = imagePath(name);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, Buffer.from(bytes));
+}
+
+async function loadImage(_event, name) {
+  return fs.readFile(imagePath(name));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -70,6 +89,8 @@ app.whenReady().then(() => {
   ipcMain.handle('hub:loadData', loadData);
   ipcMain.handle('hub:saveData', saveData);
   ipcMain.handle('hub:dataPath', () => dataFile());
+  ipcMain.handle('hub:saveImage', saveImage);
+  ipcMain.handle('hub:loadImage', loadImage);
   ipcMain.handle('hub:showDataFolder', () => shell.openPath(dataDir()));
   createWindow();
 });

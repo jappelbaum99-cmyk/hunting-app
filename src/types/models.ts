@@ -57,14 +57,36 @@ export interface MapArea extends Syncable {
   notes: string | null;
 }
 
+// A point on an image (pixels from its top-left corner) matched to the same
+// spot on the map.
+export interface ControlPoint {
+  image: [number, number];
+  map: [number, number];
+}
+
+// A picture of a map (county parcel viewer, plat, survey...) laid over the
+// map by matching control points, so property lines can be traced from it.
+export interface MapImageOverlay extends Syncable {
+  name: string;
+  // File name inside Documents\Hunting Hub\images.
+  fileName: string;
+  imageWidth: number;
+  imageHeight: number;
+  controlPoints: ControlPoint[];
+  opacity: number;
+  visible: boolean;
+}
+
 export interface HubData {
   schemaVersion: 1;
   properties: Property[];
   markers: MapMarker[];
   areas: MapArea[];
+  overlays: MapImageOverlay[];
 }
 
 export type Selection =
   | { kind: 'property'; id: string }
   | { kind: 'marker'; id: string }
-  | { kind: 'area'; id: string };
+  | { kind: 'area'; id: string }
+  | { kind: 'overlay'; id: string };

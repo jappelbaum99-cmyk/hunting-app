@@ -111,9 +111,172 @@ textarea:focus {
   right: calc(var(--detail-width) + 56px);
 }
 
+.app.has-detail .map-toolbar,
+.app.has-align .map-toolbar {
+  right: calc(var(--detail-width) + 310px);
+}
+
 .app.has-detail .maplibregl-ctrl-top-right,
 .app.has-detail .maplibregl-ctrl-bottom-right {
   right: var(--detail-width);
+}
+
+/* The align panel is wider; matches ALIGN_PANEL_WIDTH in App.tsx. */
+.app.has-align {
+  --detail-width: 520px;
+}
+
+.app.has-align .layer-panel {
+  right: calc(var(--detail-width) + 56px);
+}
+
+.app.has-align .maplibregl-ctrl-top-right,
+.app.has-align .maplibregl-ctrl-bottom-right {
+  right: var(--detail-width);
+}
+
+/* Lining up a map image */
+
+.align-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: var(--detail-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+.image-picker {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+  background: #0c0f0c;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.image-picker-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.image-picker-stage img {
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.image-picker-hint {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.control-point {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #00c2ff;
+  border: 2px solid #fff;
+  color: #001018;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.control-point.active {
+  background: var(--accent);
+}
+
+/* The map-side copy is a maplibre marker: positioned by maplibre, draggable. */
+.control-point.on-map {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.align-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.align-step {
+  margin: 0;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.hint.warn {
+  color: var(--danger);
+}
+
+.point-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.point-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.point-number {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #00c2ff;
+  color: #001018;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.point-status {
+  flex: 1;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.align-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch.image {
+  background: linear-gradient(135deg, #6b8f5a 0 50%, #c9b98a 50% 100%);
+  border: 1px solid #fff;
 }
 
 /* Sidebar */

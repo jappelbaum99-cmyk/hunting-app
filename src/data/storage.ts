@@ -6,6 +6,8 @@ interface HubBridge {
   saveData(json: string): Promise<void>;
   dataPath(): Promise<string>;
   showDataFolder(): Promise<string>;
+  saveImage(name: string, bytes: Uint8Array): Promise<void>;
+  loadImage(name: string): Promise<Uint8Array>;
 }
 
 declare global {
@@ -19,7 +21,7 @@ const LOCAL_STORAGE_KEY = 'hunting-hub-data';
 export const isDesktop = typeof window !== 'undefined' && window.hub !== undefined;
 
 export function emptyHubData(): HubData {
-  return { schemaVersion: 1, properties: [], markers: [], areas: [] };
+  return { schemaVersion: 1, properties: [], markers: [], areas: [], overlays: [] };
 }
 
 // The desktop app stores data in Documents\Hunting Hub\hub-data.json.

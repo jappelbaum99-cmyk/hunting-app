@@ -18,13 +18,18 @@ npm start
 - **Draw property** and **Draw area**: click each corner on the map, then press **Done** (or Enter). Backspace undoes the last corner and Esc cancels.
 - **Add pin**: pick a type (stand, camera, scrape...), then click the map. Drag a pin to move it.
 - **Import KML/GPX**: brings in property lines and waypoints from Google Earth, onX, county GIS sites and other mapping apps. Waypoints with "stand" or "blind" in the name become stands.
+- **Add map image**: lay a screenshot of a parcel map, plat or survey over the map, then trace your property line from it.
+  1. Take a screenshot of the map (for example, Dent County's parcel viewer as a guest). Press Win+Shift+S, then save it as a PNG.
+  2. Click **Add map image** and pick the file.
+  3. Click a spot on the image (a road intersection, section corner or pond corner), then click the same spot on the map. Do this 2–4 times, with the spots spread out. With 3 or more points the panel shows how many feet off each one is.
+  4. Save, then use **Draw property** to click along the lines in the image. Use **See-through** to fade the image in and out.
 - **Layers** (top right):
   - Satellite, Topo or Lidar base map.
   - **Lidar shading** blends the lidar hillshade over satellite.
   - **Contours** come in 10, 5 or 2 ft intervals and show when zoomed in.
 - Click anything on the map or in the sidebar to edit it. Stands have a **Good winds** picker.
 
-Your data is saved automatically to `Documents\Hunting Hub\hub-data.json`. The previous version is kept next to it as `hub-data.json.bak`.
+Your data is saved automatically to `Documents\Hunting Hub\hub-data.json`. The previous version is kept next to it as `hub-data.json.bak`, and map images go in `Documents\Hunting Hub\images`.
 
 ## Map data
 

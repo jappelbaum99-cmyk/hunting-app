@@ -2,7 +2,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { FeatureCollection, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
-import type { GeoJSONSource, RasterTileSource } from 'maplibre-gl';
+import type { GeoJSONSource, ImageSource, RasterTileSource } from 'maplibre-gl';
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 
 import { PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
@@ -27,11 +27,26 @@ const DETAIL_PANEL_WIDTH = 320;
 const FIT_PADDING = { top: 80, bottom: 80, left: 80, right: 80 };
 
 export interface MapViewHandle {
-  fitTo(geometry: AreaGeometry): void;
+  // rightInset: width of whatever panel covers the right side of the map.
+  fitTo(geometry: AreaGeometry, rightInset?: number): void;
   flyTo(lng: number, lat: number): void;
 }
 
-export type MapInteraction = 'browse' | 'place' | 'draw';
+export type MapInteraction = 'browse' | 'place' | 'draw' | 'align';
+
+// A map image ready to draw: corners are top-left, top-right, bottom-right, bottom-left.
+export interface OverlayView {
+  id: string;
+  url: string;
+  corners: [[number, number], [number, number], [number, number], [number, number]];
+  opacity: number;
+}
+
+// A map-side control point while lining up an image.
+export interface AlignMarker {
+  index: number;
+  position: [number, number];
+}
 
 interface MapViewProps {
   ref?: Ref<MapViewHandle>;
@@ -39,6 +54,8 @@ interface MapViewProps {
   properties: Property[];
   areas: MapArea[];
   markers: MapMarker[];
+  overlays: OverlayView[];
+  alignMarkers: AlignMarker[];
   selection: Selection | null;
   interaction: MapInteraction;
   draftPoints: Position[];
@@ -46,6 +63,7 @@ interface MapViewProps {
   onMapClick(position: Position): void;
   onSelect(selection: Selection | null): void;
   onMarkerMoved(id: string, position: Position): void;
+  onAlignMarkerMoved(index: number, position: [number, number]): void;
 }
 
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] };
@@ -158,7 +176,8 @@ function topCenterOf(geometry: AreaGeometry): [number, number] {
 }
 
 export function MapView(props: MapViewProps) {
-  const { ref, layers, properties, areas, markers, selection, interaction, draftPoints, draftColor } = props;
+  const { ref, layers, properties, areas, markers, overlays, alignMarkers, selection, interaction, draftPoints, draftColor } =
+    props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
@@ -168,15 +187,18 @@ export function MapView(props: MapViewProps) {
   const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10' });
   const markerElements = useRef(new Map<string, maplibregl.Marker>());
   const labelElements = useRef(new Map<string, maplibregl.Marker>());
+  const alignElements = useRef(new Map<string, maplibregl.Marker>());
+  // Overlay id -> image URL currently loaded into its maplibre source.
+  const overlayUrls = useRef(new Map<string, string>());
   const cursorRef = useRef<Position | null>(null);
   // Latest props for map event handlers, which are bound once.
   const latest = useRef(props);
   latest.current = props;
 
   useImperativeHandle(ref, () => ({
-    fitTo(geometry) {
+    fitTo(geometry, rightInset = DETAIL_PANEL_WIDTH) {
       const [w, s, e, n] = boundsOf(geometry);
-      mapRef.current?.fitBounds([w, s, e, n], { padding: { ...FIT_PADDING, right: FIT_PADDING.right + DETAIL_PANEL_WIDTH }, maxZoom: 17, duration: 800 });
+      mapRef.current?.fitBounds([w, s, e, n], { padding: { ...FIT_PADDING, right: FIT_PADDING.right + rightInset }, maxZoom: 17, duration: 800 });
     },
     flyTo(lng, lat) {
       const map = mapRef.current;
@@ -241,9 +263,13 @@ export function MapView(props: MapViewProps) {
 
     const markersById = markerElements.current;
     const labelsById = labelElements.current;
+    const alignById = alignElements.current;
+    const urlsById = overlayUrls.current;
     return () => {
       markersById.clear();
       labelsById.clear();
+      alignById.clear();
+      urlsById.clear();
       readyRef.current = false;
       map.remove();
       mapRef.current = null;
@@ -342,6 +368,63 @@ export function MapView(props: MapViewProps) {
       },
     );
   }, [markers, selectedId, readyTick]);
+
+  // Map images, drawn above the base maps and under property lines.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const loaded = overlayUrls.current;
+    const wanted = new Map(overlays.map((o) => [o.id, o]));
+    for (const id of [...loaded.keys()]) {
+      if (wanted.has(id)) continue;
+      map.removeLayer(`overlay-${id}`);
+      map.removeSource(`overlay-${id}`);
+      loaded.delete(id);
+    }
+    for (const o of overlays) {
+      const sourceId = `overlay-${o.id}`;
+      const source = map.getSource<ImageSource>(sourceId);
+      if (!source) {
+        map.addSource(sourceId, { type: 'image', url: o.url, coordinates: o.corners });
+        map.addLayer(
+          { id: sourceId, type: 'raster', source: sourceId, paint: { 'raster-opacity': o.opacity, 'raster-fade-duration': 0 } },
+          'property-fill',
+        );
+      } else if (loaded.get(o.id) !== o.url) {
+        source.updateImage({ url: o.url, coordinates: o.corners });
+      } else {
+        source.setCoordinates(o.corners);
+      }
+      map.setPaintProperty(sourceId, 'raster-opacity', o.opacity);
+      loaded.set(o.id, o.url);
+    }
+  }, [overlays, readyTick]);
+
+  // Numbered, draggable map points while lining up an image.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const wanted = new Map(alignMarkers.map((m) => [String(m.index), { at: m.position, index: m.index }]));
+    syncHtmlMarkers(
+      map,
+      alignElements.current,
+      wanted,
+      (item, existing) => {
+        const el = existing ?? document.createElement('div');
+        el.classList.add('control-point', 'on-map');
+        el.textContent = String(item.index + 1);
+        return el;
+      },
+      { anchor: 'center' },
+      (marker, key) => {
+        marker.setDraggable(true);
+        marker.on('dragend', () => {
+          const { lng, lat } = marker.getLngLat();
+          latest.current.onAlignMarkerMoved(Number(key), [lng, lat]);
+        });
+      },
+    );
+  }, [alignMarkers, readyTick]);
 
   // Shape being drawn.
   useEffect(() => {

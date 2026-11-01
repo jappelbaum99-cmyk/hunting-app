@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { loadHubData, saveHubData } from '@/data/storage';
-import type { HubData, MapArea, MapMarker, Property } from '@/types/models';
+import type { HubData, MapArea, MapImageOverlay, MapMarker, Property } from '@/types/models';
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays';
 
 interface HubDataValue {
   loaded: boolean;
@@ -14,12 +14,15 @@ interface HubDataValue {
   properties: Property[];
   markers: MapMarker[];
   areas: MapArea[];
+  overlays: MapImageOverlay[];
   saveProperty(property: Property): void;
   saveMarker(marker: MapMarker): void;
   saveArea(area: MapArea): void;
+  saveOverlay(overlay: MapImageOverlay): void;
   deleteProperty(id: string): void;
   deleteMarker(id: string): void;
   deleteArea(id: string): void;
+  deleteOverlay(id: string): void;
 }
 
 const HubDataContext = createContext<HubDataValue | null>(null);
@@ -118,12 +121,15 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       properties: live(data?.properties),
       markers: live(data?.markers),
       areas: live(data?.areas),
+      overlays: live(data?.overlays),
       saveProperty: (p) => save('properties', p),
       saveMarker: (m) => save('markers', m),
       saveArea: (a) => save('areas', a),
+      saveOverlay: (o) => save('overlays', o),
       deleteProperty: (id) => remove('properties', id),
       deleteMarker: (id) => remove('markers', id),
       deleteArea: (id) => remove('areas', id),
+      deleteOverlay: (id) => remove('overlays', id),
     };
   }, [data, loadError, saveError, save, remove]);
 

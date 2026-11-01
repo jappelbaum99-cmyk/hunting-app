@@ -1,28 +1,40 @@
 import type { Position } from 'geojson';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
 import { DrawBar } from '@/components/DrawBar';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
+import { imageFileName, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
+import { useImageUrls } from '@/data/useImageUrls';
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
+import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
-import { MapView, type MapViewHandle } from '@/map/MapView';
-import type { AreaGeometry, AreaType, MapMarker, MarkerType, Selection } from '@/types/models';
+import { MapView, type AlignMarker, type MapViewHandle, type OverlayView } from '@/map/MapView';
+import type { AreaGeometry, AreaType, MapImageOverlay, MapMarker, MarkerType, Selection } from '@/types/models';
 
 type Mode =
   | { kind: 'browse' }
   | { kind: 'place'; markerType: MarkerType }
   | { kind: 'draw'; target: 'property' }
-  | { kind: 'draw'; target: 'area'; areaType: AreaType };
+  | { kind: 'draw'; target: 'area'; areaType: AreaType }
+  | { kind: 'align' };
 
 const MAX_IMPORTED_SHAPES = 50;
 const STAND_NAME = /\b(stand|blind|tree ?stand|ladder|box)\b/i;
+// Matches --align-width in styles.css.
+const ALIGN_PANEL_WIDTH = 520;
+const DEFAULT_OVERLAY_OPACITY = 0.6;
+
+function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
+  return pointsToPolygon(corners);
+}
 
 export function App() {
   const hub = useHubData();
@@ -33,6 +45,11 @@ export function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dataPath, setDataPath] = useState<string | null>(null);
+  const [alignDraft, setAlignDraft] = useState<AlignDraft | null>(null);
+  // The picked file for a new map image; it's only written to disk on Save.
+  const [alignFile, setAlignFile] = useState<File | null>(null);
+  const [savingAlign, setSavingAlign] = useState(false);
+  const imageUrls = useImageUrls(hub.overlays);
 
   useEffect(() => {
     window.hub?.dataPath().then(setDataPath).catch(() => undefined);
@@ -84,8 +101,106 @@ export function App() {
     cancelMode();
   }, [mode, draftPoints, hub, cancelMode]);
 
+  const startAlignNew = async (file: File) => {
+    const url = URL.createObjectURL(file);
+    try {
+      const { width, height } = await readImageSize(url);
+      setSelection(null);
+      setAlignFile(file);
+      setAlignDraft({
+        overlayId: crypto.randomUUID(),
+        isNew: true,
+        name: file.name.replace(/\.[^.]+$/, ''),
+        url,
+        width,
+        height,
+        points: [],
+        opacity: DEFAULT_OVERLAY_OPACITY,
+      });
+      setMode({ kind: 'align' });
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const startRealign = (overlay: MapImageOverlay) => {
+    const url = imageUrls[overlay.fileName];
+    if (!url) {
+      setNotice('That map image is still loading. Try again in a moment.');
+      return;
+    }
+    setSelection(null);
+    setAlignFile(null);
+    setAlignDraft({
+      overlayId: overlay.id,
+      isNew: false,
+      name: overlay.name,
+      url,
+      width: overlay.imageWidth,
+      height: overlay.imageHeight,
+      points: overlay.controlPoints,
+      opacity: overlay.opacity,
+    });
+    setMode({ kind: 'align' });
+    const corners = overlayCorners(overlay.controlPoints, overlay.imageWidth, overlay.imageHeight);
+    if (corners) mapRef.current?.fitTo(cornersPolygon(corners), ALIGN_PANEL_WIDTH);
+  };
+
+  const endAlign = () => {
+    if (alignDraft?.isNew) URL.revokeObjectURL(alignDraft.url);
+    setAlignDraft(null);
+    setAlignFile(null);
+    setMode({ kind: 'browse' });
+  };
+
+  const saveAlign = async () => {
+    if (!alignDraft) return;
+    const controlPoints = completePoints(alignDraft.points);
+    if (controlPoints.length < 2) return;
+    setSavingAlign(true);
+    try {
+      const existing = hub.overlays.find((o) => o.id === alignDraft.overlayId);
+      let fileName = existing?.fileName;
+      if (!fileName) {
+        if (!alignFile) throw new Error('The image file is missing.');
+        fileName = imageFileName(alignDraft.overlayId, alignFile.name);
+        await saveImage(fileName, alignFile);
+      }
+      const at = new Date().toISOString();
+      hub.saveOverlay({
+        id: alignDraft.overlayId,
+        createdAt: existing?.createdAt ?? at,
+        updatedAt: at,
+        deletedAt: null,
+        name: alignDraft.name.trim() || 'Map image',
+        fileName,
+        imageWidth: alignDraft.width,
+        imageHeight: alignDraft.height,
+        controlPoints,
+        opacity: alignDraft.opacity,
+        visible: true,
+      });
+      endAlign();
+      setSelection({ kind: 'overlay', id: alignDraft.overlayId });
+    } catch (error) {
+      setNotice(`Could not save the map image: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSavingAlign(false);
+    }
+  };
+
   const handleMapClick = (position: Position) => {
-    if (mode.kind === 'draw') {
+    if (mode.kind === 'align' && alignDraft) {
+      const waiting = alignDraft.points.findIndex((p) => p.map === null);
+      if (waiting === -1) {
+        setNotice('Click a spot on the image first, then the same spot on the map.');
+        return;
+      }
+      const points = [...alignDraft.points];
+      points[waiting] = { ...points[waiting], map: [position[0], position[1]] };
+      setAlignDraft({ ...alignDraft, points });
+    } else if (mode.kind === 'draw') {
       setDraftPoints((points) => [...points, position]);
     } else if (mode.kind === 'place') {
       const record: MapMarker = {
@@ -167,6 +282,10 @@ export function App() {
     if (target.kind === 'marker') {
       const m = hub.markers.find((r) => r.id === target.id);
       if (m) mapRef.current?.flyTo(m.lng, m.lat);
+    } else if (target.kind === 'overlay') {
+      const o = hub.overlays.find((r) => r.id === target.id);
+      const corners = o && overlayCorners(o.controlPoints, o.imageWidth, o.imageHeight);
+      if (corners) mapRef.current?.fitTo(cornersPolygon(corners));
     } else {
       const geometry =
         target.kind === 'property'
@@ -181,6 +300,8 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select')) return;
+      // Lining up an image takes real work, so only its Cancel button ends it.
+      if (mode.kind === 'align') return;
       if (event.key === 'Escape') {
         if (mode.kind !== 'browse') cancelMode();
         else setSelection(null);
@@ -218,16 +339,36 @@ export function App() {
           : AREA_TYPES[mode.areaType].label.toLowerCase()
         : '';
 
+  // Saved images, with the one being lined up swapped for its live preview.
+  const overlayViews: OverlayView[] = [];
+  for (const o of hub.overlays) {
+    if (!o.visible || o.id === alignDraft?.overlayId) continue;
+    const url = imageUrls[o.fileName];
+    const corners = overlayCorners(o.controlPoints, o.imageWidth, o.imageHeight);
+    if (url && corners) overlayViews.push({ id: o.id, url, corners, opacity: o.opacity });
+  }
+  const alignMarkers: AlignMarker[] = [];
+  if (alignDraft) {
+    const corners = overlayCorners(completePoints(alignDraft.points), alignDraft.width, alignDraft.height);
+    if (corners) overlayViews.push({ id: alignDraft.overlayId, url: alignDraft.url, corners, opacity: alignDraft.opacity });
+    alignDraft.points.forEach((p, index) => {
+      if (p.map) alignMarkers.push({ index, position: p.map });
+    });
+  }
+
+  const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
-    <div className={`app${selection ? ' has-detail' : ''}`}>
+    <div className={appClass}>
       <Sidebar
         properties={hub.properties}
         areas={hub.areas}
         markers={hub.markers}
+        overlays={hub.overlays}
         selection={selection}
         dataPath={isDesktop ? dataPath : null}
         onShowDataFolder={window.hub ? () => void window.hub?.showDataFolder() : null}
         onPick={(next) => {
+          if (mode.kind === 'align') return;
           cancelMode();
           setSelection(next);
           zoomTo(next);
@@ -241,6 +382,8 @@ export function App() {
           properties={hub.properties}
           areas={hub.areas}
           markers={hub.markers}
+          overlays={overlayViews}
+          alignMarkers={alignMarkers}
           selection={selection}
           interaction={mode.kind}
           draftPoints={draftPoints}
@@ -248,16 +391,24 @@ export function App() {
           onMapClick={handleMapClick}
           onSelect={setSelection}
           onMarkerMoved={handleMarkerMoved}
+          onAlignMarkerMoved={(index, position) => {
+            if (!alignDraft) return;
+            const points = alignDraft.points.map((p, i) => (i === index ? { ...p, map: position } : p));
+            setAlignDraft({ ...alignDraft, points });
+          }}
         />
-        <MapToolbar
-          disabled={mode.kind !== 'browse'}
-          onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
-          onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
-          onPlaceMarker={(markerType) => startMode({ kind: 'place', markerType })}
-          onImport={(file) => void handleImport(file)}
-        />
+        {mode.kind !== 'align' && (
+          <MapToolbar
+            disabled={mode.kind !== 'browse'}
+            onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
+            onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
+            onPlaceMarker={(markerType) => startMode({ kind: 'place', markerType })}
+            onImport={(file) => void handleImport(file)}
+            onAddImage={(file) => void startAlignNew(file)}
+          />
+        )}
         <LayerPanel layers={layers} onChange={setLayers} />
-        {mode.kind !== 'browse' && (
+        {(mode.kind === 'draw' || mode.kind === 'place') && (
           <DrawBar
             kind={mode.kind}
             title={modeTitle}
@@ -272,7 +423,17 @@ export function App() {
         )}
       </main>
 
-      {renderDetail()}
+      {alignDraft ? (
+        <AlignPanel
+          draft={alignDraft}
+          saving={savingAlign}
+          onChange={setAlignDraft}
+          onSave={() => void saveAlign()}
+          onCancel={endAlign}
+        />
+      ) : (
+        renderDetail()
+      )}
     </div>
   );
 
@@ -283,6 +444,24 @@ export function App() {
       onZoom: () => zoomTo(selection),
       onClose: () => setSelection(null),
     };
+    if (selection.kind === 'overlay') {
+      const record = hub.overlays.find((r) => r.id === selection.id);
+      if (!record) return null;
+      return (
+        <DetailPanel
+          kind="overlay"
+          record={record}
+          propertyName={null}
+          onChange={hub.saveOverlay}
+          onRealign={() => startRealign(record)}
+          onDelete={() => {
+            hub.deleteOverlay(record.id);
+            setSelection(null);
+          }}
+          {...common}
+        />
+      );
+    }
     if (selection.kind === 'property') {
       const record = hub.properties.find((r) => r.id === selection.id);
       if (!record) return null;

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 
+import { IMAGE_ACCEPT } from '@/data/images';
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
 import { IMPORT_ACCEPT } from '@/lib/importGeo';
 import type { AreaType, MarkerType } from '@/types/models';
@@ -10,10 +11,12 @@ interface MapToolbarProps {
   onDrawArea(type: AreaType): void;
   onPlaceMarker(type: MarkerType): void;
   onImport(file: File): void;
+  onAddImage(file: File): void;
 }
 
-export function MapToolbar({ disabled, onDrawProperty, onDrawArea, onPlaceMarker, onImport }: MapToolbarProps) {
+export function MapToolbar({ disabled, onDrawProperty, onDrawArea, onPlaceMarker, onImport, onAddImage }: MapToolbarProps) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
 
   // Closes the <details> dropdown after picking an option.
   const pick = (event: React.MouseEvent, action: () => void) => {
@@ -63,6 +66,25 @@ export function MapToolbar({ disabled, onDrawProperty, onDrawArea, onPlaceMarker
           const file = e.target.files?.[0];
           e.target.value = '';
           if (file) onImport(file);
+        }}
+      />
+
+      <button
+        disabled={disabled}
+        onClick={() => imageInput.current?.click()}
+        title="Lay a screenshot of a parcel map, plat or survey over the map, then trace it"
+      >
+        Add map image
+      </button>
+      <input
+        ref={imageInput}
+        type="file"
+        accept={IMAGE_ACCEPT}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) onAddImage(file);
         }}
       />
     </div>

@@ -1,11 +1,12 @@
 import { AREA_TYPES, MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
-import type { MapArea, MapMarker, Property, Selection } from '@/types/models';
+import type { MapArea, MapImageOverlay, MapMarker, Property, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
   areas: MapArea[];
   markers: MapMarker[];
+  overlays: MapImageOverlay[];
   selection: Selection | null;
   dataPath: string | null;
   onPick(selection: Selection): void;
@@ -14,7 +15,7 @@ interface SidebarProps {
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
-export function Sidebar({ properties, areas, markers, selection, dataPath, onPick, onShowDataFolder }: SidebarProps) {
+export function Sidebar({ properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder }: SidebarProps) {
   const isSelected = (kind: Selection['kind'], id: string) => selection?.kind === kind && selection.id === id;
   const stands = markers.filter((m) => m.type === 'stand' || m.type === 'blind').sort(byName);
   const otherPins = markers.filter((m) => m.type !== 'stand' && m.type !== 'blind').sort(byName);
@@ -74,6 +75,19 @@ export function Sidebar({ properties, areas, markers, selection, dataPath, onPic
               swatch={<span className="swatch round" style={{ background: MARKER_TYPES[m.type].color }} />}
               title={m.name}
               detail={MARKER_TYPES[m.type].label}
+            />
+          ))}
+        </Section>
+
+        <Section title="Map images" count={overlays.length} empty="Lay a parcel map screenshot over the map to trace from.">
+          {[...overlays].sort(byName).map((o) => (
+            <Row
+              key={o.id}
+              selected={isSelected('overlay', o.id)}
+              onClick={() => onPick({ kind: 'overlay', id: o.id })}
+              swatch={<span className="swatch image" />}
+              title={o.name}
+              detail={o.visible ? `${Math.round(o.opacity * 100)}%` : 'hidden'}
             />
           ))}
         </Section>
