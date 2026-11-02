@@ -92,6 +92,26 @@ export function SummaryPanel(props: SummaryPanelProps) {
   const last = months.length - 1 - [...months].reverse().findIndex((m) => m.hunts > 0);
   const shownMonths = first === -1 ? [] : months.slice(first, last + 1);
 
+  // Best day: the most deer seen in one day (bucks break ties).
+  const days = new Map<string, HuntReport[]>();
+  for (const r of seasonReports) {
+    const key = new Date(r.start).toDateString();
+    days.set(key, [...(days.get(key) ?? []), r]);
+  }
+  const bestDay = [...days.values()]
+    .map((list) => ({ list, deer: deerCount(list), bucks: deerCount(list, 'buck') }))
+    .filter((d) => d.deer > 0)
+    .sort((a, b) => b.deer - a.deer || b.bucks - a.bucks)[0];
+  const bestDayStands = bestDay
+    ? [...new Set(bestDay.list.map((r) => props.markers.find((m) => m.id === r.standId)?.name ?? 'No stand'))].join(', ')
+    : '';
+  const half = (morning: boolean) => {
+    const list = seasonReports.filter((r) => new Date(r.start).getHours() < 12 === morning);
+    return { hunts: list.length, deer: deerCount(list) };
+  };
+  const mornings = half(true);
+  const evenings = half(false);
+
   // Best stands this season: most deer per hunt, with at least two hunts.
   const standRows = spots
     .map((s) => {
@@ -230,6 +250,21 @@ export function SummaryPanel(props: SummaryPanelProps) {
               {(deer / seasonReports.length).toFixed(1)} deer per hunt{hours >= 1 ? ` · ${(deer / hours).toFixed(1)} per hour` : ''}
               {others ? ` · also ${others}` : ''}
             </p>
+            {bestDay && (
+              <div className="best-day">
+                <span className="best-day-label">Best day</span>
+                <strong>{new Date(bestDay.list[0].start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</strong>
+                <span>
+                  {bestDay.deer} deer{bestDay.bucks ? ` (${bestDay.bucks} buck${bestDay.bucks === 1 ? '' : 's'})` : ''} · {bestDayStands}
+                </span>
+              </div>
+            )}
+            {mornings.hunts > 0 && evenings.hunts > 0 && (
+              <p className="hint">
+                Mornings {(mornings.deer / mornings.hunts).toFixed(1)} deer a hunt ({mornings.hunts}) · evenings {(evenings.deer / evenings.hunts).toFixed(1)} (
+                {evenings.hunts})
+              </p>
+            )}
             {shownMonths.length > 0 && <MonthChart months={shownMonths} />}
             {standRows.length > 0 && (
               <>

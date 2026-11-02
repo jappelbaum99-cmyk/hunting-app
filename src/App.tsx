@@ -831,11 +831,20 @@ export function App() {
     }
   }
 
-  // Lines a new shape can snap onto: property lines always, plus section
-  // edges when drawing a section or area, so neighbors share an edge.
+  // Lines a new shape can snap onto: property lines always, plus section and
+  // area edges when drawing a section, area or trail, so neighbors share an edge.
   const snapRings =
     mode.kind === 'draw'
-      ? ringsOf([...hub.properties.map((p) => p.boundary), ...(mode.target === 'property' ? [] : hub.sections.map((s) => s.geometry))])
+      ? [
+          ...ringsOf([
+            ...hub.properties.map((p) => p.boundary),
+            ...(mode.target === 'property' ? [] : hub.sections.map((s) => s.geometry)),
+            // Areas share edges with the areas next to them.
+            ...(mode.target === 'property' ? [] : hub.areas.map((a) => a.geometry)),
+          ]),
+          // Trails can join existing trails.
+          ...(mode.target === 'trail' ? hub.trails.map((t) => t.line.coordinates) : []),
+        ]
       : [];
 
   const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;

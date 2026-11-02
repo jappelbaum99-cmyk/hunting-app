@@ -455,6 +455,46 @@ function HuntTab(props: {
 
 const KINDS = Object.keys(DEER_KINDS) as DeerKind[];
 
+// The sighting being filled in, saved as it changes so a refresh doesn't lose it.
+const DRAFT_KEY = 'hunting-hub-field-draft';
+
+interface SightingDraft {
+  reportId: string;
+  kind: DeerKind;
+  count: number;
+  heading: number | null;
+  buckName: string;
+  otherName: string;
+  where: Sighting['fromStand'];
+  note: string;
+  editingId: string | null;
+}
+
+function loadDraft(reportId: string): SightingDraft | null {
+  try {
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null') as SightingDraft | null;
+    return draft?.reportId === reportId ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(draft: SightingDraft) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Only a convenience.
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Only a convenience.
+  }
+}
+
 // Logging what you see from the stand: what, how many, which way, tap Save.
 // Tap a sighting in the list to change or delete it. Also used to edit a past hunt.
 function QuickLog(props: {
@@ -467,14 +507,36 @@ function QuickLog(props: {
   onDone(): void;
 }) {
   const { report } = props;
-  const [kind, setKind] = useState<DeerKind>('doe');
-  const [count, setCount] = useState(1);
-  const [heading, setHeading] = useState<number | null>(null);
-  const [buckName, setBuckName] = useState('');
-  const [otherName, setOtherName] = useState('');
-  const [where, setWhere] = useState<Sighting['fromStand']>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // A sighting being filled in is kept through a refresh (only for this hunt).
+  const [draft] = useState(() => loadDraft(report.id));
+  const [kind, setKind] = useState<DeerKind>(draft?.kind ?? 'doe');
+  const [count, setCount] = useState(draft?.count ?? 1);
+  const [heading, setHeading] = useState<number | null>(draft?.heading ?? null);
+  const [buckName, setBuckName] = useState(draft?.buckName ?? '');
+  const [otherName, setOtherName] = useState(draft?.otherName ?? '');
+  const [where, setWhere] = useState<Sighting['fromStand']>(draft?.where ?? null);
+  const [note, setNote] = useState(draft?.note ?? '');
+  const [editingId, setEditingId] = useState<string | null>(draft?.editingId ?? null);
   const notes = useRef<HTMLTextAreaElement>(null);
+  // The latest report, for saves that happen a moment after typing.
+  const latest = useRef(report);
+  latest.current = report;
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, note, editingId });
+  }, [report.id, kind, count, heading, buckName, otherName, where, note, editingId]);
+
+  // Hunt notes save as you type (a moment after you stop), not only when you tap away.
+  const saveNotes = (value: string) => {
+    if (notesTimer.current) clearTimeout(notesTimer.current);
+    notesTimer.current = setTimeout(() => {
+      if ((value || null) !== latest.current.notes) props.onChange({ ...latest.current, notes: value || null });
+    }, 600);
+  };
+  useEffect(() => () => {
+    if (notesTimer.current) clearTimeout(notesTimer.current);
+  }, []);
 
   const reset = () => {
     setEditingId(null);
@@ -483,6 +545,7 @@ function QuickLog(props: {
     setBuckName('');
     setOtherName('');
     setWhere(null);
+    setNote('');
   };
 
   const startEditing = (s: Sighting) => {
@@ -493,6 +556,7 @@ function QuickLog(props: {
     setBuckName(s.buckName ?? '');
     setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
     setWhere(s.fromStand ?? null);
+    setNote(s.comment ?? '');
   };
 
   const save = () => {
@@ -503,6 +567,7 @@ function QuickLog(props: {
       buckName: kind === 'buck' ? buckName.trim() || null : null,
       notes: kind === 'other' ? otherName.trim() || null : null,
       fromStand: where,
+      comment: note.trim() || null,
     };
     const sightings = editingId
       ? report.sightings.map((s) => (s.id === editingId ? { ...s, ...fields } : s))
@@ -563,6 +628,15 @@ function QuickLog(props: {
         logged={report.sightings.filter((s) => s.id !== editingId)}
       />
 
+      <input
+        type="text"
+        className="sighting-note"
+        placeholder="Note (optional), e.g. chasing a doe"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        aria-label="Note about this sighting"
+      />
+
       <button className="big-button" onClick={save} aria-label={saveLabel}>
         {saveLabel}
       </button>
@@ -595,6 +669,7 @@ function QuickLog(props: {
                     {s.buckName ? ` (${s.buckName})` : ''}
                     {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
                     {whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
+                    {s.comment && <span className="sighting-comment">{s.comment}</span>}
                   </span>
                   <span className="muted">{clock(s.time)}</span>
                 </button>
@@ -609,13 +684,19 @@ function QuickLog(props: {
         rows={3}
         placeholder="Notes (wind shifts, where they came from…)"
         defaultValue={report.notes ?? ''}
-        onBlur={(e) => props.onChange({ ...report, notes: e.target.value || null })}
+        onChange={(e) => saveNotes(e.target.value)}
+        onBlur={(e) => {
+          if (notesTimer.current) clearTimeout(notesTimer.current);
+          if ((e.target.value || null) !== latest.current.notes) props.onChange({ ...latest.current, notes: e.target.value || null });
+        }}
       />
       <button
         className="end-button"
         onClick={() => {
           // Keep notes typed but not yet blurred.
-          if (notes.current && (notes.current.value || null) !== report.notes) props.onChange({ ...report, notes: notes.current.value || null });
+          if (notesTimer.current) clearTimeout(notesTimer.current);
+          if (notes.current && (notes.current.value || null) !== latest.current.notes) props.onChange({ ...latest.current, notes: notes.current.value || null });
+          clearDraft();
           props.onDone();
         }}
       >

@@ -228,6 +228,11 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
         </span>
       </div>
 
+      <label>
+        <span className="field-label">Note</span>
+        <input type="text" placeholder="e.g. chasing a doe, came from the creek" value={s.comment ?? ''} onChange={(e) => onChange({ comment: e.target.value || null })} />
+      </label>
+
       <div className="field-label">Where they were from the stand</div>
       <div className="range-row from-stand">
         <label>

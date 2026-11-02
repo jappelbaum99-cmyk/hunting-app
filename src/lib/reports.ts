@@ -55,6 +55,7 @@ export function newSighting(time: string): Sighting {
     lng: null,
     fromStand: null,
     notes: null,
+    comment: null,
   };
 }
 

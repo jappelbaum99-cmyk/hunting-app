@@ -858,3 +858,16 @@ textarea {
   background: var(--accent);
   color: var(--on-accent);
 }
+
+/* Note on a sighting */
+.sighting-note {
+  width: 100%;
+}
+
+.sighting-comment {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}

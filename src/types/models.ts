@@ -231,6 +231,8 @@ export interface Sighting {
   fromStand?: { bearingDeg: number; yards: number } | null;
   // For "other", what it was (e.g. "coyote").
   notes: string | null;
+  // Anything else worth remembering, e.g. "chasing a doe".
+  comment?: string | null;
 }
 
 export interface ReportWeather {
