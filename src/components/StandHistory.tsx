@@ -1,3 +1,4 @@
+import { Icon } from '@/components/Icon';
 import { daySummary, isLive, otherAnimals, standStats } from '@/lib/huntStats';
 import { DEER_KINDS, sightingLabel, sightingSummary } from '@/lib/reports';
 import type { HuntReport } from '@/types/models';
@@ -64,7 +65,7 @@ export function StandHistory({ reports, onPickReport }: { reports: HuntReport[];
             <li key={h.point} title={`${h.count} deer heading ${h.point}`}>
               <span className="heading-label">
                 <span className="heading-arrow" style={{ transform: `rotate(${h.deg}deg)` }} aria-hidden>
-                  ↑
+                  <Icon name="arrow" size={12} />
                 </span>
                 {h.point}
               </span>

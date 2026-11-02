@@ -1,6 +1,8 @@
 import type { PointerEvent } from 'react';
 
-import { DISTANCE_BANDS, kindInfo, whereLabel } from '@/lib/reports';
+import { Icon } from '@/components/Icon';
+
+import { DISTANCE_BANDS, kindInfo, MAX_YARDS, whereLabel } from '@/lib/reports';
 import type { Sighting } from '@/types/models';
 
 type Where = NonNullable<Sighting['fromStand']>;
@@ -13,8 +15,19 @@ const CENTER = 16;
 // Half the drawing's width: the target plus room for N/E/S/W outside it.
 const SIZE = OUTER + 20;
 
+// Ring radius for any distance: straight between the rings, capped at the edge.
+function radiusFor(yards: number): number {
+  const stops: [number, number][] = [[0, 0], ...DISTANCE_BANDS.map((b) => [b, BAND_RADIUS[b]] as [number, number])];
+  for (let i = 1; i < stops.length; i++) {
+    const [y0, r0] = stops[i - 1];
+    const [y1, r1] = stops[i];
+    if (yards <= y1) return r0 + ((yards - y0) / (y1 - y0)) * (r1 - r0);
+  }
+  return OUTER;
+}
+
 function spotOf(where: Where): [number, number] {
-  const r = BAND_RADIUS[where.yards] ?? OUTER;
+  const r = radiusFor(where.yards);
   const rad = (where.bearingDeg * Math.PI) / 180;
   return [Math.sin(rad) * r, -Math.cos(rad) * r];
 }
@@ -44,6 +57,31 @@ export function WherePicker(props: { value: Where | null; onChange(value: Where 
       <div className="where-head">
         <span>Where were they?</span>
         <span className="muted">{label ? `${label} of you` : 'Tap the spot · north is up'}</span>
+      </div>
+      <div className="where-yards-row">
+        <label>
+          <span>Distance</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={MAX_YARDS}
+            placeholder={props.value ? '' : 'tap first'}
+            disabled={!props.value}
+            value={props.value ? Math.round(props.value.yards) : ''}
+            onChange={(e) => {
+              if (!props.value || e.target.value === '') return;
+              props.onChange({ ...props.value, yards: Math.min(MAX_YARDS, Math.max(1, Number(e.target.value))) });
+            }}
+            aria-label="Yards from the stand"
+          />
+          <span>yd</span>
+        </label>
+        {props.value && (
+          <button className="where-clear" onClick={() => props.onChange(null)} aria-label="Clear where they were">
+            <Icon name="close" size={16} /> Clear
+          </button>
+        )}
       </div>
       <svg viewBox={`${-SIZE} ${-SIZE} ${SIZE * 2} ${SIZE * 2}`} onPointerDown={pick} role="img" aria-label={label ? `Seen ${label} of the stand` : 'Pick where they were'}>
         <circle r={OUTER} className="where-outer" />
@@ -75,7 +113,7 @@ export function WherePicker(props: { value: Where | null; onChange(value: Where 
             const [x, y] = spotOf(s.fromStand!);
             const color = kindInfo(s.kind).color;
             return s.headingDeg === null ? (
-              <circle key={s.id} cx={x} cy={y} r={5} fill={color} className="where-logged" />
+              <rect key={s.id} x={x - 5} y={y - 10} width={10} height={20} rx={5} fill={color} className="where-logged" />
             ) : (
               <g key={s.id} transform={`translate(${x} ${y}) rotate(${s.headingDeg})`} className="where-logged">
                 <rect x={-5} y={-10} width={10} height={20} rx={5} fill={color} />

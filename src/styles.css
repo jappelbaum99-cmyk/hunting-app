@@ -2150,7 +2150,9 @@ button.log-hunt {
 
 .kind-chips button.active {
   background: var(--deer);
-  color: #1c130d;
+  color: #fff7ec;
+  box-shadow: inset 0 0 0 1.5px #f7efe6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   font-weight: 700;
 }
 
@@ -2722,4 +2724,18 @@ body.resizing .sidebar-resize::after {
 body.resizing {
   cursor: col-resize;
   user-select: none;
+}
+
+.stand-history .type-dot {
+  box-shadow: 0 0 0 1.5px #f7efe6;
+}
+
+.from-stand select,
+.from-stand input {
+  width: 100%;
+}
+
+.stepper button {
+  display: inline-grid;
+  place-items: center;
 }

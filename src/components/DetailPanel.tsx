@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Icon } from '@/components/Icon';
 
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, WIND_MARKER_TYPES, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
@@ -52,7 +53,7 @@ export function DetailPanel(props: DetailPanelProps) {
       <header className="detail-header">
         <h2>{heading}</h2>
         <button className="icon" onClick={onClose} title="Close (Esc)">
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </header>
 

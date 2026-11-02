@@ -192,14 +192,21 @@ function addFeatureLayers(map: maplibregl.Map): void {
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
   // is a dot. Pill images are drawn per kind on a canvas below.
-  for (const kind of Object.keys(DEER_KINDS) as DeerKind[]) map.addImage(`pill-${kind}`, pillImage(DEER_KINDS[kind].color), { pixelRatio: 2 });
+  for (const kind of Object.keys(DEER_KINDS) as DeerKind[]) {
+    map.addImage(`pill-${kind}`, pillImage(DEER_KINDS[kind].color, true), { pixelRatio: 2 });
+    map.addImage(`pill-still-${kind}`, pillImage(DEER_KINDS[kind].color, false), { pixelRatio: 2 });
+  }
   map.addSource('sightings', { type: 'geojson', data: EMPTY });
   map.addLayer({
-    id: 'sighting-dots',
-    type: 'circle',
+    id: 'sighting-pills-still',
+    type: 'symbol',
     source: 'sightings',
-    filter: ['all', ['!', ['has', 'heading']], ['!', ['has', 'icon']]],
-    paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#1c130d', 'circle-stroke-width': 2 },
+    filter: ['!', ['has', 'heading']],
+    layout: {
+      'icon-image': ['concat', 'pill-still-', ['get', 'kind']],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
   });
   map.addLayer({
     id: 'sighting-pills',
@@ -219,7 +226,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'sighting-pill-icons',
     type: 'symbol',
     source: 'sightings',
-    filter: ['all', ['has', 'heading'], ['has', 'icon']],
+    filter: ['has', 'icon'],
     layout: {
       'icon-image': ['concat', 'animal-ink-', ['get', 'icon']],
       'icon-allow-overlap': true,
@@ -227,23 +234,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     },
   });
 
-  // Turkeys, bears and other animals: their icon on a dark badge, so they're
-  // told apart by shape (they share one color). Images load below.
-  map.addLayer({
-    id: 'sighting-animals',
-    type: 'symbol',
-    source: 'sightings',
-    filter: ['all', ['has', 'icon'], ['!', ['has', 'heading']]],
-    layout: {
-      'icon-image': ['concat', 'animal-', ['get', 'icon']],
-      'icon-allow-overlap': true,
-      'icon-ignore-placement': true,
-    },
-  });
   for (const icon of ANIMAL_ICONS) {
-    void animalBadgeImage(icon).then((image) => {
-      if (!map.hasImage(`animal-${icon}`)) map.addImage(`animal-${icon}`, image, { pixelRatio: 2 });
-    });
     void iconImage(icon, 22, '#1c130d').then((image) => {
       if (!map.hasImage(`animal-ink-${icon}`)) map.addImage(`animal-ink-${icon}`, image, { pixelRatio: 2 });
     });
@@ -325,26 +316,10 @@ async function iconImage(icon: IconName, size: number, ink: string): Promise<Ima
   return ctx.getImageData(0, 0, size, size);
 }
 
-// An animal icon in light ink on a round dark badge (animals that weren't moving).
-async function animalBadgeImage(icon: IconName): Promise<ImageData> {
-  const size = 52;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#1c130d';
-  ctx.strokeStyle = '#c3c2b7';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.drawImage(await iconBitmap(icon, 32, '#f0efec'), (size - 32) / 2, (size - 32) / 2, 32, 32);
-  return ctx.getImageData(0, 0, size, size);
-}
-
-// A pill pointing up (north) with a chevron at its front end; the layer turns
-// it to face the way the animal went. Drawn at 2x for sharp edges.
-function pillImage(color: string): ImageData {
+// A pill pointing up (north), with a chevron at its front end when the animal
+// was moving; the layer turns it to face the way it went. A cream outline keeps
+// dark browns visible on the map. Drawn at 2x for sharp edges.
+function pillImage(color: string, moving: boolean): ImageData {
   const w = 30;
   const h = 64;
   const pad = 3;
@@ -363,8 +338,9 @@ function pillImage(color: string): ImageData {
   ctx.fillStyle = color;
   ctx.fill();
   ctx.lineWidth = 4;
-  ctx.strokeStyle = '#1c130d';
+  ctx.strokeStyle = '#f7efe6';
   ctx.stroke();
+  if (!moving) return ctx.getImageData(0, 0, canvas.width, canvas.height);
   // Chevron near the front.
   ctx.beginPath();
   ctx.moveTo(r - 8, 19);
@@ -589,7 +565,7 @@ export function MapView(props: MapViewProps) {
       }
       // Areas win over the sections they sit in.
       // A deer sighting opens its hunt report.
-      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-pills', 'sighting-pill-icons', 'sighting-dots', 'sighting-animals'] })[0];
+      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-pills', 'sighting-pills-still', 'sighting-pill-icons'] })[0];
       if (deer) {
         onSelect({ kind: 'report', id: deer.properties.reportId as string });
         return;
@@ -608,7 +584,7 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
     });
 
-    for (const layer of ['area-fill', 'section-fill', 'sighting-pills', 'sighting-pill-icons', 'sighting-dots', 'sighting-animals']) {
+    for (const layer of ['area-fill', 'section-fill', 'sighting-pills', 'sighting-pills-still', 'sighting-pill-icons']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
       });

@@ -273,7 +273,7 @@ export function Sidebar(props: SidebarProps) {
                       Add
                     </button>
                     <button className="mini" onClick={() => props.onFieldPin(p.id, 'dismiss')} title="Dismiss">
-                      ✕
+                      <Icon name="close" size={16} />
                     </button>
                   </li>
                 ))}

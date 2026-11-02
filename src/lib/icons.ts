@@ -42,6 +42,14 @@ const ICON_SHAPES = {
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   family:
     '<circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.4 2.4-5.8 5.5-5.8s5.5 2.4 5.5 5.8"/><circle cx="17" cy="9.6" r="2.4"/><path d="M15.6 14.5c.4-.1.9-.2 1.4-.2 2.4 0 4 1.9 4 5"/>',
+  // Small interface symbols, so nothing falls back to a phone's emoji style.
+  check: '<path d="M5 12.5 9.8 17 19 7"/>',
+  arrow: '<path d="M12 20V4.5M6 10.5 12 4.5l6 6"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  minus: '<path d="M5 12h14"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  'chevron-right': '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
+  steady: '<path d="M4.5 12H19M13.5 6.5 19 12l-5.5 5.5"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>',
   pause: '<path d="M8 5.5h2.6v13H8zM13.4 5.5H16v13h-2.6z" fill="currentColor"/>',
 } as const;

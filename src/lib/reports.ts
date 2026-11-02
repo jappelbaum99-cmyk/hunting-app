@@ -12,16 +12,16 @@ interface KindInfo {
   deer: boolean;
 }
 
-// Buck, doe and fawn use colors checked to stay distinct from each other
-// (including for color blindness) on the dark map. Everything else shares one
-// neutral and is told apart by its icon, with its name beside it.
+// Deer are browns, darkest for bucks and lightest for fawns, and always drawn
+// with a cream outline so they stand out on the map. Other animals share one
+// neutral and are told apart by their icon, with their name beside it.
 const NEUTRAL = '#c3c2b7';
 
 export const DEER_KINDS: Record<DeerKind, KindInfo> = {
-  buck: { label: 'Buck', plural: 'bucks', color: '#d95926', icon: 'deer', deer: true },
-  doe: { label: 'Doe', plural: 'does', color: '#3987e5', icon: 'deer', deer: true },
-  fawn: { label: 'Fawn', plural: 'fawns', color: '#199e70', icon: 'deer', deer: true },
-  unknown: { label: 'Deer', plural: 'deer', color: NEUTRAL, icon: 'deer', deer: true },
+  buck: { label: 'Buck', plural: 'bucks', color: '#4a2a12', icon: 'deer', deer: true },
+  doe: { label: 'Doe', plural: 'does', color: '#8b5a2f', icon: 'deer', deer: true },
+  fawn: { label: 'Fawn', plural: 'fawns', color: '#c4935c', icon: 'deer', deer: true },
+  unknown: { label: 'Deer', plural: 'deer', color: '#a07a55', icon: 'deer', deer: true },
   turkey: { label: 'Turkey', plural: 'turkeys', color: NEUTRAL, icon: 'turkey', deer: false },
   bear: { label: 'Bear', plural: 'bears', color: NEUTRAL, icon: 'bear', deer: false },
   other: { label: 'Other', plural: 'other', color: NEUTRAL, icon: 'binoculars', deer: false },
@@ -90,13 +90,14 @@ export function sightingSummary(report: Pick<HuntReport, 'sightings'>): string {
 // Distance bands for "where seen", in yards. The last one means "farther".
 export const DISTANCE_BANDS = [50, 100, 200, 300] as const;
 
-// "~100 yd NE", "200+ yd W", or null when not given.
+// Farthest distance a sighting can be from its stand, in yards.
+export const MAX_YARDS = 800;
+
+// "~140 yd NE", or null when not given.
 export function whereLabel(s: Pick<Sighting, 'fromStand'>): string | null {
   if (!s.fromStand) return null;
   const point = COMPASS_POINTS[Math.round((((s.fromStand.bearingDeg % 360) + 360) % 360) / 45) % 8];
-  const last = DISTANCE_BANDS[DISTANCE_BANDS.length - 1];
-  const yards = s.fromStand.yards >= last ? `${DISTANCE_BANDS[DISTANCE_BANDS.length - 2]}+` : `~${s.fromStand.yards}`;
-  return `${yards} yd ${point}`;
+  return `~${Math.round(s.fromStand.yards)} yd ${point}`;
 }
 
 // For <input type="date"> and <input type="time">, in the PC's local time.

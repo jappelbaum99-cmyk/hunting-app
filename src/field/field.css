@@ -239,7 +239,9 @@ textarea {
 
 .kind-row button.active {
   background: var(--deer);
-  color: #1c130d;
+  color: #fff7ec;
+  box-shadow: inset 0 0 0 2px #f7efe6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .count-row {
@@ -662,13 +664,13 @@ textarea {
 }
 
 .where-logged {
-  stroke: var(--dark-brown);
+  stroke: #f7efe6;
   stroke-width: 1.5;
 }
 
 .where-chevron {
   fill: none;
-  stroke: var(--dark-brown);
+  stroke: #f7efe6;
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -715,4 +717,57 @@ textarea {
 .weather-age {
   margin: 0;
   font-size: 12px;
+}
+
+.where-yards-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.where-yards-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.where-yards-row input {
+  width: 90px;
+  padding: 10px 12px;
+  font-size: 18px;
+  text-align: center;
+}
+
+.where-yards-row input:disabled {
+  opacity: 0.5;
+}
+
+.where-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.camp-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-hint {
+  display: inline-flex;
+  align-items: center;
+}
+
+.count-row button {
+  display: grid;
+  place-items: center;
+}
+
+.type-dot {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }

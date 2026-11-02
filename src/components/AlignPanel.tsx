@@ -1,4 +1,5 @@
 import { ImagePointPicker } from '@/components/ImagePointPicker';
+import { Icon } from '@/components/Icon';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import type { ControlPoint } from '@/types/models';
 
@@ -59,7 +60,7 @@ export function AlignPanel({ draft, saving, onChange, onSave, onCancel }: AlignP
       <header className="detail-header">
         <h2>Line up map image</h2>
         <button className="icon" onClick={onCancel} title="Cancel">
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </header>
 
@@ -96,7 +97,7 @@ export function AlignPanel({ draft, saving, onChange, onSave, onCancel }: AlignP
                   title="Remove point"
                   onClick={() => onChange({ ...draft, points: draft.points.filter((_, j) => j !== i) })}
                 >
-                  ✕
+                  <Icon name="close" size={16} />
                 </button>
               </li>
             ))}

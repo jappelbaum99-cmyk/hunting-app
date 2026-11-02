@@ -51,7 +51,7 @@ export function SectionPanel(props: SectionPanelProps) {
       <header className="detail-header">
         <h2>Section</h2>
         <button className="icon" onClick={props.onClose} title="Close (Esc)">
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </header>
 
@@ -132,7 +132,7 @@ function PlanEditor(props: SectionPanelProps & { plan: Plan }) {
           ‹ {section.name}
         </button>
         <button className="icon" onClick={props.onClose} title="Close (Esc)">
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </header>
 
@@ -331,7 +331,7 @@ function Checklist({ plan, onChange }: { plan: Plan; onChange(tasks: Plan['tasks
               <span>{task.text}</span>
             </label>
             <button className="icon" title="Remove" onClick={() => onChange(plan.tasks.filter((t) => t.id !== task.id))}>
-              ✕
+              <Icon name="close" size={16} />
             </button>
           </li>
         ))}

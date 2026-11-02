@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from '@/components/Icon';
 
 import {
   BASE_MAPS,
@@ -62,7 +63,7 @@ export function LayerPanel({ layers, onChange }: LayerPanelProps) {
           <div className="layer-card-header">
             <h3>Choose Map</h3>
             <button className="icon" onClick={() => setOpen(false)} title="Close">
-              ✕
+              <Icon name="close" size={16} />
             </button>
           </div>
 

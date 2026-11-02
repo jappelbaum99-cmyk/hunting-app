@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
 
 import { compassPointOf } from '@/lib/standRating';
-import { DEER_KINDS, fromDateTimeInputs, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
+import { DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
 import type { DeerKind, HuntReport, MapMarker, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
@@ -31,7 +31,7 @@ export function ReportPanel(props: ReportPanelProps) {
       <header className="detail-header">
         <h2>Hunt report</h2>
         <button className="icon" onClick={props.onClose} title="Close (Esc)">
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </header>
 
@@ -154,8 +154,8 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
             </button>
           ))}
         </div>
-        <button className="icon" title="Remove" onClick={props.onRemove}>
-          ✕
+        <button className="icon" title="Remove" aria-label="Remove sighting" onClick={props.onRemove}>
+          <Icon name="close" size={16} />
         </button>
       </div>
 
@@ -164,11 +164,11 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
           <span className="field-label">How many</span>
           <span className="stepper">
             <button onClick={() => onChange({ count: Math.max(1, s.count - 1) })} aria-label="Fewer">
-              −
+              <Icon name="minus" size={14} />
             </button>
             <strong>{s.count}</strong>
             <button onClick={() => onChange({ count: s.count + 1 })} aria-label="More">
-              +
+              <Icon name="plus" size={14} />
             </button>
           </span>
         </label>
@@ -216,12 +216,57 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
           </button>
         ))}
         <span className="heading-center" title={s.headingDeg === null ? 'Not moving / unknown' : undefined}>
-          {s.headingDeg === null ? '•' : <span style={{ transform: `rotate(${s.headingDeg}deg)` }}>↑</span>}
+          {s.headingDeg === null ? (
+            '•'
+          ) : (
+            <span style={{ display: 'inline-grid', transform: `rotate(${s.headingDeg}deg)` }}>
+              <Icon name="arrow" size={18} />
+            </span>
+          )}
         </span>
       </div>
 
+      <div className="field-label">Where they were from the stand</div>
+      <div className="range-row from-stand">
+        <label>
+          <span className="field-label">Distance (yd)</span>
+          <input
+            type="number"
+            min={1}
+            max={MAX_YARDS}
+            placeholder="e.g. 140"
+            value={s.fromStand ? Math.round(s.fromStand.yards) : ''}
+            onChange={(e) => {
+              if (e.target.value === '') return onChange({ fromStand: null });
+              const yards = Math.min(MAX_YARDS, Math.max(1, Number(e.target.value)));
+              onChange({ fromStand: { bearingDeg: s.fromStand?.bearingDeg ?? 0, yards }, lat: null, lng: null });
+            }}
+          />
+        </label>
+        <label>
+          <span className="field-label">Direction</span>
+          <select
+            value={s.fromStand ? String(Math.round(s.fromStand.bearingDeg / 45) * 45 % 360) : ''}
+            onChange={(e) =>
+              onChange(
+                e.target.value === ''
+                  ? { fromStand: null }
+                  : { fromStand: { bearingDeg: Number(e.target.value), yards: s.fromStand?.yards ?? 100 }, lat: null, lng: null },
+              )
+            }
+          >
+            <option value="">At the stand</option>
+            {HEADINGS.map((h) => (
+              <option key={h.point} value={h.deg}>
+                {h.point}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div className="sighting-where">
-        <span className="muted">{s.lat !== null ? 'Placed on the map' : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}</span>
+        <span className="muted">{s.lat !== null ? 'Placed on the map (overrides distance)' : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}</span>
         <button className="link" onClick={props.onPlace}>
           {s.lat !== null ? 'Move on map' : 'Place on map'}
         </button>

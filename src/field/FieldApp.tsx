@@ -240,7 +240,13 @@ function WeatherNow({ forecast, offline }: { forecast: Forecast | null; offline:
       </div>
       <div className="weather-now-pressure">
         <span className={`pressure-trend ${pressure.trend}`} aria-hidden>
-          {pressure.trend === 'rising' ? '↑' : pressure.trend === 'falling' ? '↓' : '→'}
+          {pressure.trend === 'steady' ? (
+            <Icon name="steady" size={14} />
+          ) : (
+            <span style={{ display: 'inline-grid', transform: pressure.trend === 'falling' ? 'rotate(180deg)' : undefined }}>
+              <Icon name="arrow" size={14} />
+            </span>
+          )}
         </span>
         Pressure {formatPressure(pressure)}
         <span className="muted"> ({pressure.changeInHg >= 0 ? '+' : ''}{pressure.changeInHg.toFixed(2)} in 3 h)</span>
@@ -369,7 +375,9 @@ function HuntTab(props: {
                             {clock(r.start)} · {sightingSummary(r)}
                           </span>
                         </span>
-                        <span className="edit-hint">Edit ›</span>
+                        <span className="edit-hint">
+                          Edit <Icon name="chevron-right" size={14} />
+                        </span>
                       </button>
                     </li>
                   ) : (
@@ -488,11 +496,11 @@ function QuickLog(props: {
 
       <div className="count-row">
         <button onClick={() => setCount(Math.max(1, count - 1))} aria-label="Fewer">
-          −
+          <Icon name="minus" size={24} />
         </button>
         <strong>{count}</strong>
         <button onClick={() => setCount(count + 1)} aria-label="More">
-          +
+          <Icon name="plus" size={24} />
         </button>
       </div>
 
@@ -505,7 +513,15 @@ function QuickLog(props: {
             {h.point}
           </button>
         ))}
-        <span className="h-C">{heading === null ? 'Still' : <span style={{ display: 'inline-block', transform: `rotate(${heading}deg)` }}>↑</span>}</span>
+        <span className="h-C">
+          {heading === null ? (
+            'Still'
+          ) : (
+            <span style={{ display: 'inline-grid', transform: `rotate(${heading}deg)` }}>
+              <Icon name="arrow" size={26} />
+            </span>
+          )}
+        </span>
       </div>
 
       <button className="big-button" onClick={save} aria-label={saveLabel}>
@@ -652,7 +668,10 @@ function FieldStandHistory({ stats, reports }: { stats: StandStats; reports: Hun
             {stats.headings.map((h) => (
               <li key={h.point}>
                 <span className="heading-label">
-                  <span style={{ display: 'inline-block', transform: `rotate(${h.deg}deg)` }}>↑</span> {h.point}
+                  <span style={{ display: 'inline-grid', transform: `rotate(${h.deg}deg)` }}>
+                    <Icon name="arrow" size={12} />
+                  </span>{' '}
+                  {h.point}
                 </span>
                 <span className="heading-track">{h.count > 0 && <span className="heading-bar" style={{ width: `${(h.count / most) * 100}%` }} />}</span>
                 <span className="heading-count">{h.count || ''}</span>
@@ -773,8 +792,9 @@ function CampCard(props: { data: FieldData; sync: CampStatus; onData(update: (d:
           You're <strong>{camp.hunter}</strong>. Your pins and hunts go to camp on their own whenever you have signal.
         </p>
         <p className={`camp-status${sync.waiting === 0 ? ' ok' : ''}`}>
+          {sync.waiting === 0 && <Icon name="check" size={18} />}
           {sync.waiting === 0
-            ? '✓ Everything is at camp'
+            ? 'Everything is at camp'
             : `${sync.waiting} waiting to send${sync.online ? '…' : ' (no signal yet)'}`}
         </p>
         {sync.error && sync.online && <p className="field-warn">Couldn't reach camp: {sync.error}</p>}
