@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { isHuntingSpot, pinTypeInfo } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
@@ -6,6 +6,7 @@ import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
+import { FIELD_PAGE_URL } from '@/lib/site';
 import { formatDistance, lineLengthM, trailKindInfo } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
@@ -18,11 +19,9 @@ interface SidebarProps {
   onLogHunt(): void;
   // GPS pins from the phone that haven't been added or dismissed yet.
   newFieldPins: FieldPin[];
-  onImportPhone(file: File): void;
   // The camp phones send hunts and pins to, and the last problem reaching it.
   camp: CampLink | null;
   campError: string | null;
-  onSendStands(): void;
   // Map files for sharing with someone else's hub.
   onExportMap(): void;
   onImportMap(file: File): void;
@@ -69,7 +68,6 @@ const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(
 export function Sidebar(props: SidebarProps) {
   const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
-  const phoneInput = useRef<HTMLInputElement>(null);
   const mapInput = useRef<HTMLInputElement>(null);
   const needle = query.trim().toLowerCase();
   const matches = <T extends { name: string }>(list: T[]) =>
@@ -85,16 +83,6 @@ export function Sidebar(props: SidebarProps) {
   const shownSections = matches(props.sections);
   const shownTrails = matches(props.trails);
 
-  const phoneFileButtons = () => (
-    <div className="phone-buttons">
-      <button onClick={() => phoneInput.current?.click()} title="Bring in pins and hunts sent from the phone">
-        Import from phone
-      </button>
-      <button onClick={props.onSendStands} title="Make the file the phone loads for its stand list and Apple Maps buttons">
-        Send stands to phone
-      </button>
-    </div>
-  );
   const nothingFound =
     needle !== '' &&
     shownProperties.length + shownSections.length + stands.length + otherPins.length + shownAreas.length + shownOverlays.length === 0;
@@ -219,68 +207,7 @@ export function Sidebar(props: SidebarProps) {
         </Section>
 
         {needle === '' && (
-          <section className="sidebar-section">
-            <h2>Share</h2>
-            <div className="phone-buttons">
-              <button onClick={props.onExportMap} title="Save every property, pin, area, plan, hunt and map image as one file to send">
-                Export whole map
-              </button>
-              <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
-                Import a map file
-              </button>
-            </div>
-            <p className="share-hint">To share one property, open it and press Share.</p>
-            <input
-              ref={mapInput}
-              type="file"
-              accept=".json,application/json"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) props.onImportMap(file);
-              }}
-            />
-          </section>
-        )}
-
-        {needle === '' && (
-          <section className="sidebar-section">
-            <h2>
-              Phone <span className="count">{props.newFieldPins.length + props.newFieldTracks.length ? `${props.newFieldPins.length + props.newFieldTracks.length} new` : ''}</span>
-            </h2>
-            {props.camp ? (
-              <p className="camp-live">
-                <Icon name="camp" size={15} /> <strong>{props.camp.name}</strong>: hunts and pins arrive by themselves.
-                {props.campError && <span className="error-text"> Can't reach camp right now ({props.campError}).</span>}
-              </p>
-            ) : (
-              <p className="camp-live">
-                <button className="link-button" onClick={props.onOpenSettings}>
-                  Set up camp sync
-                </button>{' '}
-                to get phone hunts and pins without files.
-              </p>
-            )}
-            {props.camp ? (
-              <details className="camp-join">
-                <summary>Use files instead</summary>
-                {phoneFileButtons()}
-              </details>
-            ) : (
-              phoneFileButtons()
-            )}
-            <input
-              ref={phoneInput}
-              type="file"
-              accept=".json,application/json"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) props.onImportPhone(file);
-              }}
-            />
+          <PhoneDrop camp={props.camp} campError={props.campError} newCount={props.newFieldPins.length + props.newFieldTracks.length} onOpenSettings={props.onOpenSettings}>
             {props.newFieldTracks.length > 0 && (
               <ul>
                 {props.newFieldTracks.map((t) => (
@@ -325,7 +252,7 @@ export function Sidebar(props: SidebarProps) {
                 ))}
               </ul>
             )}
-          </section>
+          </PhoneDrop>
         )}
 
         {needle === '' && (
@@ -402,6 +329,32 @@ export function Sidebar(props: SidebarProps) {
             />
           ))}
         </Section>
+
+        {needle === '' && (
+          <section className="sidebar-section">
+            <h2>Share</h2>
+            <div className="phone-buttons">
+              <button onClick={props.onExportMap} title="Save every property, pin, area, plan, hunt and map image as one file to send">
+                Export whole map
+              </button>
+              <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
+                Import a map file
+              </button>
+            </div>
+            <p className="share-hint">To share one property, open it and press Share.</p>
+            <input
+              ref={mapInput}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) props.onImportMap(file);
+              }}
+            />
+          </section>
+        )}
       </>
     );
   }
@@ -590,5 +543,78 @@ function ResizeHandle(props: { width: number; onResize(width: number): void; onR
         props.onResizeEnd(next);
       }}
     />
+  );
+}
+
+// The Phone section: how to join from a phone (web address and camp code),
+// plus walks and pins waiting to be added. Opens by itself when something new arrives.
+function PhoneDrop(props: { camp: CampLink | null; campError: string | null; newCount: number; onOpenSettings(): void; children: ReactNode }) {
+  const [open, setOpen] = useState(props.newCount > 0);
+  const [copied, setCopied] = useState<string | null>(null);
+  const seen = useRef(props.newCount);
+  useEffect(() => {
+    if (props.newCount > seen.current) setOpen(true);
+    seen.current = props.newCount;
+  }, [props.newCount]);
+
+  const copy = (what: string, text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
+
+  return (
+    <section className="sidebar-section phone-drop">
+      <button className="section-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <h2>
+          Phone <span className="count">{props.newCount ? `${props.newCount} new` : props.camp ? props.camp.name : ''}</span>
+        </h2>
+        <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="phone-join">
+          <ol>
+            <li>
+              On the phone, open
+              <span className="copy-row">
+                <code>{FIELD_PAGE_URL.replace('https://', '')}</code>
+                <button className="mini" onClick={() => copy('url', FIELD_PAGE_URL)}>
+                  {copied === 'url' ? 'Copied' : 'Copy'}
+                </button>
+              </span>
+              <span className="muted">In Safari, Share › Add to Home Screen.</span>
+            </li>
+            {props.camp ? (
+              <li>
+                On its Camp tab, enter a name and the camp code
+                <span className="copy-row">
+                  <code className="camp-code-text">{props.camp.code}</code>
+                  <button className="mini" onClick={() => copy('code', props.camp!.code)}>
+                    {copied === 'code' ? 'Copied' : 'Copy'}
+                  </button>
+                </span>
+              </li>
+            ) : (
+              <li>
+                <button className="link-button" onClick={props.onOpenSettings}>
+                  Start camp sync in Settings
+                </button>{' '}
+                to get a camp code. Until then, phones send files (Settings › Phone files).
+              </li>
+            )}
+          </ol>
+          {props.camp && (
+            <p className="camp-live">
+              <Icon name="camp" size={15} /> Hunts, pins and walks from <strong>{props.camp.name}</strong> arrive by themselves.
+              {props.campError && <span className="error-text"> Can't reach camp right now ({props.campError}).</span>}
+            </p>
+          )}
+          {props.children}
+        </div>
+      )}
+    </section>
   );
 }

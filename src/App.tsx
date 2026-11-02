@@ -867,13 +867,11 @@ export function App() {
         newFieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
         onFieldTrack={handleFieldTrack}
         trails={hub.trails}
-        onImportPhone={(file) => void importPhone(file)}
         width={sidebarWidth}
         onResize={setSidebarWidth}
         onResizeEnd={saveSidebarWidth}
         camp={hub.settings.camp ?? null}
         campError={camp.error}
-        onSendStands={sendStandsToPhone}
         onExportMap={() => void exportMap(null)}
         onImportMap={(file) => void importMap(file)}
         onFieldPin={handleFieldPin}
@@ -885,7 +883,13 @@ export function App() {
         dataPath={isDesktop ? dataPath : null}
         view={
           settingsOpen ? (
-            <SettingsPanel settings={hub.settings} onChange={hub.saveSettings} onClose={() => setSettingsOpen(false)} />
+            <SettingsPanel
+              settings={hub.settings}
+              onChange={hub.saveSettings}
+              onClose={() => setSettingsOpen(false)}
+              onImportPhone={(file) => void importPhone(file)}
+              onSendStands={sendStandsToPhone}
+            />
           ) : summaryOpen ? (
             <SummaryPanel
               properties={hub.properties}

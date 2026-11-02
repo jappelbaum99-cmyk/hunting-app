@@ -1,7 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
+import { FIELD_PAGE_URL } from '@/lib/site';
 import { Icon } from '@/components/Icon';
 import { pinTypeList } from '@/lib/featureTypes';
 import { AREA_ICON_NAMES } from '@/lib/icons';
@@ -20,6 +21,9 @@ interface SettingsPanelProps {
   settings: HubSettings;
   onChange(settings: HubSettings): void;
   onClose(): void;
+  // Phone files, for phones not in a camp (or with no signal at all).
+  onImportPhone(file: File): void;
+  onSendStands(): void;
 }
 
 // A pin drawn the same way as on the map, for previews.
@@ -57,7 +61,7 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
   );
 }
 
-export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
   const setPinType = (id: string, patch: Partial<CustomPinType>) =>
@@ -75,6 +79,7 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
       </div>
 
       <CampSettings camp={settings.camp ?? null} onChange={(camp) => onChange({ ...settings, camp })} />
+      <PhoneFiles onImportPhone={onImportPhone} onSendStands={onSendStands} />
 
       <section className="sidebar-section">
         <h2>Drawing</h2>
@@ -338,6 +343,39 @@ function SavedMaps() {
       >
         Clear saved maps
       </button>
+    </section>
+  );
+}
+
+// Moving pins, hunts and walks by file, for a phone that isn't in the camp.
+function PhoneFiles({ onImportPhone, onSendStands }: { onImportPhone(file: File): void; onSendStands(): void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <section className="sidebar-section">
+      <h2>Phone files</h2>
+      <p className="hint">For a phone that isn't in the camp. The phone's Send tab saves a file; email or AirDrop it here.</p>
+      <div className="phone-buttons">
+        <button onClick={() => input.current?.click()} title="Bring in pins, hunts and walks sent from a phone">
+          Import from phone
+        </button>
+        <button onClick={onSendStands} title="Make the file a phone loads for its stand list and Apple Maps buttons">
+          Send stands to phone
+        </button>
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) onImportPhone(file);
+        }}
+      />
+      <p className="hint">
+        Phone page: <code>{FIELD_PAGE_URL.replace('https://', '')}</code>
+      </p>
     </section>
   );
 }
