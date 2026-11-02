@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { publishPinTypes, sendStand, watchHunts, watchPins, watchStands, type CampStand } from '@/lib/camp';
-import type { CampLink, CustomPinType, FieldPin, HuntReport } from '@/types/models';
+import { publishPinTypes, sendStand, watchHunts, watchPins, watchStands, watchTracks, type CampStand } from '@/lib/camp';
+import type { CampLink, CustomPinType, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 // Wait for edits to settle before publishing stands.
 const PUBLISH_DELAY_MS = 1500;
@@ -11,7 +11,7 @@ const PUBLISH_DELAY_MS = 1500;
 export function useHubCamp(
   camp: CampLink | null,
   stands: CampStand[],
-  onIncoming: (incoming: { reports: HuntReport[]; pins: FieldPin[] }) => void,
+  onIncoming: (incoming: { reports: HuntReport[]; pins: FieldPin[]; tracks: FieldTrack[] }) => void,
   pinTypes: CustomPinType[] = [],
 ): { error: string | null } {
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +24,9 @@ export function useHubCamp(
     if (!camp) return;
     const ok = () => setError(null);
     const stops = [
-      watchHunts(camp, (reports) => (ok(), incoming.current({ reports, pins: [] })), setError),
-      watchPins(camp, (pins) => (ok(), incoming.current({ reports: [], pins })), setError),
+      watchHunts(camp, (reports) => (ok(), incoming.current({ reports, pins: [], tracks: [] })), setError),
+      watchPins(camp, (pins) => (ok(), incoming.current({ reports: [], pins, tracks: [] })), setError),
+      watchTracks(camp, (tracks) => (ok(), incoming.current({ reports: [], pins: [], tracks })), setError),
     ];
     if (camp.isOwner) stops.push(watchStands(camp, (list) => setPublished(new Map(list.map((s) => [s.id, s]))), setError));
     return () => {

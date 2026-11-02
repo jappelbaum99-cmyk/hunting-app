@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { FieldData } from '@/field/fieldData';
-import { sendHunt, sendPin, watchHunts, watchPinTypes, watchStands } from '@/lib/camp';
+import { sendHunt, sendPin, sendTrack, watchHunts, watchPinTypes, watchStands } from '@/lib/camp';
 
 const RETRY_MS = 30_000;
 
@@ -73,6 +73,7 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
   const pending = camp
     ? [
         ...data.pins.map((p) => ({ id: p.id, version: p.updatedAt, send: () => sendPin(camp, p) })),
+        ...data.tracks.map((t) => ({ id: t.id, version: t.updatedAt, send: () => sendTrack(camp, t) })),
         ...data.reports.map((r) => ({ id: r.id, version: r.updatedAt, send: () => sendHunt(camp, r) })),
       ].filter((item) => data.sent[item.id] !== item.version)
     : [];

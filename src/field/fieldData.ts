@@ -1,6 +1,6 @@
 // What the phone keeps: its own pins and hunt reports, plus the stands sent
 // over from the hub. Stored in the phone browser, so it all works with no signal.
-import type { CampLink, CompassPoint, CustomPinType, FieldPin, HuntReport } from '@/types/models';
+import type { CampLink, CompassPoint, CustomPinType, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export interface FieldStand {
   id: string;
@@ -25,12 +25,15 @@ export interface FieldData {
   campHunts: HuntReport[];
   // Pin types the hub added in Settings, shared through the camp.
   pinTypes: CustomPinType[];
+  // Walks saved on this phone, and the one being recorded right now.
+  tracks: FieldTrack[];
+  activeWalk: { id: string; startedAt: string; points: [number, number][] } | null;
 }
 
 const KEY = 'hunting-hub-field';
 
 export function loadFieldData(): FieldData {
-  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [] };
+  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [], tracks: [], activeWalk: null };
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? { ...empty, ...(JSON.parse(raw) as Partial<FieldData>) } : empty;
@@ -57,6 +60,8 @@ export interface PhoneFile {
   exportedAt: string;
   pins: FieldPin[];
   reports: HuntReport[];
+  // Walks (missing in older files).
+  tracks?: FieldTrack[];
 }
 
 export interface StandsFile {

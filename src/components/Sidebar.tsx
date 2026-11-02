@@ -6,8 +6,9 @@ import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
+import { formatDistance, lineLengthM, trailKindInfo } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
-import type { CampLink, FieldPin, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
+import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
@@ -26,6 +27,10 @@ interface SidebarProps {
   onExportMap(): void;
   onImportMap(file: File): void;
   onFieldPin(id: string, action: 'show' | 'add' | 'dismiss'): void;
+  // Walks recorded on phones that haven't been added or dismissed yet.
+  newFieldTracks: FieldTrack[];
+  onFieldTrack(id: string, action: 'show' | 'add' | 'dismiss'): void;
+  trails: MapTrail[];
   areas: MapArea[];
   markers: MapMarker[];
   overlays: MapImageOverlay[];
@@ -75,6 +80,7 @@ export function Sidebar(props: SidebarProps) {
   const shownAreas = matches(areas);
   const shownOverlays = matches(overlays);
   const shownSections = matches(props.sections);
+  const shownTrails = matches(props.trails);
 
   const phoneFileButtons = () => (
     <div className="phone-buttons">
@@ -223,7 +229,7 @@ export function Sidebar(props: SidebarProps) {
         {needle === '' && (
           <section className="sidebar-section">
             <h2>
-              Phone <span className="count">{props.newFieldPins.length ? `${props.newFieldPins.length} new` : ''}</span>
+              Phone <span className="count">{props.newFieldPins.length + props.newFieldTracks.length ? `${props.newFieldPins.length + props.newFieldTracks.length} new` : ''}</span>
             </h2>
             {props.camp ? (
               <p className="camp-live">
@@ -257,6 +263,28 @@ export function Sidebar(props: SidebarProps) {
                 if (file) props.onImportPhone(file);
               }}
             />
+            {props.newFieldTracks.length > 0 && (
+              <ul>
+                {props.newFieldTracks.map((t) => (
+                  <li key={t.id} className="field-pin-row">
+                    <button className="row" onClick={() => props.onFieldTrack(t.id, 'show')}>
+                      <span className="swatch line dashed" style={{ '--line': '#f7efe6' } as CSSProperties} />
+                      <span className="row-title">{t.name}</span>
+                      <span className="row-detail">
+                        {t.loggedBy ? `${t.loggedBy} · ` : ''}
+                        {formatDistance(t.lengthM)}
+                      </span>
+                    </button>
+                    <button className="mini primary" onClick={() => props.onFieldTrack(t.id, 'add')} title="Make it a trail on the map">
+                      Add
+                    </button>
+                    <button className="mini" onClick={() => props.onFieldTrack(t.id, 'dismiss')} title="Dismiss" aria-label="Dismiss walk">
+                      <Icon name="close" size={16} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {props.newFieldPins.length > 0 && (
               <ul>
                 {props.newFieldPins.map((p) => (
@@ -327,6 +355,19 @@ export function Sidebar(props: SidebarProps) {
               swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
               title={m.name}
               detail={pinTypeInfo(m.type, props.settings.customPinTypes).label}
+            />
+          ))}
+        </Section>
+
+        <Section title="Trails" count={shownTrails.length} searching={needle !== ''} empty="Draw deer trails, paths, roads and fence lines, or walk one with the phone.">
+          {shownTrails.map((t) => (
+            <Row
+              key={t.id}
+              selected={isSelected('trail', t.id)}
+              onClick={() => onPick({ kind: 'trail', id: t.id })}
+              swatch={<span className={`swatch line${trailKindInfo(t.kind).dashed ? ' dashed' : ''}`} style={{ '--line': t.color ?? trailKindInfo(t.kind).color } as CSSProperties} />}
+              title={t.name}
+              detail={`${trailKindInfo(t.kind).label} · ${formatDistance(lineLengthM(t.line.coordinates))}`}
             />
           ))}
         </Section>

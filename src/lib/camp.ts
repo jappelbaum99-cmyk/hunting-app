@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 
 import { CAMP_SYNC_AVAILABLE, FIREBASE_CONFIG } from '@/lib/firebaseConfig';
-import type { CampLink, CompassPoint, CustomPinType, FieldPin, HuntReport } from '@/types/models';
+import type { CampLink, CompassPoint, CustomPinType, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export { CAMP_SYNC_AVAILABLE };
 export type { CampLink };
@@ -33,7 +33,7 @@ export interface CampStand {
   deletedAt: string | null;
 }
 
-type Kind = 'hunts' | 'pins' | 'stands';
+type Kind = 'hunts' | 'pins' | 'stands' | 'tracks';
 
 let services: { app: FirebaseApp; auth: Auth; db: Firestore } | null = null;
 
@@ -128,6 +128,7 @@ export function watchPinTypes(camp: CampLink, onTypes: (types: CustomPinType[]) 
 
 export const sendHunt = (camp: CampLink, report: HuntReport) => put(camp, 'hunts', report.id, report);
 export const sendPin = (camp: CampLink, pin: FieldPin) => put(camp, 'pins', pin.id, pin);
+export const sendTrack = (camp: CampLink, track: FieldTrack) => put(camp, 'tracks', track.id, track);
 export const sendStand = (camp: CampLink, stand: CampStand) => put(camp, 'stands', stand.id, stand);
 
 // Calls back with every record of a kind now, and again whenever one changes.
@@ -159,4 +160,5 @@ function watch<T>(camp: CampLink, kind: Kind, onRecords: (records: T[]) => void,
 
 export const watchHunts = (camp: CampLink, on: (r: HuntReport[]) => void, onError: (m: string) => void) => watch(camp, 'hunts', on, onError);
 export const watchPins = (camp: CampLink, on: (p: FieldPin[]) => void, onError: (m: string) => void) => watch(camp, 'pins', on, onError);
+export const watchTracks = (camp: CampLink, on: (t: FieldTrack[]) => void, onError: (m: string) => void) => watch(camp, 'tracks', on, onError);
 export const watchStands = (camp: CampLink, on: (s: CampStand[]) => void, onError: (m: string) => void) => watch(camp, 'stands', on, onError);

@@ -771,3 +771,46 @@ textarea {
 .type-dot {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+
+/* Walk a trail */
+.walk-card.walking {
+  outline: 2px solid var(--accent);
+}
+
+.walk-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.walk-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.walk-stats div {
+  display: grid;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: var(--fill);
+  text-align: center;
+}
+
+.walk-stats strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.walk-stats span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  background: none;
+  color: var(--muted);
+}

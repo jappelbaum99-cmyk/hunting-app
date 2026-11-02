@@ -23,6 +23,7 @@ import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { WIND_MARKER_TYPES, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
+import { lineBounds, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { kindInfo, reportWeather } from '@/lib/reports';
@@ -33,7 +34,7 @@ import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView, type SightingView } from '@/map/MapView';
-import type { AreaGeometry, AreaType, FieldPin, HuntReport, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import type { AreaGeometry, AreaType, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type Mode =
   | { kind: 'browse' }
@@ -41,6 +42,7 @@ type Mode =
   | { kind: 'draw'; target: 'property' }
   | { kind: 'draw'; target: 'section' }
   | { kind: 'draw'; target: 'area'; areaType: AreaType }
+  | { kind: 'draw'; target: 'trail'; trailKind: TrailKind }
   | { kind: 'align' }
   // Clicking the map sets where a sighting in a hunt report happened.
   | { kind: 'placeSighting'; reportId: string; sightingId: string };
@@ -150,7 +152,22 @@ export function App() {
   };
 
   const finishDrawing = useCallback(() => {
-    if (mode.kind !== 'draw' || draftPoints.length < 3) return;
+    if (mode.kind !== 'draw' || draftPoints.length < (mode.target === 'trail' ? 2 : 3)) return;
+    if (mode.target === 'trail') {
+      const record: MapTrail = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, draftPoints[0])?.id ?? null,
+        kind: mode.trailKind,
+        name: nextName(TRAIL_KINDS[mode.trailKind].label, hub.trails),
+        line: { type: 'LineString', coordinates: draftPoints },
+        notes: null,
+        source: 'drawn',
+      };
+      hub.saveTrail(record);
+      setSelection({ kind: 'trail', id: record.id });
+      cancelMode();
+      return;
+    }
     const geometry = pointsToPolygon(draftPoints);
     if (mode.target === 'property') {
       const record = {
@@ -302,7 +319,7 @@ export function App() {
 
   // Brings in hunts and pins from phones, by file or from camp. What the hub
   // added to them (weather, and whether a pin was added to the map) is kept.
-  const bringInFromPhones = (incomingReports: HuntReport[], incomingPins: FieldPin[]) => {
+  const bringInFromPhones = (incomingReports: HuntReport[], incomingPins: FieldPin[], incomingTracks: FieldTrack[] = []) => {
     const all = hub.allData;
     const reports = incomingReports.map((r) => {
       const have = all?.reports.find((h) => h.id === r.id);
@@ -317,7 +334,11 @@ export function App() {
       const have = all?.fieldPins.find((h) => h.id === p.id);
       return have ? { ...p, status: have.status, markerId: have.markerId } : p;
     });
-    const result = hub.mergeFromPhone({ reports, fieldPins: pins });
+    const tracks = incomingTracks.map((t) => {
+      const have = all?.fieldTracks.find((h) => h.id === t.id);
+      return have ? { ...t, status: have.status, trailId: have.trailId } : t;
+    });
+    const result = hub.mergeFromPhone({ reports, fieldPins: pins, fieldTracks: tracks });
     // The phone has no internet in the stand, so look up weather for its hunts now.
     for (const r of reports) {
       const have = all?.reports.find((h) => h.id === r.id);
@@ -336,16 +357,18 @@ export function App() {
     updatedAt: m.updatedAt,
     deletedAt: m.deletedAt,
   }));
-  const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins }) => {
-    const before = new Set([...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? [])].map((r) => r.id));
+  const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins, tracks }) => {
+    const before = new Set([...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? []), ...(hub.allData?.fieldTracks ?? [])].map((r) => r.id));
     const freshHunts = reports.filter((r) => !before.has(r.id));
     const freshPins = pins.filter((p) => !before.has(p.id));
-    bringInFromPhones(reports, pins);
-    if (freshHunts.length + freshPins.length === 0) return;
-    const who = [...new Set([...freshHunts, ...freshPins].map((r) => r.loggedBy).filter(Boolean))].join(', ');
+    const freshWalks = tracks.filter((t) => !before.has(t.id));
+    bringInFromPhones(reports, pins, tracks);
+    if (freshHunts.length + freshPins.length + freshWalks.length === 0) return;
+    const who = [...new Set([...freshHunts, ...freshPins, ...freshWalks].map((r) => r.loggedBy).filter(Boolean))].join(', ');
     const parts = [
       freshHunts.length ? `${freshHunts.length} hunt${freshHunts.length === 1 ? '' : 's'}` : '',
       freshPins.length ? `${freshPins.length} pin${freshPins.length === 1 ? '' : 's'}` : '',
+      freshWalks.length ? `${freshWalks.length} walk${freshWalks.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
   }, hub.settings.customPinTypes);
@@ -355,7 +378,7 @@ export function App() {
     try {
       const parsed = JSON.parse(await file.text()) as PhoneFile;
       if (parsed.kind !== PHONE_FILE_KIND) throw new Error("That isn't a file from the phone's Send tab.");
-      const { added, updated } = bringInFromPhones(parsed.reports, parsed.pins);
+      const { added, updated } = bringInFromPhones(parsed.reports, parsed.pins, parsed.tracks ?? []);
       setNotice(
         added + updated === 0
           ? 'Nothing new in that file.'
@@ -435,6 +458,33 @@ export function App() {
     void shareJsonFile('hunting-hub-stands.json', file).then(() =>
       setNotice(`Saved hunting-hub-stands.json with ${stands.length} stands. Get it onto the phone (email or iCloud Drive), then load it on the phone's Send tab.`),
     );
+  };
+
+  // Walks recorded on phones: look at one, turn it into a trail, or dismiss it.
+  const handleFieldTrack = (id: string, action: 'show' | 'add' | 'dismiss') => {
+    const track = hub.fieldTracks.find((t) => t.id === id);
+    if (!track) return;
+    const points = unpackPoints(track.coords);
+    if (points.length < 2) return;
+    if (action === 'show') {
+      const [w, s, e, n] = lineBounds({ type: 'LineString', coordinates: points });
+      mapRef.current?.fitTo({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
+    } else if (action === 'dismiss') {
+      hub.saveFieldTrack({ ...track, status: 'dismissed' });
+    } else {
+      const trail: MapTrail = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, points[0])?.id ?? null,
+        kind: 'path',
+        name: track.name,
+        line: { type: 'LineString', coordinates: points },
+        notes: track.loggedBy ? `Walked by ${track.loggedBy}` : null,
+        source: 'walked',
+      };
+      hub.saveTrail(trail);
+      hub.saveFieldTrack({ ...track, status: 'added', trailId: trail.id });
+      setSelection({ kind: 'trail', id: trail.id });
+    }
   };
 
   const handleFieldPin = (id: string, action: 'show' | 'add' | 'dismiss') => {
@@ -593,6 +643,12 @@ export function App() {
     if (target.kind === 'marker') {
       const m = hub.markers.find((r) => r.id === target.id);
       if (m) mapRef.current?.flyTo(m.lng, m.lat);
+    } else if (target.kind === 'trail') {
+      const t = hub.trails.find((r) => r.id === target.id);
+      if (t) {
+        const [w, s, e, n] = lineBounds(t.line);
+        mapRef.current?.fitTo({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
+      }
     } else if (target.kind === 'overlay') {
       const o = hub.overlays.find((r) => r.id === target.id);
       const corners = o && overlayCorners(o.controlPoints, o.imageWidth, o.imageHeight);
@@ -651,6 +707,8 @@ export function App() {
     [draftColor, modeTitle] = [propertyColor(null, hub.settings), 'property line'];
   } else if (mode.kind === 'draw' && mode.target === 'section') {
     [draftColor, modeTitle] = ['#f7efe6', 'section'];
+  } else if (mode.kind === 'draw' && mode.target === 'trail') {
+    [draftColor, modeTitle] = [TRAIL_KINDS[mode.trailKind].color, TRAIL_KINDS[mode.trailKind].label.toLowerCase()];
   } else if (mode.kind === 'draw') {
     const info = areaTypeInfo(mode.areaType, hub.settings);
     [draftColor, modeTitle] = [info.color, info.label.toLowerCase()];
@@ -775,6 +833,9 @@ export function App() {
         plans={hub.plans}
         reports={hub.reports}
         newFieldPins={hub.fieldPins.filter((p) => p.status === 'new')}
+        newFieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
+        onFieldTrack={handleFieldTrack}
+        trails={hub.trails}
         onImportPhone={(file) => void importPhone(file)}
         width={sidebarWidth}
         onResize={setSidebarWidth}
@@ -824,6 +885,9 @@ export function App() {
           areas={hub.areas}
           markers={hub.markers}
           sections={hub.sections}
+          trails={hub.trails}
+          fieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
+          draftLine={mode.kind === 'draw' && mode.target === 'trail'}
           settings={hub.settings}
           snapRings={snapRings}
           snapPx={hub.settings.snapping.enabled ? hub.settings.snapping.distancePx : 0}
@@ -854,6 +918,7 @@ export function App() {
             onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
             onDrawSection={() => startMode({ kind: 'draw', target: 'section' })}
             onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
+            onDrawTrail={(trailKind) => startMode({ kind: 'draw', target: 'trail', trailKind })}
             onPlaceMarker={(markerType) => startMode({ kind: 'place', markerType })}
             onImport={(file) => void handleImport(file)}
             onAddImage={(file) => void startAlignNew(file)}
@@ -868,6 +933,7 @@ export function App() {
             onUndo={() => setDraftPoints((points) => points.slice(0, -1))}
             onCancel={cancelMode}
             onFinish={finishDrawing}
+            minPoints={mode.kind === 'draw' && mode.target === 'trail' ? 2 : 3}
           />
         )}
         {(notice || hub.saveError) && (
@@ -962,7 +1028,25 @@ export function App() {
         />
       );
     }
-    if (selection.kind === 'property') {
+    if (selection.kind === 'trail') {
+      const record = hub.trails.find((r) => r.id === selection.id);
+      if (!record) return null;
+      return (
+        <DetailPanel
+          kind="trail"
+          record={record}
+          propertyName={propertyName(record.propertyId)}
+          defaultColor={TRAIL_KINDS[record.kind]?.color}
+          onChange={hub.saveTrail}
+          onDelete={() => {
+            hub.deleteTrail(record.id);
+            setSelection(null);
+          }}
+          {...common}
+        />
+      );
+    }
+        if (selection.kind === 'property') {
       const record = hub.properties.find((r) => r.id === selection.id);
       if (!record) return null;
       return (

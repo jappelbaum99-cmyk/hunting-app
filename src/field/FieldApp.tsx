@@ -18,11 +18,13 @@ import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
 import { useFieldWeather } from '@/field/useFieldWeather';
+import { WalkCard } from '@/field/WalkCard';
 import { WherePicker } from '@/field/WherePicker';
+import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
 import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
-import type { CustomPinType, DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
+import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
 
@@ -64,6 +66,10 @@ function record<T extends object>(fields: T) {
   return { id: crypto.randomUUID(), createdAt: at, updatedAt: at, deletedAt: null, ...fields };
 }
 
+// A walk adds a point every this many meters, from fixes at least this good.
+const WALK_STEP_M = 8;
+const WALK_MAX_ACCURACY_M = 30;
+
 // Days of hunts listed before "Show older".
 const DAYS_SHOWN = 7;
 
@@ -83,11 +89,25 @@ export function FieldApp() {
     return () => clearTimeout(t);
   }, [message]);
 
-  const gps = useGps(tab === 'pin' || tab === 'hunt');
+  // GPS runs on the Pin and Hunt tabs, and the whole time a walk is recorded.
+  const gps = useGps(tab === 'pin' || tab === 'hunt' || data.activeWalk !== null);
   const sync = useCampSync(data, setData);
+
+  // While walking, add a point every ~8 m, skipping fixes rougher than 30 m.
+  const fix = gps.fix;
+  useEffect(() => {
+    if (!fix || !data.activeWalk || fix.accuracyM > WALK_MAX_ACCURACY_M) return;
+    const here: [number, number] = [fix.lng, fix.lat];
+    setData((d) => {
+      if (!d.activeWalk) return d;
+      const last = d.activeWalk.points[d.activeWalk.points.length - 1];
+      if (last && metersBetween(last, here) < WALK_STEP_M) return d;
+      return { ...d, activeWalk: { ...d.activeWalk, points: [...d.activeWalk.points, here] } };
+    });
+  }, [fix, data.activeWalk !== null]);
   const active = data.reports.find((r) => r.id === data.activeReportId) ?? null;
   // With a camp, what's still waiting for signal; without one, everything on the phone.
-  const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length;
+  const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length + data.tracks.length;
   const loggedBy = data.camp?.hunter ?? null;
   // Everyone else's hunts in the camp; this phone's own come from data.reports.
   const mine = new Set(data.reports.map((r) => r.id));
@@ -111,6 +131,34 @@ export function FieldApp() {
 
       <main className="field-main">
         {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
+        {tab === 'pin' && (
+          <WalkCard
+            walk={data.activeWalk}
+            tracks={data.tracks}
+            gpsReady={gps.fix !== null}
+            onStart={() => setData((d) => ({ ...d, activeWalk: { id: crypto.randomUUID(), startedAt: new Date().toISOString(), points: [] } }))}
+            onStop={() => {
+              const walk = data.activeWalk;
+              if (!walk || walk.points.length < 2) return;
+              const ended = new Date();
+              const started = new Date(walk.startedAt);
+              const track: FieldTrack = record({
+                name: `Walk ${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+                coords: packPoints(simplifyLine(walk.points)),
+                startedAt: walk.startedAt,
+                endedAt: ended.toISOString(),
+                lengthM: Math.round(lineLengthM(walk.points)),
+                loggedBy,
+                status: 'new' as const,
+                trailId: null,
+              });
+              setData((d) => ({ ...d, tracks: [track, ...d.tracks], activeWalk: null }));
+              setMessage(data.camp ? 'Walk saved. It goes to camp as soon as you have signal.' : 'Walk saved. Send it to the hub from the Send tab.');
+            }}
+            onDiscard={() => setData((d) => ({ ...d, activeWalk: null }))}
+            onDeleteTrack={(id) => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => t.id !== id) }))}
+          />
+        )}
         {tab === 'pin' && <PinTab fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
         {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
@@ -150,7 +198,7 @@ export function FieldApp() {
       <nav className="field-tabs">
         {(
           [
-            ['pin', 'pin', 'Pin'],
+            ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : 'Pin'],
             ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
             ['stands', 'stand', 'Stands'],
             ['send', data.camp ? 'camp' : 'send', `${data.camp ? 'Camp' : 'Send'}${unsent ? ` (${unsent})` : ''}`],
@@ -710,7 +758,7 @@ function SendTab(props: {
         className="big-button"
         disabled={data.pins.length + data.reports.length === 0}
         onClick={() => {
-          const file: PhoneFile = { kind: PHONE_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), pins: data.pins, reports: data.reports };
+          const file: PhoneFile = { kind: PHONE_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), pins: data.pins, reports: data.reports, tracks: data.tracks };
           const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
           shareJsonFile(`hunting-hub-phone-${stamp}.json`, file)
             .then(() => props.onMessage('File ready. Bring it into the hub with “Import from phone”.'))

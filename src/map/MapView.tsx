@@ -21,7 +21,8 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import type { AreaGeometry, DeerKind, HubSettings, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
+import { lineMidpoint, trailKindInfo, unpackPoints } from '@/lib/trails';
+import type { AreaGeometry, DeerKind, FieldTrack, HubSettings, MapArea, MapMarker, MapTrail, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
 const DEFAULT_ZOOM = 12;
@@ -77,6 +78,9 @@ interface MapViewProps {
   areas: MapArea[];
   markers: MapMarker[];
   sections: Section[];
+  trails: MapTrail[];
+  // Walks from phones waiting in the inbox, drawn faintly until added.
+  fieldTracks: FieldTrack[];
   settings: HubSettings;
   // Outlines that drawing snaps onto, and how close (screen pixels) counts; 0 = off.
   snapRings: Position[][];
@@ -95,6 +99,8 @@ interface MapViewProps {
   interaction: MapInteraction;
   draftPoints: Position[];
   draftColor: string;
+  // Drawing a line (trail) rather than a closed shape.
+  draftLine: boolean;
   onMapClick(position: Position): void;
   onSelect(selection: Selection | null): void;
   onMarkerMoved(id: string, position: Position): void;
@@ -179,6 +185,40 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'areas',
     paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', ['get', 'color']], 'line-width': 2 },
   });
+  // Trails: a dark casing under each line so it reads on satellite, then the
+  // line itself (dashed for deer trails and fence lines). Phone walks still in
+  // the inbox are faint dotted lines.
+  map.addSource('field-tracks', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'field-track-line',
+    type: 'line',
+    source: 'field-tracks',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#f7efe6', 'line-width': 2.5, 'line-opacity': 0.75, 'line-dasharray': [0.5, 2] },
+  });
+  map.addSource('trails', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'trail-casing',
+    type: 'line',
+    source: 'trails',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', 'rgba(20, 12, 6, 0.7)'], 'line-width': ['case', ['get', 'selected'], 8, 6] },
+  });
+  map.addLayer({
+    id: 'trail-line',
+    type: 'line',
+    source: 'trails',
+    filter: ['!', ['get', 'dashed']],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': 3 },
+  });
+  map.addLayer({
+    id: 'trail-line-dashed',
+    type: 'line',
+    source: 'trails',
+    filter: ['get', 'dashed'],
+    paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-dasharray': [2, 1.5] },
+  });
   // Scent cones sit over areas, so you can see one drifting into bedding.
   // Each cone is three stacked wedges (full, two-thirds and one-third width),
   // so it's darkest down the middle and fades out to the edges.
@@ -199,6 +239,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     filter: ['!', ['has', 'heading']],
     layout: {
       'icon-image': ['get', 'pill'],
+      'icon-size': PILL_SIZE_BY_ZOOM,
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
@@ -210,6 +251,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     filter: ['has', 'heading'],
     layout: {
       'icon-image': ['get', 'pill'],
+      'icon-size': PILL_SIZE_BY_ZOOM,
       'icon-rotate': ['get', 'heading'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
@@ -224,6 +266,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     filter: ['has', 'icon'],
     layout: {
       'icon-image': ['concat', 'animal-ink-', ['get', 'icon']],
+      'icon-size': PILL_SIZE_BY_ZOOM,
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
@@ -314,6 +357,9 @@ async function iconImage(icon: IconName, size: number, ink: string): Promise<Ima
 // A pill pointing up (north), with a chevron at its front end when the animal
 // was moving; the layer turns it to face the way it went. A cream outline keeps
 // dark browns visible on the map. Drawn at 2x for sharp edges.
+// Animal pills grow as you zoom in: small over the whole property, full size up close.
+const PILL_SIZE_BY_ZOOM: maplibregl.ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 12, 0.3, 15, 0.5, 17, 0.8, 19, 1.1];
+
 // The map image for a pill of this color, made the first time it's needed
 // (named by its color, so a color change always gets a fresh image).
 function pillName(map: maplibregl.Map, color: string, moving: boolean): string {
@@ -444,7 +490,7 @@ function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now
   return { type: 'FeatureCollection', features };
 }
 
-function draftFeatures(points: Position[], cursor: Position | null, color: string, snap: Snap['kind'] | null = null): FeatureCollection {
+function draftFeatures(points: Position[], cursor: Position | null, color: string, snap: Snap['kind'] | null = null, line = false): FeatureCollection {
   const ring = cursor ? [...points, cursor] : points;
   const features: FeatureCollection['features'] = points.map((p) => ({
     type: 'Feature',
@@ -455,13 +501,13 @@ function draftFeatures(points: Position[], cursor: Position | null, color: strin
   if (cursor && snap) {
     features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: cursor }, properties: { color, snap } });
   }
-  if (ring.length >= 3) {
+  if (ring.length >= 3 && !line) {
     features.push({
       type: 'Feature',
       geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
       properties: { color },
     });
-  } else if (ring.length === 2) {
+  } else if (ring.length >= 2) {
     features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: ring }, properties: { color } });
   }
   return { type: 'FeatureCollection', features };
@@ -479,7 +525,7 @@ function topCenterOf(geometry: AreaGeometry): [number, number] {
 }
 
 export function MapView(props: MapViewProps) {
-  const { ref, layers, properties, areas, markers, sections, overlays, alignMarkers, standRatings, selection, interaction } = props;
+  const { ref, layers, properties, areas, markers, sections, overlays, alignMarkers, standRatings, selection, interaction, trails, fieldTracks } = props;
   const { draftPoints, draftColor, settings } = props;
   // The compass is a maplibre control (so it stacks with the zoom buttons)
   // whose contents React renders through a portal.
@@ -573,6 +619,18 @@ export function MapView(props: MapViewProps) {
         onSelect({ kind: 'report', id: deer.properties.reportId as string });
         return;
       }
+      // Trails are thin, so they win over the shapes under them.
+      const trail = map.queryRenderedFeatures(
+        [
+          [event.point.x - 6, event.point.y - 6],
+          [event.point.x + 6, event.point.y + 6],
+        ],
+        { layers: ['trail-casing'] },
+      )[0];
+      if (trail) {
+        onSelect({ kind: 'trail', id: trail.properties.id as string });
+        return;
+      }
       const hits = map.queryRenderedFeatures(event.point, { layers: ['area-fill', 'section-fill'] });
       const hit = hits.find((h) => h.layer.id === 'area-fill') ?? hits[0];
       const id = hit?.properties?.id as string | undefined;
@@ -584,10 +642,10 @@ export function MapView(props: MapViewProps) {
       const snap = snapAt(event.point);
       cursorRef.current = snap?.position ?? [event.lngLat.lng, event.lngLat.lat];
       const source = map.getSource<GeoJSONSource>('draft');
-      source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
+      source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind, latest.current.draftLine));
     });
 
-    for (const layer of ['area-fill', 'section-fill', 'sighting-pills', 'sighting-pills-still', 'sighting-pill-icons']) {
+    for (const layer of ['area-fill', 'section-fill', 'trail-casing', 'sighting-pills', 'sighting-pills-still', 'sighting-pill-icons']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
       });
@@ -653,6 +711,18 @@ export function MapView(props: MapViewProps) {
       })),
     });
 
+    map.getSource<GeoJSONSource>('trails')?.setData({
+      type: 'FeatureCollection',
+      features: trails.map((t) => {
+        const info = trailKindInfo(t.kind);
+        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color: t.color ?? info.color, dashed: info.dashed, selected: t.id === selectedId } };
+      }),
+    });
+    map.getSource<GeoJSONSource>('field-tracks')?.setData({
+      type: 'FeatureCollection',
+      features: fieldTracks.map((t) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: unpackPoints(t.coords) }, properties: { id: t.id } })),
+    });
+
     // Names for shapes, drawn as HTML so no font server is needed.
     const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string; icon?: IconName }>();
     for (const p of properties) {
@@ -663,6 +733,10 @@ export function MapView(props: MapViewProps) {
     for (const a of areas) {
       wanted.set(a.id, { text: a.name, icon: areaTypeInfo(a.type, settings).icon, at: centerOf(a.geometry), kind: 'area' });
     }
+    for (const t of trails) {
+      const [lng, lat] = lineMidpoint(t.line.coordinates);
+      wanted.set(t.id, { text: t.name, at: [lng, lat], kind: 'trail' });
+    }
     syncHtmlMarkers(map, labelElements.current, wanted, (item, existing) => {
       const el = existing ?? document.createElement('div');
       // classList, not className: maplibre adds its own positioning class to this element.
@@ -672,7 +746,7 @@ export function MapView(props: MapViewProps) {
       el.style.color = item.color ?? '';
       return el;
     }, { anchor: 'center' });
-  }, [properties, areas, sections, selectedId, settings, readyTick]);
+  }, [properties, areas, sections, trails, fieldTracks, selectedId, settings, readyTick]);
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {
@@ -857,7 +931,7 @@ export function MapView(props: MapViewProps) {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     if (interaction !== 'draw') cursorRef.current = null;
-    map.getSource<GeoJSONSource>('draft')?.setData(draftFeatures(draftPoints, cursorRef.current, draftColor));
+    map.getSource<GeoJSONSource>('draft')?.setData(draftFeatures(draftPoints, cursorRef.current, draftColor, null, props.draftLine));
     map.getCanvas().style.cursor = interaction === 'browse' ? '' : 'crosshair';
   }, [draftPoints, draftColor, interaction, readyTick]);
 

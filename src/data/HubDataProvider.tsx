@@ -5,12 +5,14 @@ import type {
   CustomAreaType,
   CustomPinType,
   FieldPin,
+  FieldTrack,
   HubData,
   HubSettings,
   HuntReport,
   MapArea,
   MapImageOverlay,
   MapMarker,
+  MapTrail,
   Plan,
   Property,
   Section,
@@ -18,7 +20,7 @@ import type {
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins' | 'trails' | 'fieldTracks';
 
 interface HubDataValue {
   loaded: boolean;
@@ -32,6 +34,8 @@ interface HubDataValue {
   plans: Plan[];
   reports: HuntReport[];
   fieldPins: FieldPin[];
+  trails: MapTrail[];
+  fieldTracks: FieldTrack[];
   settings: HubSettings;
   saveSettings(settings: HubSettings): void;
   saveProperty(property: Property): void;
@@ -46,9 +50,11 @@ interface HubDataValue {
   // Changes some fields of the stored report, whatever its latest version is.
   patchReport(id: string, patch: Partial<HuntReport>): void;
   saveFieldPin(pin: FieldPin): void;
+  saveTrail(trail: MapTrail): void;
+  saveFieldTrack(track: FieldTrack): void;
   // Brings in records from the phone: new ones are added, and ones already
   // here are replaced only when the incoming copy is newer.
-  mergeFromPhone(incoming: { reports: HuntReport[]; fieldPins: FieldPin[] }): { added: number; updated: number };
+  mergeFromPhone(incoming: { reports: HuntReport[]; fieldPins: FieldPin[]; fieldTracks?: FieldTrack[] }): { added: number; updated: number };
   // Brings in records from another hub's map file, by the same newer-wins rule.
   // Deleted records come along so a delete there reaches this hub too.
   mergeRecords(
@@ -65,6 +71,7 @@ interface HubDataValue {
   deleteSection(id: string): void;
   deletePlan(id: string): void;
   deleteReport(id: string): void;
+  deleteTrail(id: string): void;
 }
 
 const HubDataContext = createContext<HubDataValue | null>(null);
@@ -147,6 +154,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
           next.markers = next.markers.map(unlink);
           next.areas = next.areas.map(unlink);
           next.sections = next.sections.map(unlink);
+          next.trails = next.trails.map(unlink);
         }
         if (collection === 'sections') {
           // A section's plans go with it.
@@ -220,6 +228,8 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       plans: live(data?.plans),
       reports: live(data?.reports),
       fieldPins: live(data?.fieldPins),
+      trails: live(data?.trails),
+      fieldTracks: live(data?.fieldTracks),
       settings: data?.settings ?? emptyHubData().settings,
       saveSettings: (settings) => update((current) => ({ ...current, settings })),
       saveProperty: (p) => save('properties', p),
@@ -240,7 +250,10 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
           reports: current.reports.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: nowIso() } : r)),
         })),
       saveFieldPin: (p) => save('fieldPins', p),
-      mergeFromPhone: (incoming) => mergeRecords({ reports: incoming.reports, fieldPins: incoming.fieldPins }),
+      saveTrail: (t) => save('trails', t),
+      saveFieldTrack: (t) => save('fieldTracks', t),
+      mergeFromPhone: (incoming) =>
+        mergeRecords({ reports: incoming.reports, fieldPins: incoming.fieldPins, ...(incoming.fieldTracks ? { fieldTracks: incoming.fieldTracks } : {}) }),
       mergeRecords,
       allData: data,
       deleteProperty: (id) => remove('properties', id),
@@ -250,6 +263,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       deleteSection: (id) => remove('sections', id),
       deletePlan: (id) => remove('plans', id),
       deleteReport: (id) => remove('reports', id),
+      deleteTrail: (id) => remove('trails', id),
     };
   }, [data, loadError, saveError, save, remove, update]);
 

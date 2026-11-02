@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react';
+
 import { Icon } from '@/components/Icon';
 
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, WIND_MARKER_TYPES, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
+import { formatDistance, lineLengthM, TRAIL_KINDS, trailKindInfo } from '@/lib/trails';
 import {
   COMPASS_POINTS,
   type AreaType,
@@ -12,8 +14,10 @@ import {
   type MapArea,
   type MapImageOverlay,
   type MapMarker,
+  type MapTrail,
   type MarkerType,
   type Property,
+  type TrailKind,
 } from '@/types/models';
 
 interface Common {
@@ -29,7 +33,8 @@ type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[] } & Common)
-  | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
+  | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
+  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void } & Common);
 
 function headingFor(props: DetailPanelProps): string {
   switch (props.kind) {
@@ -41,6 +46,8 @@ function headingFor(props: DetailPanelProps): string {
       return props.pinTypes.find((t) => t.id === props.record.type)?.label ?? pinTypeInfo(props.record.type).label;
     case 'overlay':
       return 'Map image';
+    case 'trail':
+      return trailKindInfo(props.record.kind).label;
   }
 }
 
@@ -91,8 +98,19 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'overlay' && (
           <OverlayFields record={props.record} onChange={props.onChange} onRealign={props.onRealign} />
         )}
+        {props.kind === 'trail' && (
+          <>
+            <TrailFields record={props.record} onChange={props.onChange} />
+            <ColorField
+              label="Line color"
+              value={props.record.color ?? null}
+              fallback={props.defaultColor ?? trailKindInfo(props.record.kind).color}
+              onChange={(color) => props.onChange({ ...props.record, color })}
+            />
+          </>
+        )}
 
-        {(kind === 'area' || kind === 'marker') && (
+        {(kind === 'area' || kind === 'marker' || kind === 'trail') && (
           <Field label="Property">
             <span className="muted">{propertyName ?? 'Not inside a saved property'}</span>
           </Field>
@@ -211,6 +229,30 @@ function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange
           </Field>
         </div>
       )}
+      <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
+    </>
+  );
+}
+
+function TrailFields({ record, onChange }: { record: MapTrail; onChange(t: MapTrail): void }) {
+  return (
+    <>
+      <Field label="Type">
+        <select value={record.kind} onChange={(e) => onChange({ ...record, kind: e.target.value as TrailKind })}>
+          {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((k) => (
+            <option key={k} value={k}>
+              {TRAIL_KINDS[k].label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <TextField label="Name" value={record.name} onChange={(name) => onChange({ ...record, name })} />
+      <Field label="Length">
+        <span>
+          {formatDistance(lineLengthM(record.line.coordinates))}
+          <span className="muted">{record.source === 'walked' ? ' · walked with a phone' : ''}</span>
+        </span>
+      </Field>
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
     </>
   );

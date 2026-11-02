@@ -9,6 +9,7 @@ import type {
   MapArea,
   MapImageOverlay,
   MapMarker,
+  MapTrail,
   Plan,
   Property,
   Section,
@@ -25,6 +26,7 @@ export interface MapFileRecords {
   sections: Section[];
   plans: Plan[];
   reports: HuntReport[];
+  trails: MapTrail[];
 }
 
 export interface MapFile {
@@ -58,6 +60,7 @@ export function pickRecords(data: HubData, propertyId: string | null): MapFileRe
       sections: data.sections,
       plans: data.plans,
       reports: data.reports,
+      trails: data.trails,
     };
   }
   const property = properties.find((p) => p.id === propertyId);
@@ -82,6 +85,7 @@ export function pickRecords(data: HubData, propertyId: string | null): MapFileRe
     plans: data.plans.filter((p) => sectionIds.has(p.sectionId)),
     // Hunts at its stands count too, even when the hunt itself wasn't linked.
     reports: data.reports.filter((r) => onProperty(r) || (r.standId !== null && markerIds.has(r.standId))),
+    trails: data.trails.filter(onProperty),
   };
 }
 
@@ -125,6 +129,7 @@ export function parseMapFile(text: string): MapFile {
       sections: r.sections ?? [],
       plans: r.plans ?? [],
       reports: r.reports ?? [],
+      trails: r.trails ?? [],
     },
     customAreaTypes: parsed.customAreaTypes ?? [],
     customPinTypes: parsed.customPinTypes ?? [],

@@ -38,6 +38,8 @@ export function emptyHubData(): HubData {
     plans: [],
     reports: [],
     fieldPins: [],
+    trails: [],
+    fieldTracks: [],
     settings: {
       markerStyles: {},
       areaColors: {},

@@ -1,6 +1,6 @@
 // Shared data models for the hub (and later the phone site).
 // Ids are UUIDs and deletes are soft (deletedAt) so records can sync between devices.
-import type { MultiPolygon, Polygon } from 'geojson';
+import type { LineString, MultiPolygon, Polygon } from 'geojson';
 
 export type AreaGeometry = Polygon | MultiPolygon;
 
@@ -271,6 +271,35 @@ export interface FieldPin extends Syncable {
   loggedBy?: string | null;
 }
 
+export type TrailKind = 'deer' | 'path' | 'road' | 'fence' | 'other';
+
+// A line on the map: a deer trail, walking path, ATV road, fence line...
+export interface MapTrail extends Syncable {
+  propertyId: string | null;
+  kind: TrailKind;
+  name: string;
+  line: LineString;
+  notes: string | null;
+  // Overrides the trail type's color.
+  color?: string | null;
+  // Drawn in the hub, or walked with a phone's GPS.
+  source: 'drawn' | 'walked';
+}
+
+// A walk recorded on the phone, waiting to become a trail here.
+export interface FieldTrack extends Syncable {
+  name: string;
+  // Simplified GPS points as a flat [lng, lat, lng, lat, ...] list.
+  coords: number[];
+  startedAt: string;
+  endedAt: string;
+  lengthM: number;
+  loggedBy?: string | null;
+  status: 'new' | 'added' | 'dismissed';
+  // The trail made from it.
+  trailId: string | null;
+}
+
 export interface HubData {
   schemaVersion: 1;
   properties: Property[];
@@ -281,6 +310,8 @@ export interface HubData {
   plans: Plan[];
   reports: HuntReport[];
   fieldPins: FieldPin[];
+  trails: MapTrail[];
+  fieldTracks: FieldTrack[];
   settings: HubSettings;
 }
 
@@ -290,4 +321,5 @@ export type Selection =
   | { kind: 'area'; id: string }
   | { kind: 'overlay'; id: string }
   | { kind: 'section'; id: string }
-  | { kind: 'report'; id: string };
+  | { kind: 'report'; id: string }
+  | { kind: 'trail'; id: string };

@@ -38,7 +38,7 @@ service cloud.firestore {
       match /{kind}/{id} {
         allow read: if isMember(code);
         allow create: if isMember(code)
-          && kind in ['hunts', 'pins', 'stands']
+          && kind in ['hunts', 'pins', 'stands', 'tracks']
           && (kind != 'stands' || camp(code).ownerUid == request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.id == id;

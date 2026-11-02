@@ -1,11 +1,12 @@
-import { useRef, type MouseEvent } from 'react';
+import { useRef, type MouseEvent, type CSSProperties } from 'react';
 
 import { IMAGE_ACCEPT } from '@/data/images';
 import { AreaBadge } from '@/components/AreaBadge';
 import type { PinTypeView } from '@/lib/featureTypes';
 import { IMPORT_ACCEPT } from '@/lib/importGeo';
 import type { AreaTypeView } from '@/lib/styles';
-import type { AreaType, MarkerType } from '@/types/models';
+import { TRAIL_KINDS } from '@/lib/trails';
+import type { AreaType, MarkerType, TrailKind } from '@/types/models';
 
 interface MapToolbarProps {
   disabled: boolean;
@@ -15,6 +16,7 @@ interface MapToolbarProps {
   onDrawSection(): void;
   onDrawArea(type: AreaType): void;
   onPlaceMarker(type: MarkerType): void;
+  onDrawTrail(kind: TrailKind): void;
   pinTypes: PinTypeView[];
   onImport(file: File): void;
   onAddImage(file: File): void;
@@ -73,6 +75,18 @@ export function MapToolbar(props: MapToolbarProps) {
             <button key={type.id} onClick={(e) => pick(e, () => onDrawArea(type.id))}>
               <AreaBadge type={type} />
               {type.label}
+            </button>
+          ))}
+        </div>
+      </details>
+
+      <details className="dropdown">
+        <summary className={disabled ? 'disabled' : ''}>Draw trail ▾</summary>
+        <div className="dropdown-menu">
+          {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => (
+            <button key={kind} onClick={(e) => pick(e, () => props.onDrawTrail(kind))}>
+              <span className={`swatch line${TRAIL_KINDS[kind].dashed ? ' dashed' : ''}`} style={{ '--line': TRAIL_KINDS[kind].color } as CSSProperties} />
+              {TRAIL_KINDS[kind].label}
             </button>
           ))}
         </div>
