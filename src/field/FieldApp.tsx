@@ -28,7 +28,7 @@ import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, MarkerT
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
 
-const PIN_TYPES: MarkerType[] = ['stand', 'blind', 'camera', 'scrape', 'rub', 'trail', 'water', 'parking', 'other'];
+const PIN_TYPES: MarkerType[] = ['stand', 'blind', 'platform', 'camera', 'scrape', 'rub', 'trail', 'water', 'parking', 'other'];
 
 interface Fix {
   lat: number;
@@ -552,25 +552,16 @@ function QuickLog(props: {
         </button>
       </div>
 
-      <WherePicker value={where ?? null} onChange={setWhere} logged={report.sightings.filter((s) => s.id !== editingId)} />
-
-      <div className="field-heading-label">Which way were they going?</div>
-      <div className="field-compass">
-        {HEADINGS.map((h) => (
-          <button key={h.point} className={`h-${h.point}${heading === h.deg ? ' active' : ''}`} onClick={() => setHeading(heading === h.deg ? null : h.deg)}>
-            {h.point}
-          </button>
-        ))}
-        <span className="h-C">
-          {heading === null ? (
-            'Still'
-          ) : (
-            <span style={{ display: 'inline-grid', transform: `rotate(${heading}deg)` }}>
-              <Icon name="arrow" size={26} />
-            </span>
-          )}
-        </span>
-      </div>
+      <WherePicker
+        where={where ?? null}
+        headingDeg={heading}
+        color={DEER_KINDS[kind].color}
+        onChange={(next) => {
+          setWhere(next.where);
+          setHeading(next.headingDeg);
+        }}
+        logged={report.sightings.filter((s) => s.id !== editingId)}
+      />
 
       <button className="big-button" onClick={save} aria-label={saveLabel}>
         {saveLabel}

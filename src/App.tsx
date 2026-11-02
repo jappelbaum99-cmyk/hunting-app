@@ -13,6 +13,7 @@ import { base64ToBytes, bytesToBase64, MAP_FILE_KIND, mapFileName, parseMapFile,
 import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { SummaryPanel } from '@/components/SummaryPanel';
 import { StandHistory } from '@/components/StandHistory';
 import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
@@ -21,8 +22,8 @@ import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { WIND_MARKER_TYPES, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
-import { boundsOf, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
+import { isHuntingSpot, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
+import { acresOf, boundsOf, formatAcres, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
 import { lineBounds, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
@@ -60,7 +61,6 @@ function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
 // Where to get the weather: the chosen property, else the first one, else the
 // middle of the stands, else Salem.
 // Stands and blinds: the pins you hunt from.
-const isStandMarker = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
 
 const SIDEBAR_WIDTH_KEY = 'hunting-hub-sidebar-width';
 
@@ -96,6 +96,8 @@ function forecastLocation(property: Property | null, properties: Property[], mar
 
 export function App() {
   const hub = useHubData();
+  // Stands, blinds, platforms, and custom pin types marked as hunting locations.
+  const isStandMarker = (m: MapMarker) => isHuntingSpot(m.type, hub.settings.customPinTypes);
   const mapRef = useRef<MapViewHandle>(null);
   const [layers, setLayers] = useState<MapLayersState>(DEFAULT_LAYERS);
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
@@ -115,6 +117,7 @@ export function App() {
   const [forecastOpen, setForecastOpen] = useState(false);
   // Settings shows in the sidebar over the lists (and over the forecast, if open).
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   // null = rate stands for all properties.
   const [forecastPropertyId, setForecastPropertyId] = useState<string | null>(null);
   // null = now.
@@ -734,7 +737,7 @@ export function App() {
   // Stand picks for the chosen sit (or now), from each stand's good winds.
   const now = Date.now();
   const forecast = forecastState.status === 'ready' ? forecastState.forecast : null;
-  const isStand = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
+  const isStand = isStandMarker;
   // Areas deer bed or hide in (per area type in Settings); scent into them is bad.
   const sensitiveAreas = hub.areas.filter((a) => areaTypeInfo(a.type, hub.settings).scentSensitive);
   const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
@@ -759,6 +762,17 @@ export function App() {
     const good = rateStands(allStands, nowHour, sensitiveAreas).filter((r) => r.rating === 'good').length;
     forecastTeaser = allStands.length === 0 ? wind : `${wind} · ${good} good stand${good === 1 ? '' : 's'}`;
   }
+
+  // The Summary card's one-liner.
+  const totalAcres = hub.properties.reduce((t, p) => t + acresOf(p.boundary), 0);
+  const spotCount = hub.markers.filter(isStandMarker).length;
+  const summaryTeaser = [
+    totalAcres ? formatAcres(totalAcres) : null,
+    `${spotCount} hunting spot${spotCount === 1 ? '' : 's'}`,
+    `${hub.reports.length} hunt${hub.reports.length === 1 ? '' : 's'}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const forecastView = forecastOpen ? (
     <ForecastPanel
@@ -855,16 +869,38 @@ export function App() {
         view={
           settingsOpen ? (
             <SettingsPanel settings={hub.settings} onChange={hub.saveSettings} onClose={() => setSettingsOpen(false)} />
+          ) : summaryOpen ? (
+            <SummaryPanel
+              properties={hub.properties}
+              areas={hub.areas}
+              markers={hub.markers}
+              trails={hub.trails}
+              sections={hub.sections}
+              reports={hub.reports}
+              settings={hub.settings}
+              onPickStand={(id) => {
+                setSelection({ kind: 'marker', id });
+                zoomTo({ kind: 'marker', id });
+              }}
+              onClose={() => setSummaryOpen(false)}
+            />
           ) : (
             forecastView
           )
         }
         settings={hub.settings}
         forecastTeaser={forecastTeaser}
+        summaryTeaser={summaryTeaser}
+        onOpenSummary={() => {
+          if (mode.kind === 'align') return;
+          setForecastOpen(false);
+          setSummaryOpen(true);
+        }}
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
           setForecastTime(null);
           setForecastSitId('now');
+          setSummaryOpen(false);
           setForecastOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(!settingsOpen)}

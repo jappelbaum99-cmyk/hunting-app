@@ -162,6 +162,14 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
                 </div>
                 {custom && (
                   <div className="setting-row">
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={settings.customPinTypes.find((t) => t.id === type)?.huntingSpot === true}
+                        onChange={(e) => setPinType(type, { huntingSpot: e.target.checked })}
+                      />
+                      <span>Hunting location (winds, scent cones, hunts)</span>
+                    </label>
                     <button
                       className="link remove-type"
                       onClick={() => {

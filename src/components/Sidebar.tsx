@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
-import { pinTypeInfo } from '@/lib/featureTypes';
+import { isHuntingSpot, pinTypeInfo } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
 import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
@@ -41,6 +41,9 @@ interface SidebarProps {
   // One-line summary for the Hunt Forecast card, e.g. "NW 8 mph · 2 good stands".
   forecastTeaser: string;
   onOpenForecast(): void;
+  // One-line summary for the Summary card, e.g. "241 ac · 3 stands · 12 hunts".
+  summaryTeaser: string;
+  onOpenSummary(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -73,7 +76,7 @@ export function Sidebar(props: SidebarProps) {
     [...list].filter((r) => !needle || r.name.toLowerCase().includes(needle)).sort(byName);
 
   const isSelected = (kind: Selection['kind'], id: string) => selection?.kind === kind && selection.id === id;
-  const isStand = (m: MapMarker) => m.type === 'stand' || m.type === 'blind';
+  const isStand = (m: MapMarker) => isHuntingSpot(m.type, props.settings.customPinTypes);
   const shownProperties = matches(properties);
   const stands = matches(markers.filter(isStand));
   const otherPins = matches(markers.filter((m) => !isStand(m)));
@@ -165,6 +168,21 @@ export function Sidebar(props: SidebarProps) {
             <span className="forecast-card-text">
               <span className="row-title">Hunt Forecast</span>
               <span className="row-detail">{props.forecastTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
+        {needle === '' && (
+          <button className="forecast-card summary-card" onClick={props.onOpenSummary}>
+            <span className="forecast-card-icon" aria-hidden>
+              <Icon name="chart" size={20} />
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Summary</span>
+              <span className="row-detail">{props.summaryTeaser}</span>
             </span>
             <span className="chevron" aria-hidden>
               ›
@@ -320,7 +338,7 @@ export function Sidebar(props: SidebarProps) {
           />
         )}
 
-        <Section title="Stands & Blinds" count={stands.length} searching={needle !== ''} empty="Add a stand pin from the toolbar.">
+        <Section title="Hunting Locations" count={stands.length} searching={needle !== ''} empty="Add a stand, blind or platform from Add pin.">
           {stands.map((m) => (
             <Row
               key={m.id}

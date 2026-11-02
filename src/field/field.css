@@ -814,3 +814,47 @@ textarea {
   background: none;
   color: var(--muted);
 }
+
+/* Where-and-which-way target */
+.where-picker svg {
+  touch-action: none;
+}
+
+.where-compass.north {
+  fill: var(--accent);
+}
+
+.where-facing {
+  fill: var(--accent);
+}
+
+.where-pill rect {
+  stroke: #f7efe6;
+  stroke-width: 2;
+}
+
+.where-pill.faded {
+  opacity: 0.55;
+}
+
+.where-pill .where-chevron {
+  stroke-width: 2;
+}
+
+.where-yards-row {
+  flex-wrap: wrap;
+}
+
+.where-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.where-chip.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}

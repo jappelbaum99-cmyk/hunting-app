@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 
-import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, WIND_MARKER_TYPES, type PinTypeView } from '@/lib/featureTypes';
+import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
@@ -282,7 +282,7 @@ function MarkerFields({ record, onChange, pinTypes }: { record: MapMarker; onCha
       </Field>
       <TextField label="Name" value={record.name} onChange={(name) => onChange({ ...record, name })} />
 
-      {WIND_MARKER_TYPES.includes(record.type) && (
+      {options.find((t) => t.id === record.type)?.huntingSpot && (
         <Field label="Good winds" hint="Winds that carry your scent away from where deer come in.">
           <div className="wind-picker">
             {COMPASS_POINTS.map((point) => (

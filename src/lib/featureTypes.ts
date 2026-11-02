@@ -15,6 +15,7 @@ interface AreaTypeInfo extends TypeInfo {
 export const MARKER_TYPES: Record<BuiltInMarkerType, TypeInfo> = {
   stand: { label: 'Stand', color: '#f28c28' },
   blind: { label: 'Blind', color: '#b5792f' },
+  platform: { label: 'Platform', color: '#e2b04a' },
   camera: { label: 'Trail camera', color: '#3fa7e0' },
   rub: { label: 'Rub', color: '#c0392b' },
   scrape: { label: 'Scrape', color: '#8e44ad' },
@@ -40,14 +41,17 @@ export interface PinTypeView {
   label: string;
   color: string;
   custom: boolean;
+  huntingSpot: boolean;
 }
 
 // A pin type's name and default color: built-in, or one added in Settings.
 // A type this device doesn't know shows as a plain pin.
 export function pinTypeInfo(type: MarkerType, custom: CustomPinType[] = []): PinTypeView {
-  if (type in MARKER_TYPES) return { id: type, ...MARKER_TYPES[type as BuiltInMarkerType], custom: false };
+  if (type in MARKER_TYPES) return { id: type, ...MARKER_TYPES[type as BuiltInMarkerType], custom: false, huntingSpot: WIND_MARKER_TYPES.includes(type) };
   const own = custom.find((t) => t.id === type);
-  return own ? { id: own.id, label: own.label || 'Pin', color: own.color, custom: true } : { id: type, label: 'Pin', color: MARKER_TYPES.other.color, custom: true };
+  return own
+    ? { id: own.id, label: own.label || 'Pin', color: own.color, custom: true, huntingSpot: own.huntingSpot === true }
+    : { id: type, label: 'Pin', color: MARKER_TYPES.other.color, custom: true, huntingSpot: false };
 }
 
 // Every pin type to offer, built-in first, then ones added in Settings.
@@ -82,5 +86,10 @@ export function isPlotType(type: string, label: string): boolean {
   return type === 'food_plot' || /plot/i.test(label);
 }
 
-// Types that get "good wind" directions.
-export const WIND_MARKER_TYPES: MarkerType[] = ['stand', 'blind'];
+// Built-in places to hunt from. They get "good wind" directions, scent cones,
+// forecast ratings and hunt logging; custom pin types can opt in too.
+export const WIND_MARKER_TYPES: MarkerType[] = ['stand', 'blind', 'platform'];
+
+export function isHuntingSpot(type: MarkerType, custom: CustomPinType[] = []): boolean {
+  return WIND_MARKER_TYPES.includes(type) || custom.some((t) => t.id === type && t.huntingSpot);
+}

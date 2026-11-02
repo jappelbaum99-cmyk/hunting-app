@@ -32,6 +32,7 @@ export interface Property extends Syncable {
 export type BuiltInMarkerType =
   | 'stand'
   | 'blind'
+  | 'platform'
   | 'camera'
   | 'rub'
   | 'scrape'
@@ -47,6 +48,8 @@ export interface CustomPinType {
   id: string;
   label: string;
   color: string;
+  // A place to hunt from: gets good winds, scent cones, forecast ratings and hunt logging.
+  huntingSpot?: boolean;
   // Removed types stay so existing pins keep their look; they're hidden from pickers.
   deletedAt: string | null;
 }

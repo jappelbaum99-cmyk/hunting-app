@@ -1,6 +1,6 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { Icon } from '@/components/Icon';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 
+import { Icon } from '@/components/Icon';
 import { compassPointOf } from '@/lib/standRating';
 import { DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
 import type { DeerKind, HuntReport, MapMarker, Sighting } from '@/types/models';
@@ -136,6 +136,8 @@ export function ReportPanel(props: ReportPanelProps) {
 }
 
 function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sighting>): void; onPlace(): void; onRemove(): void }) {
+  // What's typed in the distance box, kept while editing so it can be cleared and retyped.
+  const [yardsText, setYardsText] = useState<string | null>(null);
   const { sighting: s, onChange } = props;
   const date = toDateInput(s.time);
   return (
@@ -235,12 +237,14 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
             min={1}
             max={MAX_YARDS}
             placeholder="e.g. 140"
-            value={s.fromStand ? Math.round(s.fromStand.yards) : ''}
+            value={yardsText ?? (s.fromStand ? String(Math.round(s.fromStand.yards)) : '')}
             onChange={(e) => {
-              if (e.target.value === '') return onChange({ fromStand: null });
-              const yards = Math.min(MAX_YARDS, Math.max(1, Number(e.target.value)));
-              onChange({ fromStand: { bearingDeg: s.fromStand?.bearingDeg ?? 0, yards }, lat: null, lng: null });
+              setYardsText(e.target.value);
+              const yards = Number(e.target.value);
+              if (e.target.value === '' || !(yards >= 1)) return;
+              onChange({ fromStand: { bearingDeg: s.fromStand?.bearingDeg ?? 0, yards: Math.min(MAX_YARDS, Math.round(yards)) }, lat: null, lng: null });
             }}
+            onBlur={() => setYardsText(null)}
           />
         </label>
         <label>

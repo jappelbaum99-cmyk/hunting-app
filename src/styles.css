@@ -2759,3 +2759,144 @@ body.resizing {
   font-style: italic;
   opacity: 0.9;
 }
+
+/* Summary page */
+.summary-card {
+  margin-top: 8px;
+  background: var(--fill);
+  border-color: var(--border);
+}
+
+.summary-card:hover:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.summary-card .forecast-card-icon {
+  background: var(--brown);
+  color: var(--text);
+}
+
+.summary-filter {
+  width: calc(100% - 16px);
+  margin: 0 8px 10px;
+}
+
+.summary-tiles {
+  margin: 0 8px 10px;
+}
+
+.summary .stat-tile strong {
+  font-size: 19px;
+}
+
+.summary-list {
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.summary-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.summary-list li.muted-row {
+  color: var(--muted);
+}
+
+.summary-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.summary-list strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.summary-list .muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.summary .hint {
+  margin: 8px 8px 0;
+}
+
+.summary-subhead {
+  margin: 14px 8px 6px;
+  font-size: 13px;
+}
+
+.season-select {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.month-chart {
+  margin: 12px 8px 0;
+}
+
+.month-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.month-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  height: 120px;
+}
+
+.month {
+  display: grid;
+  grid-template-rows: 14px 1fr 16px;
+  justify-items: center;
+  cursor: default;
+}
+
+.month-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.month-bar {
+  width: 100%;
+  max-width: 26px;
+  margin: 0 auto;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+}
+
+.month.active .month-bar {
+  background: var(--accent-hover);
+}
+
+.month.active .month-track {
+  background: var(--fill);
+}
+
+.month-name {
+  font-size: 11px;
+  color: var(--muted);
+}
