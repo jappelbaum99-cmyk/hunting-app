@@ -180,32 +180,6 @@ export function Sidebar(props: SidebarProps) {
 
         {nothingFound && <p className="empty">Nothing matches “{query.trim()}”.</p>}
 
-        <Section title="Properties" count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
-          {shownProperties.map((p) => (
-            <Row
-              key={p.id}
-              selected={isSelected('property', p.id)}
-              onClick={() => onPick({ kind: 'property', id: p.id })}
-              swatch={<span className="swatch outline" style={{ '--line': propertyColor(p, props.settings) } as CSSProperties} />}
-              title={p.name}
-              detail={formatAcres(acresOf(p.boundary))}
-            />
-          ))}
-        </Section>
-
-        <Section title="Sections" count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
-          {shownSections.map((s) => (
-            <Row
-              key={s.id}
-              selected={isSelected('section', s.id)}
-              onClick={() => onPick({ kind: 'section', id: s.id })}
-              swatch={<span className="swatch section" />}
-              title={s.name}
-              detail={`${formatAcres(acresOf(s.geometry))} · ${planSummary(s.id)}`}
-            />
-          ))}
-        </Section>
-
         {needle === '' && (
           <PhoneDrop camp={props.camp} campError={props.campError} newCount={props.newFieldPins.length + props.newFieldTracks.length} onOpenSettings={props.onOpenSettings}>
             {props.newFieldTracks.length > 0 && (
@@ -274,6 +248,32 @@ export function Sidebar(props: SidebarProps) {
               swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
               title={m.name}
               detail={m.goodWinds.length ? m.goodWinds.join(' ') : 'no winds set'}
+            />
+          ))}
+        </Section>
+
+        <Section title="Properties" count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
+          {shownProperties.map((p) => (
+            <Row
+              key={p.id}
+              selected={isSelected('property', p.id)}
+              onClick={() => onPick({ kind: 'property', id: p.id })}
+              swatch={<span className="swatch outline" style={{ '--line': propertyColor(p, props.settings) } as CSSProperties} />}
+              title={p.name}
+              detail={formatAcres(acresOf(p.boundary))}
+            />
+          ))}
+        </Section>
+
+        <Section title="Sections" count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
+          {shownSections.map((s) => (
+            <Row
+              key={s.id}
+              selected={isSelected('section', s.id)}
+              onClick={() => onPick({ kind: 'section', id: s.id })}
+              swatch={<span className="swatch section" />}
+              title={s.name}
+              detail={`${formatAcres(acresOf(s.geometry))} · ${planSummary(s.id)}`}
             />
           ))}
         </Section>
@@ -546,7 +546,7 @@ function ResizeHandle(props: { width: number; onResize(width: number): void; onR
   );
 }
 
-// The Phone section: how to join from a phone (web address and camp code),
+// The Join the Camp section: how to join from a phone (web address and camp code),
 // plus walks and pins waiting to be added. Opens by itself when something new arrives.
 function PhoneDrop(props: { camp: CampLink | null; campError: string | null; newCount: number; onOpenSettings(): void; children: ReactNode }) {
   const [open, setOpen] = useState(props.newCount > 0);
@@ -568,7 +568,7 @@ function PhoneDrop(props: { camp: CampLink | null; campError: string | null; new
     <section className="sidebar-section phone-drop">
       <button className="section-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
         <h2>
-          Phone <span className="count">{props.newCount ? `${props.newCount} new` : props.camp ? props.camp.name : ''}</span>
+          Join the Camp <span className="count">{props.newCount ? `${props.newCount} new` : props.camp ? props.camp.name : ''}</span>
         </h2>
         <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
           ▾
