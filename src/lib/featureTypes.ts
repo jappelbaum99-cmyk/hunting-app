@@ -36,5 +36,27 @@ export const AREA_TYPES: Record<BuiltInAreaType, AreaTypeInfo> = {
 
 export const PROPERTY_LINE_COLOR = '#ffd400';
 
+// Common food plot plantings, offered as suggestions (any text is fine).
+export const FOOD_PLOT_CROPS = [
+  'Clover',
+  'Alfalfa',
+  'Chicory',
+  'Brassicas',
+  'Turnips',
+  'Radishes',
+  'Soybeans',
+  'Corn',
+  'Winter wheat',
+  'Cereal rye',
+  'Oats',
+  'Winter peas',
+  'Sorghum',
+];
+
+// Food plots, and custom area types named like one ("Clover plot"), get the planting fields.
+export function isPlotType(type: string, label: string): boolean {
+  return type === 'food_plot' || /plot/i.test(label);
+}
+
 // Types that get "good wind" directions.
 export const WIND_MARKER_TYPES: MarkerType[] = ['stand', 'blind'];

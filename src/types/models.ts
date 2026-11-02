@@ -108,6 +108,9 @@ export interface MapArea extends Syncable {
   name: string;
   geometry: AreaGeometry;
   notes: string | null;
+  // Food plots: what's planted, and when (YYYY-MM-DD).
+  planted?: string | null;
+  plantedOn?: string | null;
 }
 
 // A point on an image (pixels from its top-left corner) matched to the same
@@ -221,6 +224,9 @@ export interface ReportWeather {
   windMph: number;
   gustMph: number;
   precipChance: number;
+  // Barometric pressure and its 3-hour trend (missing on older reports).
+  pressureInHg?: number;
+  pressureTrend?: 'rising' | 'falling' | 'steady';
 }
 
 // One sit: where, when, the weather, and what was seen.

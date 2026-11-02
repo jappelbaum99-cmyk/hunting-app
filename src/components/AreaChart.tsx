@@ -14,11 +14,36 @@ interface AreaChartProps {
   domain?: [number, number];
   // The time slider's position, drawn as a vertical marker.
   markerTime: number;
+  // Smallest padding above and below a fitted range, in the data's units.
+  minPad?: number;
 }
 
 const WIDTH = 280;
 const HEIGHT = 64;
 const PAD = { top: 6, right: 4, bottom: 4, left: 4 };
+
+// A smooth curve through the points that never bulges past them (monotone
+// cubic, Fritsch-Carlson), so a graph doesn't show highs or lows that aren't there.
+function smoothPath(pts: [number, number][]): string {
+  const n = pts.length;
+  const f = (v: number) => v.toFixed(1);
+  if (n < 3) return pts.map(([px, py], i) => `${i ? 'L' : 'M'}${f(px)},${f(py)}`).join('');
+  const slopes = pts.slice(0, -1).map(([x0, y0], i) => (pts[i + 1][1] - y0) / (pts[i + 1][0] - x0 || 1));
+  const tangents = pts.map((_, i) => {
+    if (i === 0) return slopes[0];
+    if (i === n - 1) return slopes[n - 2];
+    const [a, b] = [slopes[i - 1], slopes[i]];
+    return a * b <= 0 ? 0 : (2 * a * b) / (a + b);
+  });
+  let d = `M${f(pts[0][0])},${f(pts[0][1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const dx = (x1 - x0) / 3;
+    d += `C${f(x0 + dx)},${f(y0 + tangents[i] * dx)} ${f(x1 - dx)},${f(y1 - tangents[i + 1] * dx)} ${f(x1)},${f(y1)}`;
+  }
+  return d;
+}
 
 function formatTime(time: number): string {
   return new Date(time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -26,7 +51,7 @@ function formatTime(time: number): string {
 
 // A small single-series area chart: 2px line over a light wash, recessive
 // baseline, crosshair + tooltip on hover.
-export function AreaChart({ title, points, color, format, domain, markerTime }: AreaChartProps) {
+export function AreaChart({ title, points, color, format, domain, markerTime, minPad = 1 }: AreaChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   if (points.length < 2) return null;
@@ -37,7 +62,7 @@ export function AreaChart({ title, points, color, format, domain, markerTime }: 
   let [lo, hi] = domain ?? [Math.min(...values), Math.max(...values)];
   if (!domain) {
     // Pad a fitted range so a flat line doesn't hug the edges.
-    const pad = Math.max(1, (hi - lo) * 0.2);
+    const pad = Math.max(minPad, (hi - lo) * 0.2);
     lo -= pad;
     hi += pad;
   }
@@ -45,7 +70,7 @@ export function AreaChart({ title, points, color, format, domain, markerTime }: 
   const y = (v: number) => PAD.top + (1 - (v - lo) / (hi - lo || 1)) * (HEIGHT - PAD.top - PAD.bottom);
   const baseline = HEIGHT - PAD.bottom;
 
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join('');
+  const line = smoothPath(points.map((p) => [x(p.time), y(p.value)]));
   const area = `${line}L${x(t1).toFixed(1)},${baseline}L${x(t0).toFixed(1)},${baseline}Z`;
 
   const onMove = (event: PointerEvent<SVGSVGElement>) => {

@@ -673,3 +673,46 @@ textarea {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* Weather now (Hunt tab) */
+.weather-now {
+  gap: 6px;
+}
+
+.weather-now-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 16px;
+}
+
+.weather-now-main strong {
+  font-size: 28px;
+}
+
+.weather-now-pressure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+
+.pressure-trend {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--fill);
+  font-weight: 700;
+}
+
+.pressure-trend.falling {
+  color: var(--accent);
+}
+
+.weather-age {
+  margin: 0;
+  font-size: 12px;
+}

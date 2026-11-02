@@ -40,10 +40,17 @@ interface SidebarProps {
   settings: HubSettings;
   onPick(selection: Selection): void;
   onShowDataFolder: (() => void) | null;
+  // Dragging the right edge changes the width; double-click puts it back.
+  width: number;
+  onResize(width: number): void;
+  onResizeEnd(width: number): void;
 }
 
 // Swap public/logo.svg (or point this at another file in public/) to change the logo.
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
+
+// The sidebar's width in pixels: the default, and how narrow or wide it can be dragged.
+export const SIDEBAR_WIDTH = { default: 300, min: 260, max: 640 };
 
 // Days of hunts listed before "Show older".
 const DAYS_SHOWN = 7;
@@ -89,6 +96,7 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="sidebar">
+      <ResizeHandle width={props.width} onResize={props.onResize} onResizeEnd={props.onResizeEnd} />
       <header className="sidebar-header">
         <div className="brand">
           <img src={LOGO_URL} alt="" />
@@ -305,7 +313,7 @@ export function Sidebar(props: SidebarProps) {
               onClick={() => onPick({ kind: 'area', id: a.id })}
               swatch={<AreaBadge type={areaTypeInfo(a.type, props.settings)} />}
               title={a.name}
-              detail={formatAcres(acresOf(a.geometry))}
+              detail={a.planted ? `${a.planted} · ${formatAcres(acresOf(a.geometry))}` : formatAcres(acresOf(a.geometry))}
             />
           ))}
         </Section>
@@ -478,5 +486,50 @@ function HuntReports(props: {
         </>
       )}
     </section>
+  );
+}
+
+// The grab strip on the sidebar's right edge.
+function ResizeHandle(props: { width: number; onResize(width: number): void; onResizeEnd(width: number): void }) {
+  const clamp = (w: number) => Math.round(Math.min(Math.min(SIDEBAR_WIDTH.max, window.innerWidth * 0.6), Math.max(SIDEBAR_WIDTH.min, w)));
+  const drag = useRef<{ startX: number; startWidth: number; width: number } | null>(null);
+  return (
+    <div
+      className="sidebar-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Drag to resize the sidebar. Double-click to reset."
+      aria-valuenow={props.width}
+      aria-valuemin={SIDEBAR_WIDTH.min}
+      aria-valuemax={SIDEBAR_WIDTH.max}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { startX: e.clientX, startWidth: props.width, width: props.width };
+        document.body.classList.add('resizing');
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        drag.current.width = clamp(drag.current.startWidth + e.clientX - drag.current.startX);
+        props.onResize(drag.current.width);
+      }}
+      onPointerUp={() => {
+        if (drag.current) props.onResizeEnd(drag.current.width);
+        drag.current = null;
+        document.body.classList.remove('resizing');
+      }}
+      onDoubleClick={() => {
+        props.onResize(SIDEBAR_WIDTH.default);
+        props.onResizeEnd(SIDEBAR_WIDTH.default);
+      }}
+      onKeyDown={(e) => {
+        const step = e.key === 'ArrowRight' ? 20 : e.key === 'ArrowLeft' ? -20 : 0;
+        if (!step) return;
+        const next = clamp(props.width + step);
+        props.onResize(next);
+        props.onResizeEnd(next);
+      }}
+    />
   );
 }

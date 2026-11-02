@@ -82,6 +82,7 @@ export function ReportPanel(props: ReportPanelProps) {
               </span>
               <span className="muted">
                 {w.tempF}°F · {w.precipChance}% rain
+                {w.pressureInHg ? ` · ${w.pressureInHg.toFixed(2)} inHg${w.pressureTrend ? `, ${w.pressureTrend}` : ''}` : ''}
               </span>
             </div>
           ) : (

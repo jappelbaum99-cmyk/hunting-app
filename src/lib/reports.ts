@@ -1,7 +1,7 @@
 // Shared helpers for hunt reports (the hub and the phone page both use these).
 import type { IconName } from '@/lib/icons';
 import { COMPASS_POINTS, type DeerKind, type HuntReport, type ReportWeather, type Sighting } from '@/types/models';
-import type { ForecastHour } from '@/lib/weather';
+import type { ForecastHour, Pressure } from '@/lib/weather';
 
 interface KindInfo {
   label: string;
@@ -58,8 +58,9 @@ export function newSighting(time: string): Sighting {
   };
 }
 
-export function reportWeather(hour: ForecastHour): ReportWeather {
+export function reportWeather(hour: ForecastHour, pressure?: Pressure): ReportWeather {
   return {
+    ...(pressure ? { pressureInHg: Math.round(pressure.inHg * 100) / 100, pressureTrend: pressure.trend } : {}),
     tempF: Math.round(hour.tempF),
     windFromDeg: Math.round(hour.windFromDeg),
     windMph: Math.round(hour.windMph),

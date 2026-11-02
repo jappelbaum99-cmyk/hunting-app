@@ -16,8 +16,8 @@ export interface ConeShape {
 }
 
 export function coneShape(hour: ForecastHour): ConeShape {
-  if (hour.windMph < 3) return { lengthM: 150, halfAngleDeg: 45 };
-  const lengthM = Math.min(600, 250 + hour.windMph * 25);
+  if (hour.windMph < 3) return { lengthM: 75, halfAngleDeg: 45 };
+  const lengthM = Math.min(300, 125 + hour.windMph * 12.5);
   const gusty = hour.gustMph > hour.windMph * 1.6 && hour.gustMph > 12;
   return { lengthM, halfAngleDeg: gusty ? 22 : 15 };
 }
@@ -31,8 +31,11 @@ function offset([lng, lat]: [number, number], bearingDeg: number, distanceM: num
   return [lng + dLng, lat + dLat];
 }
 
-export function scentCone(lng: number, lat: number, hour: ForecastHour): Polygon {
-  const { lengthM, halfAngleDeg } = coneShape(hour);
+// `widthFactor` narrows the wedge (1 = full width); the map stacks a few to
+// make the middle darker than the edges.
+export function scentCone(lng: number, lat: number, hour: ForecastHour, widthFactor = 1): Polygon {
+  const { lengthM } = coneShape(hour);
+  const halfAngleDeg = coneShape(hour).halfAngleDeg * widthFactor;
   // Wind direction is where it comes FROM; scent goes the other way.
   const downwind = hour.windFromDeg + 180;
   const origin: [number, number] = [lng, lat];

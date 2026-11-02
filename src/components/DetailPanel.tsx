@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
-import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
+import { FOOD_PLOT_CROPS, isPlotType, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
@@ -189,6 +189,27 @@ function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange
       <Field label="Size">
         <span>{formatAcres(acresOf(record.geometry))}</span>
       </Field>
+      {isPlotType(record.type, options.find((t) => t.id === record.type)?.label ?? '') && (
+        <div className="plot-fields">
+          <Field label="What's planted">
+            <input
+              type="text"
+              list="food-plot-crops"
+              placeholder="e.g. Clover and chicory"
+              value={record.planted ?? ''}
+              onChange={(e) => onChange({ ...record, planted: e.target.value || null })}
+            />
+            <datalist id="food-plot-crops">
+              {FOOD_PLOT_CROPS.map((crop) => (
+                <option key={crop} value={crop} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Planted on">
+            <input type="date" value={record.plantedOn ?? ''} onChange={(e) => onChange({ ...record, plantedOn: e.target.value || null })} />
+          </Field>
+        </div>
+      )}
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
     </>
   );

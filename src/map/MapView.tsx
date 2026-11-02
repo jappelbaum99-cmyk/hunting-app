@@ -181,17 +181,13 @@ function addFeatureLayers(map: maplibregl.Map): void {
     paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', ['get', 'color']], 'line-width': 2 },
   });
   // Scent cones sit over areas, so you can see one drifting into bedding.
+  // Each cone is three stacked wedges (full, two-thirds and one-third width),
+  // so it's darkest down the middle and fades out to the edges.
   map.addLayer({
     id: 'scent-fill',
     type: 'fill',
     source: 'scent',
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.22 },
-  });
-  map.addLayer({
-    id: 'scent-line',
-    type: 'line',
-    source: 'scent',
-    paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] },
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'band'], 1, 0.1, 2, 0.13, 0.18] },
   });
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
@@ -254,7 +250,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
   }
 
   // Arrows drifting downwind inside each cone (moved by the animation in MapView).
-  map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2 });
+  map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2, sdf: true });
   map.addSource('scent-arrows', { type: 'geojson', data: EMPTY });
   map.addLayer({
     id: 'scent-arrows',
@@ -268,7 +264,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
       'icon-ignore-placement': true,
       'icon-size': 1.6,
     },
-    paint: { 'icon-opacity': ['get', 'opacity'] },
+    paint: { 'icon-opacity': ['get', 'opacity'], 'icon-color': ['get', 'color'], 'icon-halo-color': 'rgba(10, 20, 35, 0.55)', 'icon-halo-width': 1.2 },
   });
   map.addLayer({
     id: 'draft-fill',
@@ -381,8 +377,9 @@ function pillImage(color: string): ImageData {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-// A soft white chevron pointing up (north); the layer rotates it downwind.
-// Drawn on a canvas so no icon files or sprite server are needed.
+// A chevron pointing up (north); the layer rotates it downwind and tints it
+// the cone's color (it's a signed-distance icon). Drawn on a canvas so no icon
+// files or sprite server are needed.
 function windChevronImage(): ImageData {
   const size = 40;
   const canvas = document.createElement('canvas');
@@ -390,21 +387,43 @@ function windChevronImage(): ImageData {
   const ctx = canvas.getContext('2d')!;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  const chevron = () => {
-    ctx.beginPath();
-    ctx.moveTo(10, 26);
-    ctx.lineTo(20, 14);
-    ctx.lineTo(30, 26);
-  };
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.lineWidth = 7;
-  chevron();
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.lineWidth = 3.5;
-  chevron();
+  ctx.beginPath();
+  ctx.moveTo(10, 26);
+  ctx.lineTo(20, 14);
+  ctx.lineTo(30, 26);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 4.5;
   ctx.stroke();
   return ctx.getImageData(0, 0, size, size);
+}
+
+// Scent cone colors: blue, or red for a stand whose scent reaches bedding.
+function coneColor(rating: StandRating): string {
+  return rating === 'bad' ? '#ff453a' : '#3987e5';
+}
+
+// Widths of the stacked wedges in each cone, widest first.
+const CONE_BANDS = [1, 2 / 3, 1 / 3];
+
+// The same cone, narrowed around its middle (1 = unchanged).
+function narrowCone(cone: Polygon, factor: number): Polygon {
+  if (factor === 1) return cone;
+  const ring = cone.coordinates[0];
+  const origin = ring[0];
+  const cosLat = Math.cos((origin[1] * Math.PI) / 180);
+  const arc = ring.slice(1, -1).map((p) => {
+    const x = (p[0] - origin[0]) * cosLat;
+    const y = p[1] - origin[1];
+    return { bearing: Math.atan2(x, y), dist: Math.hypot(x, y) };
+  });
+  const mid = arc[Math.floor(arc.length / 2)].bearing;
+  const narrowed = arc.map(({ bearing, dist }) => {
+    let delta = bearing - mid;
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+    const b = mid + delta * factor;
+    return [origin[0] + (Math.sin(b) * dist) / cosLat, origin[1] + Math.cos(b) * dist];
+  });
+  return { type: 'Polygon', coordinates: [[origin, ...narrowed, origin]] };
 }
 
 // Where the drifting arrows are at time `now`: a few lanes across each cone,
@@ -413,9 +432,9 @@ const ARROW_LANES = [-0.55, 0, 0.55];
 const ARROWS_PER_LANE = 2;
 const ARROW_PERIOD_MS = 3200;
 
-function scentArrowFeatures(cones: { cone: Polygon }[], now: number | null): FeatureCollection {
+function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now: number | null): FeatureCollection {
   const features: FeatureCollection['features'] = [];
-  for (const { cone } of cones) {
+  for (const { cone, rating } of cones) {
     const ring = cone.coordinates[0];
     const origin = ring[0];
     // Ring is: origin, arc points (left to right), origin.
@@ -438,7 +457,7 @@ function scentArrowFeatures(cones: { cone: Polygon }[], now: number | null): Fea
         features.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [origin[0] + (tip[0] - origin[0]) * t, origin[1] + (tip[1] - origin[1]) * t] },
-          properties: { bearing, opacity },
+          properties: { bearing, opacity, color: coneColor(rating) },
         });
       }
     });
@@ -784,18 +803,20 @@ export function MapView(props: MapViewProps) {
     );
   }, [alignMarkers, readyTick]);
 
-  // Scent cones: red when the scent reaches bedding (or the wind is wrong), orange otherwise.
+  // Scent cones: blue, or red when the scent reaches bedding (or the wind is wrong).
   const { scentCones } = props;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     map.getSource<GeoJSONSource>('scent')?.setData({
       type: 'FeatureCollection',
-      features: scentCones.map((c) => ({
-        type: 'Feature',
-        geometry: c.cone,
-        properties: { id: c.id, color: c.rating === 'bad' ? '#ff453a' : '#ffa53b' },
-      })),
+      features: scentCones.flatMap((c) =>
+        CONE_BANDS.map((width, i) => ({
+          type: 'Feature' as const,
+          geometry: narrowCone(c.cone, width),
+          properties: { id: c.id, band: i + 1, color: coneColor(c.rating) },
+        })),
+      ),
     });
   }, [scentCones, readyTick]);
 

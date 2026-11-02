@@ -169,10 +169,37 @@ function localDate(time: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Barometric pressure. Forecasts give hectopascals; hunters read inches of mercury.
+export function inHg(hpa: number): number {
+  return hpa * 0.02953;
+}
+
+export type PressureTrend = 'rising' | 'falling' | 'steady';
+
+export interface Pressure {
+  inHg: number;
+  // Change over the 3 hours before, inHg.
+  changeInHg: number;
+  trend: PressureTrend;
+}
+
+// A change under about 0.02 inHg (0.7 hPa) in 3 hours counts as steady.
+export function pressureAt(forecast: Forecast, time: number): Pressure {
+  const now = weatherAt(forecast, time).pressureHpa;
+  const before = weatherAt(forecast, time - 3 * HOUR_MS).pressureHpa;
+  const change = now - before;
+  return { inHg: inHg(now), changeInHg: inHg(change), trend: change > 0.7 ? 'rising' : change < -0.7 ? 'falling' : 'steady' };
+}
+
+// "30.12 inHg, falling".
+export function formatPressure(p: Pick<Pressure, 'inHg' | 'trend'>): string {
+  return `${p.inHg.toFixed(2)} inHg, ${p.trend}`;
+}
+
 // The weather at one place and moment, for filling in a hunt report.
-// Uses the PC's local date, which matches the property's for local hunts.
-export async function weatherFor(lat: number, lng: number, time: number): Promise<ForecastHour> {
-  const day = localDate(time);
-  const forecast = await fetchForecast(lat, lng, undefined, { start: day, end: day });
-  return weatherAt(forecast, time);
+// Uses the PC's local date, which matches the property's for local hunts;
+// starts a few hours earlier so the pressure trend can be worked out.
+export async function weatherFor(lat: number, lng: number, time: number): Promise<{ hour: ForecastHour; pressure: Pressure }> {
+  const forecast = await fetchForecast(lat, lng, undefined, { start: localDate(time - 6 * HOUR_MS), end: localDate(time) });
+  return { hour: weatherAt(forecast, time), pressure: pressureAt(forecast, time) };
 }

@@ -3,7 +3,7 @@ import { Icon } from '@/components/Icon';
 
 import { AreaChart } from '@/components/AreaChart';
 import { compassPointOf, RATING_LABELS, type RatedStand, type Sit, type StandRating } from '@/lib/standRating';
-import { hourAt, hoursBetween, weatherAt, type Forecast, type ForecastHour } from '@/lib/weather';
+import { hourAt, hoursBetween, weatherAt, type Forecast, type ForecastHour, formatPressure, inHg, pressureAt } from '@/lib/weather';
 import type { Property } from '@/types/models';
 
 export type ForecastState =
@@ -22,6 +22,9 @@ interface ForecastPanelProps {
   // Where the time slider is (or the picked hour).
   selectedTime: number;
   ratedStands: RatedStand[];
+  // Rating groups whose cones are shown on the map.
+  coneGroups: StandRating[];
+  onToggleCones(group: StandRating): void;
   onPropertyChange(id: string | null): void;
   onSitChange(sit: Sit): void;
   // Slider moved within the current sit. Must be a stable function.
@@ -43,6 +46,7 @@ const GROUPS: StandRating[] = ['good', 'ok', 'bad', 'unset'];
 const TEMP_COLOR = '#d96f17';
 const WIND_COLOR = '#1f97c9';
 const RAIN_COLOR = '#9a7af5';
+const PRESSURE_COLOR = '#199e70';
 
 function formatHour(time: number): string {
   return new Date(time).toLocaleTimeString(undefined, { hour: 'numeric' });
@@ -143,7 +147,7 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
         ))}
       </div>
 
-      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} />
+      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} />
 
       <p className="hint forecast-source">
         Forecast from Open-Meteo, updated {updatedMinutes < 1 ? 'just now' : `${updatedMinutes} min ago`}.{' '}
@@ -179,6 +183,8 @@ function SitWeather({
   // Whole forecast hours inside the sit, so blended end points aren't counted twice.
   const rainInches = forecast.hours.filter((h) => h.time >= sit.start && h.time < sit.end).reduce((t, h) => t + h.precipIn, 0);
   const day = forecast.days.find((d) => d.sunrise - 6 * HOUR <= sit.peak && sit.peak < d.sunset + 6 * HOUR);
+  const pressure = pressureAt(forecast, sit.start);
+  const pressureEnd = pressureAt(forecast, sit.end);
 
   // Play steps the slider through the sit, then stops at the end.
   useEffect(() => {
@@ -228,6 +234,12 @@ function SitWeather({
             {Math.round(maxRain)}% · {rainInches < 0.01 ? 'none expected' : `${rainInches.toFixed(2)} in`}
           </dd>
         </div>
+        <div>
+          <dt>Pressure</dt>
+          <dd>
+            {pressure.inHg.toFixed(2)} → {pressureEnd.inHg.toFixed(2)} inHg · {pressure.trend}
+          </dd>
+        </div>
       </dl>
 
       <AreaChart title="Temperature" points={toChart((h) => h.tempF)} color={TEMP_COLOR} format={(v) => `${Math.round(v)}°F`} markerTime={selectedTime} />
@@ -252,6 +264,14 @@ function SitWeather({
         color={RAIN_COLOR}
         format={(v) => `${Math.round(v)}%`}
         domain={[0, 100]}
+        markerTime={selectedTime}
+      />
+      <AreaChart
+        title="Pressure"
+        points={toChart((h) => inHg(h.pressureHpa))}
+        color={PRESSURE_COLOR}
+        format={(v) => `${v.toFixed(2)} inHg`}
+        minPad={0.02}
         markerTime={selectedTime}
       />
 
@@ -291,9 +311,7 @@ function SitWeather({
 
 // A single hour picked from the strip.
 function HourWeather({ forecast, hour }: { forecast: Forecast; hour: ForecastHour }) {
-  const threeHoursBefore = hourAt(forecast, hour.time - 3 * HOUR);
-  const pressureChange = hour.pressureHpa - threeHoursBefore.pressureHpa;
-  const pressureTrend = pressureChange > 0.7 ? 'rising' : pressureChange < -0.7 ? 'falling' : 'steady';
+  const pressure = pressureAt(forecast, hour.time);
   const day = forecast.days.find((d) => d.sunrise - 6 * HOUR <= hour.time && hour.time < d.sunset + 6 * HOUR);
   return (
     <div className="weather-card">
@@ -312,7 +330,7 @@ function HourWeather({ forecast, hour }: { forecast: Forecast; hour: ForecastHou
         <span>{Math.round(hour.tempF)}°F</span>
         <span>{Math.round(hour.precipChance)}% rain</span>
         <span>{Math.round(hour.humidity)}% humidity</span>
-        <span>Pressure {pressureTrend}</span>
+        <span>{formatPressure(pressure)}</span>
         {day && <span>Sunrise {formatClock(day.sunrise)}</span>}
         {day && <span>Sunset {formatClock(day.sunset)}</span>}
       </div>
@@ -320,18 +338,40 @@ function HourWeather({ forecast, hour }: { forecast: Forecast; hour: ForecastHou
   );
 }
 
-function StandList({ ratedStands, time, onPickStand }: { ratedStands: RatedStand[]; time: number; onPickStand(id: string): void }) {
+function StandList({
+  ratedStands,
+  time,
+  onPickStand,
+  coneGroups,
+  onToggleCones,
+}: {
+  ratedStands: RatedStand[];
+  time: number;
+  onPickStand(id: string): void;
+  coneGroups: StandRating[];
+  onToggleCones(group: StandRating): void;
+}) {
   if (ratedStands.length === 0) return <p className="empty">Add stands with their good winds to get recommendations.</p>;
   return (
     <>
-      <p className="hint stands-at">Stand picks for {formatClock(time)}</p>
+      <p className="hint stands-at">Stand picks for {formatClock(time)}. Click a stand to see its scent cone, or turn on Cones for a group.</p>
       {GROUPS.map((group) => {
         const items = ratedStands.filter((r) => r.rating === group);
         if (items.length === 0) return null;
         return (
           <section key={group} className="sidebar-section">
-            <h2>
-              {RATING_LABELS[group]} <span className="count">{items.length}</span>
+            <h2 className="group-head">
+              <span>
+                {RATING_LABELS[group]} <span className="count">{items.length}</span>
+              </span>
+              <button
+                className={`cone-toggle${coneGroups.includes(group) ? ' on' : ''}`}
+                aria-pressed={coneGroups.includes(group)}
+                onClick={() => onToggleCones(group)}
+                title={`Show scent cones for every ${RATING_LABELS[group].toLowerCase()} stand`}
+              >
+                Cones
+              </button>
             </h2>
             <ul>
               {items.map((r) => (

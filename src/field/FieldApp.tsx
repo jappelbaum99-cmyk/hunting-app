@@ -17,7 +17,10 @@ import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
+import { useFieldWeather } from '@/field/useFieldWeather';
 import { WherePicker } from '@/field/WherePicker';
+import { compassPointOf } from '@/lib/standRating';
+import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
 import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
 
@@ -89,6 +92,9 @@ export function FieldApp() {
   // Everyone else's hunts in the camp; this phone's own come from data.reports.
   const mine = new Set(data.reports.map((r) => r.id));
   const campHunts = data.camp ? data.campHunts.filter((r) => !mine.has(r.id)) : [];
+  // Weather for the stand being hunted, else the first stand, else where the phone is.
+  const activeStand = data.stands.find((s) => s.id === active?.standId);
+  const weather = useFieldWeather(activeStand ?? data.stands[0] ?? gps.fix);
 
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
@@ -106,6 +112,7 @@ export function FieldApp() {
       <main className="field-main">
         {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
         {tab === 'pin' && <PinTab fix={gps.fix} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
+        {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
           <HuntTab
             data={data}
@@ -209,6 +216,39 @@ function PinTab(props: { fix: Fix | null; pins: FieldPin[]; onAdd(pin: FieldPin)
           </ul>
         </>
       )}
+    </section>
+  );
+}
+
+// Temperature, wind and barometric pressure right now, from the last forecast saved.
+function WeatherNow({ forecast, offline }: { forecast: Forecast | null; offline: boolean }) {
+  if (!forecast) {
+    return offline ? null : <p className="field-hint weather-now">Getting the weather…</p>;
+  }
+  const now = Date.now();
+  const hour = weatherAt(forecast, now);
+  const pressure = pressureAt(forecast, now);
+  const ageMin = Math.round((now - forecast.fetchedAt) / 60_000);
+  return (
+    <section className="field-card weather-now">
+      <div className="weather-now-main">
+        <strong>{Math.round(hour.tempF)}°F</strong>
+        <span>
+          {compassPointOf(hour.windFromDeg)} wind {Math.round(hour.windMph)} mph
+          <span className="muted"> · gusts {Math.round(hour.gustMph)}</span>
+        </span>
+      </div>
+      <div className="weather-now-pressure">
+        <span className={`pressure-trend ${pressure.trend}`} aria-hidden>
+          {pressure.trend === 'rising' ? '↑' : pressure.trend === 'falling' ? '↓' : '→'}
+        </span>
+        Pressure {formatPressure(pressure)}
+        <span className="muted"> ({pressure.changeInHg >= 0 ? '+' : ''}{pressure.changeInHg.toFixed(2)} in 3 h)</span>
+      </div>
+      <p className="muted weather-age">
+        {offline ? 'No signal · ' : ''}
+        Forecast from {ageMin < 2 ? 'just now' : ageMin < 120 ? `${ageMin} min ago` : new Date(forecast.fetchedAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+      </p>
     </section>
   );
 }

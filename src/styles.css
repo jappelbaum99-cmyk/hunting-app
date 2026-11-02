@@ -2644,3 +2644,82 @@ button.mini {
   display: flex;
   align-items: center;
 }
+
+/* Food plot planting fields */
+.plot-fields {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 8px;
+}
+
+.plot-fields .field {
+  min-width: 0;
+}
+
+.plot-fields input {
+  width: 100%;
+}
+
+/* Hunt Forecast: per-group scent cone switch */
+.group-head {
+  align-items: center !important;
+}
+
+.cone-toggle {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cone-toggle:hover {
+  background: var(--fill-hover);
+}
+
+.cone-toggle.on {
+  background: #3987e5;
+  border-color: #3987e5;
+  color: #fff;
+}
+
+/* Drag the sidebar's right edge to resize it */
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resize::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 3px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar:hover .sidebar-resize::after,
+.sidebar-resize:focus-visible::after,
+body.resizing .sidebar-resize::after {
+  opacity: 1;
+  background: var(--accent);
+}
+
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}

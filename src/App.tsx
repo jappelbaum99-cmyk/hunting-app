@@ -1,5 +1,5 @@
 import type { Position } from 'geojson';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
@@ -14,7 +14,7 @@ import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type 
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { StandHistory } from '@/components/StandHistory';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { useHubCamp } from '@/data/useHubCamp';
 import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
@@ -60,6 +60,26 @@ function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
 // Stands and blinds: the pins you hunt from.
 const isStandMarker = (m: MapMarker) => WIND_MARKER_TYPES.includes(m.type);
 
+const SIDEBAR_WIDTH_KEY = 'hunting-hub-sidebar-width';
+
+function loadSidebarWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (saved >= SIDEBAR_WIDTH.min && saved <= SIDEBAR_WIDTH.max) return saved;
+  } catch {
+    // Not saved, or storage is blocked: use the default.
+  }
+  return SIDEBAR_WIDTH.default;
+}
+
+function saveSidebarWidth(width: number) {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  } catch {
+    // Only a convenience.
+  }
+}
+
 function forecastLocation(property: Property | null, properties: Property[], markers: MapMarker[]): [number, number] {
   const target = property ?? properties[0];
   if (target) {
@@ -80,6 +100,10 @@ export function App() {
   const [draftPoints, setDraftPoints] = useState<Position[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The sidebar's width, dragged from its edge (remembered on this PC).
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+  // Forecast rating groups whose stands show scent cones on the map.
+  const [coneGroups, setConeGroups] = useState<StandRating[]>([]);
   const [dataPath, setDataPath] = useState<string | null>(null);
   const [alignDraft, setAlignDraft] = useState<AlignDraft | null>(null);
   // The picked file for a new map image; it's only written to disk on Save.
@@ -264,9 +288,9 @@ export function App() {
     setWeatherStatus((s) => ({ ...s, [report.id]: 'loading' }));
     try {
       const [lng, lat] = reportLocation(report);
-      const hour = await weatherFor(lat, lng, Date.parse(report.start));
+      const { hour, pressure } = await weatherFor(lat, lng, Date.parse(report.start));
       // Merge into the latest copy, so edits made while waiting aren't lost.
-      hub.patchReport(report.id, { weather: reportWeather(hour) });
+      hub.patchReport(report.id, { weather: reportWeather(hour, pressure) });
       setWeatherStatus((s) => ({ ...s, [report.id]: 'idle' }));
     } catch (error) {
       setWeatherStatus((s) => ({
@@ -660,6 +684,12 @@ export function App() {
   const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, sensitiveAreas) : [];
   const standRatings: Record<string, StandRating> | null =
     forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
+  // Scent cones: the stand you clicked, plus any rating groups switched on in the forecast.
+  const selectedStand = selection?.kind === 'marker' ? hub.markers.find((m) => m.id === selection.id && isStand(m)) : undefined;
+  const coneStands = [
+    ...(forecastOpen ? ratedStands.filter((r) => coneGroups.includes(r.rating)) : []),
+    ...(selectedStand && ratingHour ? rateStands([selectedStand], ratingHour, sensitiveAreas) : []),
+  ].filter((r, i, all) => all.findIndex((o) => o.stand.id === r.stand.id) === i);
 
   let forecastTeaser = 'Wind and stand picks';
   if (forecastState.status === 'loading') forecastTeaser = 'Getting the wind…';
@@ -680,6 +710,8 @@ export function App() {
       sitId={forecastSitId}
       selectedTime={forecastTime ?? now}
       ratedStands={ratedStands}
+      coneGroups={coneGroups}
+      onToggleCones={(group) => setConeGroups((g) => (g.includes(group) ? g.filter((x) => x !== group) : [...g, group]))}
       onPropertyChange={setForecastPropertyId}
       onSitChange={(sit) => {
         setForecastSitId(sit.id);
@@ -735,7 +767,7 @@ export function App() {
 
   const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
-    <div className={appClass}>
+    <div className={appClass} style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
       <Sidebar
         properties={hub.properties}
         sections={hub.sections}
@@ -743,6 +775,9 @@ export function App() {
         reports={hub.reports}
         newFieldPins={hub.fieldPins.filter((p) => p.status === 'new')}
         onImportPhone={(file) => void importPhone(file)}
+        width={sidebarWidth}
+        onResize={setSidebarWidth}
+        onResizeEnd={saveSidebarWidth}
         camp={hub.settings.camp ?? null}
         campError={camp.error}
         onSendStands={sendStandsToPhone}
@@ -794,7 +829,7 @@ export function App() {
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}
-          scentCones={standRatings ? ratedStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone })) : []}
+          scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
           sightings={sightingViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
