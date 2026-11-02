@@ -44,6 +44,15 @@ export function propertyContaining(properties: Property[], position: Position): 
   return properties.find((p) => booleanPointInPolygon(position, p.boundary)) ?? null;
 }
 
+// The point a given distance and compass bearing from another, close enough
+// for the few hundred yards around a stand.
+export function offsetPosition(lng: number, lat: number, bearingDeg: number, meters: number): [number, number] {
+  const rad = (bearingDeg * Math.PI) / 180;
+  const dLat = (meters * Math.cos(rad)) / 111_320;
+  const dLng = (meters * Math.sin(rad)) / (111_320 * Math.cos((lat * Math.PI) / 180));
+  return [lng + dLng, lat + dLat];
+}
+
 export function formatLatLng(lat: number, lng: number): string {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }

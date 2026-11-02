@@ -17,7 +17,8 @@ import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
-import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary } from '@/lib/reports';
+import { WherePicker } from '@/field/WherePicker';
+import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
@@ -375,6 +376,7 @@ function QuickLog(props: {
   const [heading, setHeading] = useState<number | null>(null);
   const [buckName, setBuckName] = useState('');
   const [otherName, setOtherName] = useState('');
+  const [where, setWhere] = useState<Sighting['fromStand']>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const notes = useRef<HTMLTextAreaElement>(null);
 
@@ -384,6 +386,7 @@ function QuickLog(props: {
     setHeading(null);
     setBuckName('');
     setOtherName('');
+    setWhere(null);
   };
 
   const startEditing = (s: Sighting) => {
@@ -393,6 +396,7 @@ function QuickLog(props: {
     setHeading(s.headingDeg);
     setBuckName(s.buckName ?? '');
     setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
+    setWhere(s.fromStand ?? null);
   };
 
   const save = () => {
@@ -402,6 +406,7 @@ function QuickLog(props: {
       headingDeg: heading,
       buckName: kind === 'buck' ? buckName.trim() || null : null,
       notes: kind === 'other' ? otherName.trim() || null : null,
+      fromStand: where,
     };
     const sightings = editingId
       ? report.sightings.map((s) => (s.id === editingId ? { ...s, ...fields } : s))
@@ -451,6 +456,9 @@ function QuickLog(props: {
         </button>
       </div>
 
+      <WherePicker value={where ?? null} onChange={setWhere} logged={report.sightings.filter((s) => s.id !== editingId)} />
+
+      <div className="field-heading-label">Which way were they going?</div>
       <div className="field-compass">
         {HEADINGS.map((h) => (
           <button key={h.point} className={`h-${h.point}${heading === h.deg ? ' active' : ''}`} onClick={() => setHeading(heading === h.deg ? null : h.deg)}>
@@ -491,6 +499,7 @@ function QuickLog(props: {
                     {sightingLabel(s)}
                     {s.buckName ? ` (${s.buckName})` : ''}
                     {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
+                    {whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
                   </span>
                   <span className="muted">{clock(s.time)}</span>
                 </button>

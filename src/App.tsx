@@ -22,7 +22,7 @@ import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
-import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
+import { boundsOf, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { kindInfo, reportWeather } from '@/lib/reports';
@@ -706,20 +706,22 @@ export function App() {
   // Deer from hunt reports. Ones not placed on the map are spread in a small
   // ring around their stand so several sightings don't hide each other.
   const SIGHTING_RING_M = 18;
+  const YARD_M = 0.9144;
   const sightingViews: SightingView[] = [];
   if (layers.sightings) {
     for (const report of hub.reports) {
       const stand = hub.markers.find((m) => m.id === report.standId);
-      const unplaced = report.sightings.filter((s) => s.lat === null);
+      const unplaced = report.sightings.filter((s) => s.lat === null && !s.fromStand);
       for (const s of report.sightings) {
         let at: [number, number] | null = s.lat !== null && s.lng !== null ? [s.lng, s.lat] : null;
-        if (!at && stand) {
-          const angle = (2 * Math.PI * unplaced.indexOf(s)) / Math.max(1, unplaced.length);
-          const dLat = (SIGHTING_RING_M * Math.cos(angle)) / 111_320;
-          const dLng = (SIGHTING_RING_M * Math.sin(angle)) / (111_320 * Math.cos((stand.lat * Math.PI) / 180));
-          at = [stand.lng + dLng, stand.lat + dLat];
+        if (!at && stand && s.fromStand) {
+          // Tapped on the phone as "about this far, this way" from the stand.
+          at = offsetPosition(stand.lng, stand.lat, s.fromStand.bearingDeg, s.fromStand.yards * YARD_M);
+        } else if (!at && stand) {
+          at = offsetPosition(stand.lng, stand.lat, (360 * unplaced.indexOf(s)) / Math.max(1, unplaced.length), SIGHTING_RING_M);
         }
-        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, color: kindInfo(s.kind).color, ...(kindInfo(s.kind).deer ? {} : { icon: kindInfo(s.kind).icon }) });
+        const info = kindInfo(s.kind);
+        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, kind: s.kind, color: info.color, ...(info.deer ? {} : { icon: info.icon }) });
       }
     }
   }

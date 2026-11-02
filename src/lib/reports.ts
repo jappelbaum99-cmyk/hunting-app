@@ -53,6 +53,7 @@ export function newSighting(time: string): Sighting {
     headingDeg: null,
     lat: null,
     lng: null,
+    fromStand: null,
     notes: null,
   };
 }
@@ -83,6 +84,18 @@ export function sightingSummary(report: Pick<HuntReport, 'sightings'>): string {
     .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
     .map(sightingLabel)
     .join(', ');
+}
+
+// Distance bands for "where seen", in yards. The last one means "farther".
+export const DISTANCE_BANDS = [50, 100, 200, 300] as const;
+
+// "~100 yd NE", "200+ yd W", or null when not given.
+export function whereLabel(s: Pick<Sighting, 'fromStand'>): string | null {
+  if (!s.fromStand) return null;
+  const point = COMPASS_POINTS[Math.round((((s.fromStand.bearingDeg % 360) + 360) % 360) / 45) % 8];
+  const last = DISTANCE_BANDS[DISTANCE_BANDS.length - 1];
+  const yards = s.fromStand.yards >= last ? `${DISTANCE_BANDS[DISTANCE_BANDS.length - 2]}+` : `~${s.fromStand.yards}`;
+  return `${yards} yd ${point}`;
 }
 
 // For <input type="date"> and <input type="time">, in the PC's local time.

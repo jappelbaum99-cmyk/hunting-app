@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
 
 import { compassPointOf } from '@/lib/standRating';
-import { DEER_KINDS, fromDateTimeInputs, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
+import { DEER_KINDS, fromDateTimeInputs, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
 import type { DeerKind, HuntReport, MapMarker, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
@@ -220,7 +220,7 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
       </div>
 
       <div className="sighting-where">
-        <span className="muted">{s.lat !== null ? 'Placed on the map' : 'Shown at the stand'}</span>
+        <span className="muted">{s.lat !== null ? 'Placed on the map' : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}</span>
         <button className="link" onClick={props.onPlace}>
           {s.lat !== null ? 'Move on map' : 'Place on map'}
         </button>

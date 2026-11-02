@@ -594,3 +594,82 @@ textarea {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* "Where were they?" target around the stand */
+.where-picker {
+  display: grid;
+  gap: 6px;
+}
+
+.where-head,
+.field-heading-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.where-head .muted {
+  font-size: 14px;
+}
+
+.where-picker svg {
+  width: 100%;
+  max-width: 320px;
+  justify-self: center;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.where-outer {
+  fill: var(--fill);
+  stroke: var(--border);
+}
+
+.where-ring {
+  fill: none;
+  stroke: rgba(255, 226, 196, 0.22);
+  stroke-dasharray: 3 4;
+}
+
+.where-spoke {
+  stroke: rgba(255, 226, 196, 0.1);
+}
+
+.where-yards {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.where-compass {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.where-stand {
+  fill: var(--accent);
+  stroke: var(--dark-brown);
+  stroke-width: 3;
+}
+
+.where-pick {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 3;
+}
+
+.where-logged {
+  stroke: var(--dark-brown);
+  stroke-width: 1.5;
+}
+
+.where-chevron {
+  fill: none;
+  stroke: var(--dark-brown);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

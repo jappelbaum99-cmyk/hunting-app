@@ -207,6 +207,10 @@ export interface Sighting {
   // Where they were seen; null = not placed (drawn at the stand).
   lat: number | null;
   lng: number | null;
+  // Roughly where they were from the stand, tapped on the phone: a compass
+  // direction and a distance band. Kept this small on purpose; the exact
+  // spot is worked out from the stand when drawing. lat/lng win when set.
+  fromStand?: { bearingDeg: number; yards: number } | null;
   // For "other", what it was (e.g. "coyote").
   notes: string | null;
 }

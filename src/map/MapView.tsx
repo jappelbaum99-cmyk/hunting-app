@@ -21,7 +21,8 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import type { AreaGeometry, HubSettings, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
+import { DEER_KINDS } from '@/lib/reports';
+import type { AreaGeometry, DeerKind, HubSettings, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
 const DEFAULT_ZOOM = 12;
@@ -58,8 +59,9 @@ export interface SightingView {
   lat: number;
   // Travel direction, 0 = north; null = not moving.
   headingDeg: number | null;
+  kind: DeerKind;
   color: string;
-  // Animals other than deer are drawn as their icon instead of an arrow.
+  // Animals other than deer carry their icon, since they share one color.
   icon?: IconName;
 }
 
@@ -191,10 +193,10 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'scent',
     paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] },
   });
-  // Deer sightings from hunt reports: a colored arrow the way the deer were
-  // heading, or a dot when they weren't moving. The arrow is a signed-distance
-  // icon so one image can be tinted per deer kind.
-  map.addImage('deer-arrow', deerArrowImage(), { pixelRatio: 2, sdf: true });
+  // Animals from hunt reports. A moving animal is a pill pointing the way it
+  // went (chevron at the front), in its kind's color; one that wasn't moving
+  // is a dot. Pill images are drawn per kind on a canvas below.
+  for (const kind of Object.keys(DEER_KINDS) as DeerKind[]) map.addImage(`pill-${kind}`, pillImage(DEER_KINDS[kind].color), { pixelRatio: 2 });
   map.addSource('sightings', { type: 'geojson', data: EMPTY });
   map.addLayer({
     id: 'sighting-dots',
@@ -204,19 +206,29 @@ function addFeatureLayers(map: maplibregl.Map): void {
     paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#1c130d', 'circle-stroke-width': 2 },
   });
   map.addLayer({
-    id: 'sighting-arrows',
+    id: 'sighting-pills',
     type: 'symbol',
     source: 'sightings',
-    filter: ['all', ['has', 'heading'], ['!', ['has', 'icon']]],
+    filter: ['has', 'heading'],
     layout: {
-      'icon-image': 'deer-arrow',
+      'icon-image': ['concat', 'pill-', ['get', 'kind']],
       'icon-rotate': ['get', 'heading'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'icon-size': 1.1,
     },
-    paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#1c130d', 'icon-halo-width': 1.5 },
+  });
+  // Turkey, bear and other pills share a color, so their icon rides on top, kept upright.
+  map.addLayer({
+    id: 'sighting-pill-icons',
+    type: 'symbol',
+    source: 'sightings',
+    filter: ['all', ['has', 'heading'], ['has', 'icon']],
+    layout: {
+      'icon-image': ['concat', 'animal-ink-', ['get', 'icon']],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
   });
 
   // Turkeys, bears and other animals: their icon on a dark badge, so they're
@@ -225,7 +237,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'sighting-animals',
     type: 'symbol',
     source: 'sightings',
-    filter: ['has', 'icon'],
+    filter: ['all', ['has', 'icon'], ['!', ['has', 'heading']]],
     layout: {
       'icon-image': ['concat', 'animal-', ['get', 'icon']],
       'icon-allow-overlap': true,
@@ -235,6 +247,9 @@ function addFeatureLayers(map: maplibregl.Map): void {
   for (const icon of ANIMAL_ICONS) {
     void animalBadgeImage(icon).then((image) => {
       if (!map.hasImage(`animal-${icon}`)) map.addImage(`animal-${icon}`, image, { pixelRatio: 2 });
+    });
+    void iconImage(icon, 22, '#1c130d').then((image) => {
+      if (!map.hasImage(`animal-ink-${icon}`)) map.addImage(`animal-ink-${icon}`, image, { pixelRatio: 2 });
     });
   }
 
@@ -294,7 +309,27 @@ function addFeatureLayers(map: maplibregl.Map): void {
 // A solid arrow pointing up (north), white so it can be tinted (sdf icon).
 const ANIMAL_ICONS: IconName[] = ['turkey', 'bear', 'binoculars'];
 
-// An animal icon in light ink on a round dark badge, drawn from the app's SVG icons.
+// One of the app's SVG icons as an image, in the given ink.
+async function iconBitmap(icon: IconName, size: number, ink: string): Promise<HTMLImageElement> {
+  const svg = iconSvg(icon, size)
+    .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+    .replace('stroke="currentColor"', `stroke="${ink}"`)
+    .replace(/fill="currentColor"/g, `fill="${ink}"`);
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await img.decode();
+  return img;
+}
+
+async function iconImage(icon: IconName, size: number, ink: string): Promise<ImageData> {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(await iconBitmap(icon, size, ink), 0, 0, size, size);
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// An animal icon in light ink on a round dark badge (animals that weren't moving).
 async function animalBadgeImage(icon: IconName): Promise<ImageData> {
   const size = 52;
   const canvas = document.createElement('canvas');
@@ -307,31 +342,43 @@ async function animalBadgeImage(icon: IconName): Promise<ImageData> {
   ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  const svg = iconSvg(icon, 32).replace('stroke="currentColor"', 'stroke="#f0efec"').replace(/fill="currentColor"/g, 'fill="#f0efec"');
-  const img = new Image();
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}`;
-  await img.decode();
-  ctx.drawImage(img, (size - 32) / 2, (size - 32) / 2, 32, 32);
+  ctx.drawImage(await iconBitmap(icon, 32, '#f0efec'), (size - 32) / 2, (size - 32) / 2, 32, 32);
   return ctx.getImageData(0, 0, size, size);
 }
 
-function deerArrowImage(): ImageData {
-  const size = 44;
+// A pill pointing up (north) with a chevron at its front end; the layer turns
+// it to face the way the animal went. Drawn at 2x for sharp edges.
+function pillImage(color: string): ImageData {
+  const w = 30;
+  const h = 64;
+  const pad = 3;
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
+  canvas.width = w + pad * 2;
+  canvas.height = h + pad * 2;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#fff';
+  const r = w / 2;
+  ctx.translate(pad, pad);
   ctx.beginPath();
-  ctx.moveTo(22, 4);
-  ctx.lineTo(36, 22);
-  ctx.lineTo(27, 22);
-  ctx.lineTo(27, 40);
-  ctx.lineTo(17, 40);
-  ctx.lineTo(17, 22);
-  ctx.lineTo(8, 22);
+  ctx.moveTo(0, r);
+  ctx.arc(r, r, r, Math.PI, 0);
+  ctx.lineTo(w, h - r);
+  ctx.arc(r, h - r, r, 0, Math.PI);
   ctx.closePath();
+  ctx.fillStyle = color;
   ctx.fill();
-  return ctx.getImageData(0, 0, size, size);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#1c130d';
+  ctx.stroke();
+  // Chevron near the front.
+  ctx.beginPath();
+  ctx.moveTo(r - 8, 19);
+  ctx.lineTo(r, 11);
+  ctx.lineTo(r + 8, 19);
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
 // A soft white chevron pointing up (north); the layer rotates it downwind.
@@ -523,7 +570,7 @@ export function MapView(props: MapViewProps) {
       }
       // Areas win over the sections they sit in.
       // A deer sighting opens its hunt report.
-      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-arrows', 'sighting-dots', 'sighting-animals'] })[0];
+      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-pills', 'sighting-pill-icons', 'sighting-dots', 'sighting-animals'] })[0];
       if (deer) {
         onSelect({ kind: 'report', id: deer.properties.reportId as string });
         return;
@@ -542,7 +589,7 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
     });
 
-    for (const layer of ['area-fill', 'section-fill', 'sighting-arrows', 'sighting-dots', 'sighting-animals']) {
+    for (const layer of ['area-fill', 'section-fill', 'sighting-pills', 'sighting-pill-icons', 'sighting-dots', 'sighting-animals']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
       });
@@ -763,7 +810,7 @@ export function MapView(props: MapViewProps) {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
         // `heading` is left out (not null) for still deer, so the layer filters can test for it.
-        properties: { reportId: s.reportId, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}), ...(s.icon ? { icon: s.icon } : {}) },
+        properties: { reportId: s.reportId, kind: s.kind, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}), ...(s.icon ? { icon: s.icon } : {}) },
       })),
     });
   }, [sightings, readyTick]);
