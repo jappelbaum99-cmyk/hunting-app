@@ -876,3 +876,43 @@ textarea {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* Saved pins and walks: status and tidy-up */
+.sent-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--fill);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.sent-badge.added {
+  background: rgba(127, 214, 127, 0.18);
+  color: #7fd67f;
+}
+
+.sent-badge.sent {
+  color: var(--text);
+}
+
+.sent-badge.waiting {
+  color: var(--accent);
+}
+
+.sent-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sent-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+}

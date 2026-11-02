@@ -89,6 +89,8 @@ export interface HubSettings {
   snapping: { enabled: boolean; distancePx: number };
   // The camp this hub gets phone hunts and pins from, if any.
   camp?: CampLink | null;
+  // Folder where trail camera photos are kept (desktop app).
+  photoLibrary?: string | null;
 }
 
 // A shared camp in Firebase that phones send hunts and pins to (see src/lib/camp.ts).
@@ -305,6 +307,25 @@ export interface FieldTrack extends Syncable {
   trailId: string | null;
 }
 
+// A trail camera photo, filed in the photo library (see src/lib/photos.ts).
+export interface CameraPhoto extends Syncable {
+  // The camera's map pin.
+  cameraId: string;
+  // Path inside the photo library, e.g. "Creek Cam/2026-11/2026-11-01_064512.jpg".
+  file: string;
+  originalName: string;
+  originalSize: number;
+  // When the camera took it (its own clock), else when the file was saved.
+  takenAt: string;
+  // Not looked at yet, has animals, or nothing in it.
+  status: 'new' | 'animal' | 'empty';
+  // What's in it, when tagged.
+  kinds: DeerKind[];
+  notes: string | null;
+  // The import it came in with.
+  batchId: string;
+}
+
 export interface HubData {
   schemaVersion: 1;
   properties: Property[];
@@ -317,6 +338,7 @@ export interface HubData {
   fieldPins: FieldPin[];
   trails: MapTrail[];
   fieldTracks: FieldTrack[];
+  photos: CameraPhoto[];
   settings: HubSettings;
 }
 

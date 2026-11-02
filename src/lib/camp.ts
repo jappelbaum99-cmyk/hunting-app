@@ -108,8 +108,20 @@ export async function publishPinTypes(camp: CampLink, pinTypes: CustomPinType[])
   await updateDoc(doc(firebase().db, 'camps', camp.code), { pinTypes: JSON.parse(JSON.stringify(pinTypes)) });
 }
 
-// The camp's shared pin types, now and whenever they change.
-export function watchPinTypes(camp: CampLink, onTypes: (types: CustomPinType[]) => void, onError: (message: string) => void): () => void {
+// What the hub did with phone pins and walks, so phones can tidy up: id -> 'added' or 'dismissed'.
+export type Handled = Record<string, 'added' | 'dismissed'>;
+
+export async function publishHandled(camp: CampLink, handled: Handled): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { handled });
+}
+
+// The camp's shared pin types and what the hub has handled, now and whenever they change.
+export function watchCampInfo(
+  camp: CampLink,
+  onInfo: (info: { pinTypes: CustomPinType[]; handled: Handled }) => void,
+  onError: (message: string) => void,
+): () => void {
   let stop: (() => void) | null = null;
   let stopped = false;
   userId()
@@ -117,7 +129,11 @@ export function watchPinTypes(camp: CampLink, onTypes: (types: CustomPinType[]) 
       if (stopped) return;
       stop = onSnapshot(
         doc(firebase().db, 'camps', camp.code),
-        (snap) => onTypes(((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt)),
+        (snap) =>
+          onInfo({
+            pinTypes: ((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt),
+            handled: (snap.get('handled') as Handled | undefined) ?? {},
+          }),
         (error) => onError(error.message),
       );
     })

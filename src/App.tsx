@@ -14,6 +14,8 @@ import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type 
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { SummaryPanel } from '@/components/SummaryPanel';
+import { CameraPhotosInfo } from '@/components/CameraPhotosInfo';
+import { CameraView } from '@/components/CameraView';
 import { StandHistory } from '@/components/StandHistory';
 import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
@@ -137,6 +139,11 @@ export function App() {
   // Settings shows in the sidebar over the lists (and over the forecast, if open).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // Trail Cameras: open, hidden while a new camera is pinned, and that camera once pinned.
+  const [camerasOpen, setCamerasOpen] = useState(false);
+  const [cameraPinName, setCameraPinName] = useState<string | null>(null);
+  const [newCameraId, setNewCameraId] = useState<string | null>(null);
+  const [cameraFocus, setCameraFocus] = useState<string | null>(null);
   // null = rate stands for all properties.
   const [forecastPropertyId, setForecastPropertyId] = useState<string | null>(null);
   // null = now.
@@ -418,6 +425,11 @@ export function App() {
     return result;
   };
 
+  // Phone pins and walks already added to the map or dismissed here.
+  const campHandled: Record<string, 'added' | 'dismissed'> = {};
+  for (const p of hub.allData?.fieldPins ?? []) if (p.status !== 'new') campHandled[p.id] = p.status;
+  for (const t of hub.allData?.fieldTracks ?? []) if (t.status !== 'new') campHandled[t.id] = t.status;
+
   // Camp sync: hunts and pins arrive from phones, and stands go out to them.
   const campStands = (hub.allData?.markers ?? []).filter(isStandMarker).map((m) => ({
     id: m.id,
@@ -443,7 +455,7 @@ export function App() {
       freshWalks.length ? `${freshWalks.length} walk${freshWalks.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
-  }, hub.settings.customPinTypes);
+  }, hub.settings.customPinTypes, campHandled);
 
   // Brings in a file saved by the phone's Send tab.
   const importPhone = async (file: File) => {
@@ -639,15 +651,21 @@ export function App() {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, position)?.id ?? null,
         type: mode.markerType,
-        name: nextName(pinTypeInfo(mode.markerType, hub.settings.customPinTypes).label, hub.markers),
+        name: cameraPinName ?? nextName(pinTypeInfo(mode.markerType, hub.settings.customPinTypes).label, hub.markers),
         lng: position[0],
         lat: position[1],
         notes: null,
         goodWinds: [],
       };
       hub.saveMarker(record);
-      setSelection({ kind: 'marker', id: record.id });
       cancelMode();
+      if (cameraPinName) {
+        // Back to the photo import with the new camera picked.
+        setCameraPinName(null);
+        setNewCameraId(record.id);
+      } else {
+        setSelection({ kind: 'marker', id: record.id });
+      }
     }
   };
 
@@ -770,6 +788,15 @@ export function App() {
   }, [mode, cancelMode, finishDrawing, finishEdit, undoEdit]);
 
   useEffect(() => {
+    if (cameraPinName !== null && mode.kind === 'browse') setCameraPinName(null);
+  }, [mode, cameraPinName]);
+
+  // The desktop app needs to know where the photo library is to show its photos.
+  useEffect(() => {
+    if (hub.settings.photoLibrary) void window.hub?.setPhotoLibrary(hub.settings.photoLibrary).catch(() => undefined);
+  }, [hub.settings.photoLibrary]);
+
+  useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(timer);
@@ -843,6 +870,15 @@ export function App() {
     const good = rateStands(allStands, nowHour, sensitiveAreas).filter((r) => r.rating === 'good').length;
     forecastTeaser = allStands.length === 0 ? wind : `${wind} · ${good} good stand${good === 1 ? '' : 's'}`;
   }
+
+  // The Trail Cameras card's one-liner.
+  const toReview = hub.photos.filter((p) => p.status === 'new').length;
+  const cameraCount = hub.markers.filter((m) => m.type === 'camera').length;
+  const cameraTeaser = hub.photos.length
+    ? `${hub.photos.length.toLocaleString()} photos${toReview ? ` · ${toReview.toLocaleString()} to review` : ''}`
+    : cameraCount
+      ? `${cameraCount} camera${cameraCount === 1 ? '' : 's'} · import photos`
+      : 'Sort photos from your cameras';
 
   // The Summary card's one-liner.
   const totalAcres = hub.properties.reduce((t, p) => t + acresOf(p.boundary), 0);
@@ -992,6 +1028,7 @@ export function App() {
               trails={hub.trails}
               sections={hub.sections}
               reports={hub.reports}
+              photos={hub.photos}
               settings={hub.settings}
               onPickStand={(id) => {
                 setSelection({ kind: 'marker', id });
@@ -1005,6 +1042,12 @@ export function App() {
         }
         settings={hub.settings}
         forecastTeaser={forecastTeaser}
+        cameraTeaser={cameraTeaser}
+        onOpenCameras={() => {
+          if (mode.kind === 'align') return;
+          setCameraFocus(null);
+          setCamerasOpen(true);
+        }}
         summaryTeaser={summaryTeaser}
         onOpenSummary={() => {
           if (mode.kind === 'align') return;
@@ -1079,6 +1122,33 @@ export function App() {
           />
         )}
         <LayerPanel layers={layers} onChange={setLayers} />
+        {camerasOpen && (
+          // Stays mounted (just hidden) while a new camera is pinned, so the import picks up where it was.
+          <div className="camera-overlay" hidden={cameraPinName !== null}>
+            <CameraView
+              key={cameraFocus ?? 'all'}
+              photos={hub.photos}
+              cameras={hub.markers.filter((m) => m.type === 'camera')}
+              library={hub.settings.photoLibrary ?? null}
+              onSetLibrary={(dir) => hub.saveSettings({ ...hub.settings, photoLibrary: dir })}
+              onSavePhotos={hub.savePhotos}
+              onPinNewCamera={(name) => {
+                setCameraPinName(name);
+                setNewCameraId(null);
+                startMode({ kind: 'place', markerType: 'camera' });
+              }}
+              newCameraId={newCameraId}
+              initialCamera={cameraFocus}
+              newRecord={newRecordFields}
+              onShowCamera={(id) => {
+                setCamerasOpen(false);
+                setSelection({ kind: 'marker', id });
+                zoomTo({ kind: 'marker', id });
+              }}
+              onClose={() => setCamerasOpen(false)}
+            />
+          </div>
+        )}
         {mode.kind === 'edit' && editRings && (
           <EditBar
             title={editTitle}
@@ -1271,6 +1341,14 @@ export function App() {
         history={
           isStandMarker(record) ? (
             <StandHistory reports={hub.reports.filter((r) => r.standId === record.id)} onPickReport={(id) => setSelection({ kind: 'report', id })} />
+          ) : record.type === 'camera' ? (
+            <CameraPhotosInfo
+              photos={hub.photos.filter((p) => p.cameraId === record.id)}
+              onOpen={() => {
+                setCameraFocus(record.id);
+                setCamerasOpen(true);
+              }}
+            />
           ) : undefined
         }
         propertyName={propertyName(record.propertyId)}

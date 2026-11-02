@@ -13,6 +13,17 @@ interface HubBridge {
   getTile(url: string, options?: { cacheOnly?: boolean }): Promise<{ bytes: Uint8Array; cached: boolean } | null>;
   tileCacheInfo(): Promise<{ count: number; bytes: number }>;
   clearTileCache(): Promise<void>;
+  // Trail camera photos (see electron/main.cjs). Reads only from folders picked
+  // in the folder dialog; writes only inside the photo library.
+  pickFolder(purpose: 'source' | 'library'): Promise<string | null>;
+  defaultPhotoLibrary(): Promise<string>;
+  setPhotoLibrary(dir: string): Promise<string>;
+  listPhotos(dir: string): Promise<{ rel: string; size: number; mtimeMs: number }[]>;
+  readSourcePhoto(dir: string, rel: string): Promise<Uint8Array>;
+  libraryPhotoExists(rel: string): Promise<boolean>;
+  writeLibraryPhoto(rel: string, bytes: Uint8Array): Promise<boolean>;
+  moveLibraryPhoto(from: string, to: string): Promise<void>;
+  openLibraryFolder(rel?: string): Promise<string>;
 }
 
 declare global {
@@ -40,6 +51,7 @@ export function emptyHubData(): HubData {
     fieldPins: [],
     trails: [],
     fieldTracks: [],
+    photos: [],
     settings: {
       markerStyles: {},
       areaColors: {},

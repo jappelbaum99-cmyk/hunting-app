@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { publishPinTypes, sendStand, watchHunts, watchPins, watchStands, watchTracks, type CampStand } from '@/lib/camp';
+import { publishHandled, publishPinTypes, sendStand, type Handled, watchHunts, watchPins, watchStands, watchTracks, type CampStand } from '@/lib/camp';
 import type { CampLink, CustomPinType, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 // Wait for edits to settle before publishing stands.
@@ -13,6 +13,8 @@ export function useHubCamp(
   stands: CampStand[],
   onIncoming: (incoming: { reports: HuntReport[]; pins: FieldPin[]; tracks: FieldTrack[] }) => void,
   pinTypes: CustomPinType[] = [],
+  // Phone pins and walks this hub has added to the map or dismissed.
+  handled: Handled = {},
 ): { error: string | null } {
   const [error, setError] = useState<string | null>(null);
   const [published, setPublished] = useState<Map<string, CampStand> | null>(null);
@@ -71,6 +73,16 @@ export function useHubCamp(
     }, PUBLISH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [camp?.code, camp?.isOwner, typesKey]);
+
+  // Tell phones which of their pins and walks are done with, so they can clear them.
+  const handledKey = JSON.stringify(handled);
+  useEffect(() => {
+    if (!camp?.isOwner) return;
+    const timer = setTimeout(() => {
+      publishHandled(camp, JSON.parse(handledKey) as Handled).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    }, PUBLISH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [camp?.code, camp?.isOwner, handledKey]);
 
   return { error };
 }

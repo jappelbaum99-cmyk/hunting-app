@@ -44,6 +44,7 @@ const ICON_SHAPES = {
     '<circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.4 2.4-5.8 5.5-5.8s5.5 2.4 5.5 5.8"/><circle cx="17" cy="9.6" r="2.4"/><path d="M15.6 14.5c.4-.1.9-.2 1.4-.2 2.4 0 4 1.9 4 5"/>',
   // Small interface symbols, so nothing falls back to a phone's emoji style.
   check: '<path d="M5 12.5 9.8 17 19 7"/>',
+  camera: '<rect x="6" y="3.5" width="12" height="17" rx="2.5"/><circle cx="12" cy="13.5" r="3"/><path d="M9.5 7h1.5M14 7h.5"/><path d="M6 8H4M6 16H4M18 8h2M18 16h2"/>',
   chart: '<path d="M4 20h16"/><path d="M6.5 16.5v-5M11 16.5V7M15.5 16.5v-7M20 16.5V4.5"/>',
   arrow: '<path d="M12 20V4.5M6 10.5 12 4.5l6 6"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',

@@ -1,8 +1,10 @@
 // Electron main process: opens the hub window and owns the data file on disk.
-const { app, BrowserWindow, ipcMain, net, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } = require('electron');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
@@ -116,6 +118,142 @@ async function clearTileCache() {
   await fs.rm(tileDir(), { recursive: true, force: true });
 }
 
+// Trail camera photos. The UI may only read folders the person picked in a
+// folder dialog, and only write inside the photo library they chose.
+const sourceRoots = new Set();
+let libraryRoot = null;
+const PHOTO_FILE = /\.(jpe?g)$/i;
+
+// The full path for a relative path inside a root, refusing anything that
+// would land outside it.
+function inside(root, rel) {
+  if (!root || typeof rel !== 'string') throw new Error('No folder for that file');
+  const full = path.resolve(root, rel);
+  const base = path.resolve(root);
+  if (full !== base && !full.startsWith(base + path.sep)) throw new Error('Not inside the folder: ' + rel);
+  return full;
+}
+
+function requireSource(dir) {
+  const resolved = path.resolve(String(dir));
+  if (!sourceRoots.has(resolved)) throw new Error('That folder was not picked in this session');
+  return resolved;
+}
+
+function defaultPhotoLibrary() {
+  // In the user's own folder, not Documents or Pictures (often synced to OneDrive).
+  return path.join(os.homedir(), 'Hunting Hub Photos');
+}
+
+async function pickFolder(event, purpose) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
+    title: purpose === 'library' ? 'Where should trail camera photos be kept?' : 'Folder of trail camera photos (e.g. the SD card)',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: purpose === 'library' ? defaultPhotoLibrary() : undefined,
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const dir = path.resolve(result.filePaths[0]);
+  if (purpose === 'library') libraryRoot = dir;
+  else sourceRoots.add(dir);
+  return dir;
+}
+
+async function setPhotoLibrary(_event, dir) {
+  if (typeof dir !== 'string' || !path.isAbsolute(dir)) throw new Error('The photo library must be a full folder path');
+  const resolved = path.resolve(dir);
+  await fs.mkdir(resolved, { recursive: true });
+  if (!(await fs.stat(resolved)).isDirectory()) throw new Error('That is not a folder');
+  libraryRoot = resolved;
+  return resolved;
+}
+
+// Every photo in a picked folder and its subfolders (cards keep them in DCIM\100MEDIA and so on).
+async function listPhotos(_event, dir) {
+  const root = requireSource(dir);
+  const found = [];
+  const walk = async (folder, depth) => {
+    if (depth > 6) return;
+    for (const entry of await fs.readdir(folder, { withFileTypes: true }).catch(() => [])) {
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) await walk(full, depth + 1);
+      else if (PHOTO_FILE.test(entry.name)) {
+        const info = await fs.stat(full);
+        found.push({ rel: path.relative(root, full), size: info.size, mtimeMs: info.mtimeMs });
+      }
+    }
+  };
+  await walk(root, 0);
+  return found.sort((a, b) => a.rel.localeCompare(b.rel, undefined, { numeric: true }));
+}
+
+async function readSourcePhoto(_event, dir, rel) {
+  return fs.readFile(inside(requireSource(dir), rel));
+}
+
+async function libraryPhotoExists(_event, rel) {
+  return fs.access(inside(libraryRoot, rel)).then(
+    () => true,
+    () => false,
+  );
+}
+
+// Never overwrites: returns false if a file is already there.
+async function writeLibraryPhoto(_event, rel, bytes) {
+  const file = inside(libraryRoot, rel);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  try {
+    await fs.writeFile(file, Buffer.from(bytes), { flag: 'wx' });
+    return true;
+  } catch (error) {
+    if (error.code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
+function previewPath(rel) {
+  return inside(path.join(libraryRoot, '.previews'), rel + '.jpg');
+}
+
+async function moveLibraryPhoto(_event, from, to) {
+  const source = inside(libraryRoot, from);
+  const target = inside(libraryRoot, to);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const taken = await fs.access(target).then(
+    () => true,
+    () => false,
+  );
+  if (taken) throw new Error('Already a file at ' + to);
+  await fs.rename(source, target);
+  // The cached preview is made again from the new spot when needed.
+  await fs.rm(previewPath(from), { force: true });
+}
+
+// Serves library photos to the hub as hubphoto://photo/<path>, and small
+// previews (made once, then kept in the library's .previews folder) as
+// hubphoto://preview/<path>.
+async function servePhoto(request) {
+  const url = new URL(request.url);
+  const rel = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  try {
+    const file = inside(libraryRoot, rel);
+    if (url.host !== 'preview') return net.fetch(pathToFileURL(file).toString());
+    const preview = previewPath(rel);
+    try {
+      return new Response(await fs.readFile(preview), { headers: { 'content-type': 'image/jpeg' } });
+    } catch {
+      const image = nativeImage.createFromPath(file);
+      if (image.isEmpty()) return new Response('Not a photo', { status: 404 });
+      const small = image.resize({ width: 360, quality: 'good' }).toJPEG(78);
+      await fs.mkdir(path.dirname(preview), { recursive: true });
+      await fs.writeFile(preview, small);
+      return new Response(small, { headers: { 'content-type': 'image/jpeg' } });
+    }
+  } catch (error) {
+    return new Response(String((error && error.message) || error), { status: 404 });
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -145,7 +283,10 @@ function createWindow() {
   }
 }
 
+protocol.registerSchemesAsPrivileged([{ scheme: 'hubphoto', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+
 app.whenReady().then(() => {
+  protocol.handle('hubphoto', servePhoto);
   ipcMain.handle('hub:loadData', loadData);
   ipcMain.handle('hub:saveData', saveData);
   ipcMain.handle('hub:dataPath', () => dataFile());
@@ -155,6 +296,15 @@ app.whenReady().then(() => {
   ipcMain.handle('hub:tileCacheInfo', tileCacheInfo);
   ipcMain.handle('hub:clearTileCache', clearTileCache);
   ipcMain.handle('hub:showDataFolder', () => shell.openPath(dataDir()));
+  ipcMain.handle('hub:pickFolder', pickFolder);
+  ipcMain.handle('hub:defaultPhotoLibrary', () => defaultPhotoLibrary());
+  ipcMain.handle('hub:setPhotoLibrary', setPhotoLibrary);
+  ipcMain.handle('hub:listPhotos', listPhotos);
+  ipcMain.handle('hub:readSourcePhoto', readSourcePhoto);
+  ipcMain.handle('hub:libraryPhotoExists', libraryPhotoExists);
+  ipcMain.handle('hub:writeLibraryPhoto', writeLibraryPhoto);
+  ipcMain.handle('hub:moveLibraryPhoto', moveLibraryPhoto);
+  ipcMain.handle('hub:openLibraryFolder', (_event, rel) => shell.openPath(rel ? inside(libraryRoot, rel) : libraryRoot));
   createWindow();
 });
 

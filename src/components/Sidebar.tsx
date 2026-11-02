@@ -40,6 +40,9 @@ interface SidebarProps {
   // One-line summary for the Hunt Forecast card, e.g. "NW 8 mph · 2 good stands".
   forecastTeaser: string;
   onOpenForecast(): void;
+  // One-line summary for the Trail Cameras card.
+  cameraTeaser: string;
+  onOpenCameras(): void;
   // One-line summary for the Summary card, e.g. "241 ac · 3 stands · 12 hunts".
   summaryTeaser: string;
   onOpenSummary(): void;
@@ -144,6 +147,21 @@ export function Sidebar(props: SidebarProps) {
   function renderLists() {
     return (
       <>
+        {needle === '' && (
+          <button className="forecast-card camera-card" onClick={props.onOpenCameras}>
+            <span className="forecast-card-icon" aria-hidden>
+              <Icon name="camera" size={20} />
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Trail Cameras</span>
+              <span className="row-detail">{props.cameraTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
         {needle === '' && (
           <button className="forecast-card" onClick={props.onOpenForecast}>
             <span className="forecast-card-icon" aria-hidden>

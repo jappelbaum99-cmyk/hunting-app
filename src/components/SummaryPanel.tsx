@@ -7,7 +7,7 @@ import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/h
 import { sightingSummary } from '@/lib/reports';
 import { areaTypeInfo } from '@/lib/styles';
 import { formatDistance, lineLengthM, TRAIL_KINDS } from '@/lib/trails';
-import type { HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
+import type { CameraPhoto, HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
 
 interface SummaryPanelProps {
   properties: Property[];
@@ -16,6 +16,7 @@ interface SummaryPanelProps {
   trails: MapTrail[];
   sections: Section[];
   reports: HuntReport[];
+  photos: CameraPhoto[];
   settings: HubSettings;
   onPickStand(id: string): void;
   onClose(): void;
@@ -223,6 +224,8 @@ export function SummaryPanel(props: SummaryPanelProps) {
         </section>
       )}
 
+      <CameraStats photos={props.photos.filter((p) => markers.some((m) => m.id === p.cameraId))} cameras={markers.filter((m) => m.type === 'camera')} />
+
       <section className="sidebar-section">
         <h2 className="group-head">
           <span>Hunting</span>
@@ -397,5 +400,65 @@ function RecentHunts({ reports, markers }: { reports: HuntReport[]; markers: Map
         )}
       </div>
     </div>
+  );
+}
+
+// Trail camera photos: how many, from where, and what's in them.
+function CameraStats({ photos, cameras }: { photos: CameraPhoto[]; cameras: MapMarker[] }) {
+  if (cameras.length === 0 && photos.length === 0) return null;
+  const count = (list: CameraPhoto[], test: (p: CameraPhoto) => boolean) => list.filter(test).length;
+  const animals = count(photos, (p) => p.status === 'animal');
+  const empty = count(photos, (p) => p.status === 'empty');
+  const bucks = count(photos, (p) => p.kinds.includes('buck'));
+  const months = new Map<string, number>();
+  for (const p of photos) {
+    if (p.status === 'empty') continue;
+    const d = new Date(p.takenAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    months.set(key, (months.get(key) ?? 0) + 1);
+  }
+  const recentMonths = [...months.entries()].sort().slice(-6);
+  const most = Math.max(1, ...recentMonths.map(([, n]) => n));
+  return (
+    <section className="sidebar-section">
+      <h2>Trail cameras</h2>
+      <div className="stat-tiles summary-tiles">
+        <Tile value={photos.length.toLocaleString()} label="photos" />
+        <Tile value={animals.toLocaleString()} label="with animals" />
+        <Tile value={bucks.toLocaleString()} label="buck photos" />
+        <Tile value={empty.toLocaleString()} label="empty" />
+      </div>
+      <ul className="summary-list">
+        {cameras.map((c) => {
+          const list = photos.filter((p) => p.cameraId === c.id);
+          return (
+            <li key={c.id}>
+              <span>{c.name}</span>
+              <strong>
+                {list.length.toLocaleString()} <span className="muted">· {count(list, (p) => p.kinds.includes('buck'))} bucks · {count(list, (p) => p.status === 'new')} to review</span>
+              </strong>
+            </li>
+          );
+        })}
+      </ul>
+      {recentMonths.length > 1 && (
+        <figure className="month-chart">
+          <figcaption>
+            <span className="chart-title">Photos with animals by month</span>
+          </figcaption>
+          <div className="month-bars">
+            {recentMonths.map(([key, n]) => (
+              <div key={key} className="month" title={`${n} photos`}>
+                <span className="month-value">{n === most ? n : ''}</span>
+                <span className="month-track">
+                  <span className="month-bar" style={{ height: `${(n / most) * 100}%` }} />
+                </span>
+                <span className="month-name">{MONTH_NAMES[Number(key.slice(5)) - 1]}</span>
+              </div>
+            ))}
+          </div>
+        </figure>
+      )}
+    </section>
   );
 }

@@ -11,4 +11,13 @@ contextBridge.exposeInMainWorld('hub', {
   tileCacheInfo: () => ipcRenderer.invoke('hub:tileCacheInfo'),
   clearTileCache: () => ipcRenderer.invoke('hub:clearTileCache'),
   showDataFolder: () => ipcRenderer.invoke('hub:showDataFolder'),
+  pickFolder: (purpose) => ipcRenderer.invoke('hub:pickFolder', purpose),
+  defaultPhotoLibrary: () => ipcRenderer.invoke('hub:defaultPhotoLibrary'),
+  setPhotoLibrary: (dir) => ipcRenderer.invoke('hub:setPhotoLibrary', dir),
+  listPhotos: (dir) => ipcRenderer.invoke('hub:listPhotos', dir),
+  readSourcePhoto: (dir, rel) => ipcRenderer.invoke('hub:readSourcePhoto', dir, rel),
+  libraryPhotoExists: (rel) => ipcRenderer.invoke('hub:libraryPhotoExists', rel),
+  writeLibraryPhoto: (rel, bytes) => ipcRenderer.invoke('hub:writeLibraryPhoto', rel, bytes),
+  moveLibraryPhoto: (from, to) => ipcRenderer.invoke('hub:moveLibraryPhoto', from, to),
+  openLibraryFolder: (rel) => ipcRenderer.invoke('hub:openLibraryFolder', rel),
 });

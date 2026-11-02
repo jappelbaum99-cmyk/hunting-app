@@ -18,6 +18,7 @@ import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
 import { useFieldWeather } from '@/field/useFieldWeather';
+import { SentBadge, SentTools, type SentStatus } from '@/field/SentTools';
 import { WalkCard } from '@/field/WalkCard';
 import { WherePicker } from '@/field/WherePicker';
 import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
@@ -109,6 +110,18 @@ export function FieldApp() {
   // With a camp, what's still waiting for signal; without one, everything on the phone.
   const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length + data.tracks.length;
   const loggedBy = data.camp?.hunter ?? null;
+  // Where a pin or walk stands: waiting for signal, at camp, or handled on the hub.
+  const statusOf = (item: { id: string; updatedAt: string }): SentStatus => {
+    if (data.handled[item.id]) return data.handled[item.id];
+    if (!data.camp) return 'local';
+    return data.sent[item.id] === item.updatedAt ? 'sent' : 'waiting';
+  };
+  // Send these again (to camp), in case the hub missed them.
+  const resend = (ids: string[]) => {
+    if (!data.camp) return setMessage('Not in a camp yet. Use the Send tab to make a file, or join your camp.');
+    setData((d) => ({ ...d, sent: Object.fromEntries(Object.entries(d.sent).filter(([id]) => !ids.includes(id))) }));
+    setMessage(`Sending ${ids.length} again as soon as there's signal.`);
+  };
   // Everyone else's hunts in the camp; this phone's own come from data.reports.
   const mine = new Set(data.reports.map((r) => r.id));
   const campHunts = data.camp ? data.campHunts.filter((r) => !mine.has(r.id)) : [];
@@ -157,9 +170,17 @@ export function FieldApp() {
             }}
             onDiscard={() => setData((d) => ({ ...d, activeWalk: null }))}
             onDeleteTrack={(id) => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => t.id !== id) }))}
+            status={statusOf}
+            onResend={() => resend(data.tracks.map((t) => t.id))}
+            onClear={() => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => !d.handled[t.id]) }))}
           />
         )}
-        {tab === 'pin' && <PinTab fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
+        {tab === 'pin' && <PinTab
+          status={statusOf}
+          onResend={() => resend(data.pins.map((p) => p.id))}
+          onClear={() => setData((d) => ({ ...d, pins: d.pins.filter((p) => !d.handled[p.id]) }))}
+          onRemove={(id) => setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== id) }))}
+          fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
         {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
           <HuntTab
@@ -214,7 +235,12 @@ export function FieldApp() {
   );
 }
 
-function PinTab(props: { fix: Fix | null; pinTypes: CustomPinType[]; pins: FieldPin[]; onAdd(pin: FieldPin): void; onMessage(m: string): void }) {
+function PinTab(props: {
+  status(item: { id: string; updatedAt: string }): SentStatus;
+  onResend(): void;
+  onClear(): void;
+  onRemove(id: string): void;
+  fix: Fix | null; pinTypes: CustomPinType[]; pins: FieldPin[]; onAdd(pin: FieldPin): void; onMessage(m: string): void }) {
   const [type, setType] = useState<MarkerType>('stand');
   const [note, setNote] = useState('');
   const { fix } = props;
@@ -250,6 +276,13 @@ function PinTab(props: { fix: Fix | null; pinTypes: CustomPinType[]; pins: Field
       {props.pins.length > 0 && (
         <>
           <h3>Saved pins</h3>
+          <SentTools
+            items={props.pins}
+            status={props.status}
+            what="pin"
+            onResend={props.onResend}
+            onClear={props.onClear}
+          />
           <ul className="field-list">
             {props.pins.map((p) => (
               <li key={p.id}>
@@ -257,8 +290,19 @@ function PinTab(props: { fix: Fix | null; pinTypes: CustomPinType[]; pins: Field
                 <span>
                   {pinTypeInfo(p.type, props.pinTypes).label}
                   {p.note ? ` · ${p.note}` : ''}
+                  <SentBadge status={props.status(p)} />
                 </span>
                 <span className="muted">{clock(p.createdAt)}</span>
+                <button
+                  className="icon-button"
+                  aria-label="Remove from this phone"
+                  onClick={() => {
+                    const s = props.status(p);
+                    if (s === 'added' || s === 'dismissed' || window.confirm("Remove this pin from the phone? The hub doesn't have it on the map yet.")) props.onRemove(p.id);
+                  }}
+                >
+                  <Icon name="close" size={16} />
+                </button>
               </li>
             ))}
           </ul>

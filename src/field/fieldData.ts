@@ -27,6 +27,8 @@ export interface FieldData {
   campHunts: HuntReport[];
   // Pin types the hub added in Settings, shared through the camp.
   pinTypes: CustomPinType[];
+  // What the hub did with this phone's pins and walks: id -> 'added' or 'dismissed'.
+  handled: Record<string, 'added' | 'dismissed'>;
   // Walks saved on this phone, and the one being recorded right now.
   tracks: FieldTrack[];
   activeWalk: { id: string; startedAt: string; points: [number, number][] } | null;
@@ -35,7 +37,7 @@ export interface FieldData {
 const KEY = 'hunting-hub-field';
 
 export function loadFieldData(): FieldData {
-  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [], tracks: [], activeWalk: null };
+  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [], handled: {}, tracks: [], activeWalk: null };
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? { ...empty, ...(JSON.parse(raw) as Partial<FieldData>) } : empty;

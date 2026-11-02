@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { Icon } from '@/components/Icon';
+import { SentTools, type SentStatus } from '@/field/SentTools';
 import { formatDistance, lineLengthM } from '@/lib/trails';
 import type { FieldTrack } from '@/types/models';
 import type { Position } from 'geojson';
@@ -58,6 +59,9 @@ export function WalkCard(props: {
   onStop(): void;
   onDiscard(): void;
   onDeleteTrack(id: string): void;
+  status(item: { id: string; updatedAt: string }): SentStatus;
+  onResend(): void;
+  onClear(): void;
 }) {
   const { walk } = props;
   const awake = useWakeLock(walk !== null);
@@ -117,6 +121,7 @@ export function WalkCard(props: {
       {props.tracks.length > 0 && (
         <>
           <h3>Walks on this phone</h3>
+          <SentTools items={props.tracks} status={props.status} what="walk" onResend={props.onResend} onClear={props.onClear} />
           <ul className="field-list">
             {props.tracks.map((t) => (
               <li key={t.id}>
@@ -124,6 +129,9 @@ export function WalkCard(props: {
                 <span>
                   {t.name}
                   <span className="muted"> · {formatDistance(t.lengthM)}</span>
+                  {props.status(t) === 'added' && <span className="sent-badge added">Trail on the hub</span>}
+                  {props.status(t) === 'sent' && <span className="sent-badge sent">At camp</span>}
+                  {props.status(t) === 'waiting' && <span className="sent-badge waiting">Waiting to send</span>}
                 </span>
                 <button
                   className="icon-button"

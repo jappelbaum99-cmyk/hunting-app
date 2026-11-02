@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { FieldData } from '@/field/fieldData';
-import { sendHunt, sendPin, sendTrack, watchHunts, watchPinTypes, watchStands } from '@/lib/camp';
+import { sendHunt, sendPin, sendTrack, watchHunts, watchCampInfo, watchStands } from '@/lib/camp';
 
 const RETRY_MS = 30_000;
 
@@ -51,10 +51,10 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
     );
   }, [camp?.code]);
 
-  // Pin types added in the hub's Settings.
+  // Pin types added in the hub's Settings, and which pins and walks the hub has handled.
   useEffect(() => {
     if (!camp) return;
-    return watchPinTypes(camp, (pinTypes) => setData((d) => ({ ...d, pinTypes })), setError);
+    return watchCampInfo(camp, ({ pinTypes, handled }) => setData((d) => ({ ...d, pinTypes, handled })), setError);
   }, [camp?.code]);
 
   // Everyone's hunts, for the day summaries, who's in the stand, and stand history.

@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
 import type {
   CustomAreaType,
+  CameraPhoto,
   CustomPinType,
   FieldPin,
   FieldTrack,
@@ -20,7 +21,7 @@ import type {
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins' | 'trails' | 'fieldTracks';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins' | 'trails' | 'fieldTracks' | 'photos';
 
 interface HubDataValue {
   loaded: boolean;
@@ -36,6 +37,7 @@ interface HubDataValue {
   fieldPins: FieldPin[];
   trails: MapTrail[];
   fieldTracks: FieldTrack[];
+  photos: CameraPhoto[];
   settings: HubSettings;
   saveSettings(settings: HubSettings): void;
   saveProperty(property: Property): void;
@@ -51,6 +53,8 @@ interface HubDataValue {
   patchReport(id: string, patch: Partial<HuntReport>): void;
   saveFieldPin(pin: FieldPin): void;
   saveTrail(trail: MapTrail): void;
+  // Saves many photos in one go (imports bring in hundreds).
+  savePhotos(photos: CameraPhoto[]): void;
   saveFieldTrack(track: FieldTrack): void;
   // Brings in records from the phone: new ones are added, and ones already
   // here are replaced only when the incoming copy is newer.
@@ -230,6 +234,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       fieldPins: live(data?.fieldPins),
       trails: live(data?.trails),
       fieldTracks: live(data?.fieldTracks),
+      photos: live(data?.photos),
       settings: data?.settings ?? emptyHubData().settings,
       saveSettings: (settings) => update((current) => ({ ...current, settings })),
       saveProperty: (p) => save('properties', p),
@@ -251,6 +256,14 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
         })),
       saveFieldPin: (p) => save('fieldPins', p),
       saveTrail: (t) => save('trails', t),
+      savePhotos: (list) => {
+        const at = nowIso();
+        update((current) => {
+          const byId = new Map(current.photos.map((p) => [p.id, p]));
+          for (const p of list) byId.set(p.id, { ...p, updatedAt: at });
+          return { ...current, photos: [...byId.values()] };
+        });
+      },
       saveFieldTrack: (t) => save('fieldTracks', t),
       mergeFromPhone: (incoming) =>
         mergeRecords({ reports: incoming.reports, fieldPins: incoming.fieldPins, ...(incoming.fieldTracks ? { fieldTracks: incoming.fieldTracks } : {}) }),
