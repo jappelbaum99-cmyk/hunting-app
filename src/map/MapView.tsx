@@ -358,7 +358,7 @@ async function iconImage(icon: IconName, size: number, ink: string): Promise<Ima
 // was moving; the layer turns it to face the way it went. A cream outline keeps
 // dark browns visible on the map. Drawn at 2x for sharp edges.
 // Animal pills grow as you zoom in: small over the whole property, full size up close.
-const PILL_SIZE_BY_ZOOM: maplibregl.ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 12, 0.3, 15, 0.5, 17, 0.8, 19, 1.1];
+const PILL_SIZE_BY_ZOOM: maplibregl.ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], 12, 0.22, 15, 0.38, 17, 0.6, 19, 0.85];
 
 // The map image for a pill of this color, made the first time it's needed
 // (named by its color, so a color change always gets a fresh image).
