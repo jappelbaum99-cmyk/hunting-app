@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
 import type {
   CustomAreaType,
+  CustomPinType,
   FieldPin,
   HubData,
   HubSettings,
@@ -50,7 +51,11 @@ interface HubDataValue {
   mergeFromPhone(incoming: { reports: HuntReport[]; fieldPins: FieldPin[] }): { added: number; updated: number };
   // Brings in records from another hub's map file, by the same newer-wins rule.
   // Deleted records come along so a delete there reaches this hub too.
-  mergeRecords(incoming: Partial<Pick<HubData, Collection>>, customAreaTypes?: CustomAreaType[]): { added: number; updated: number };
+  mergeRecords(
+    incoming: Partial<Pick<HubData, Collection>>,
+    customAreaTypes?: CustomAreaType[],
+    customPinTypes?: CustomPinType[],
+  ): { added: number; updated: number };
   // Everything stored, deleted records included (for sharing).
   allData: HubData | null;
   deleteProperty(id: string): void;
@@ -156,7 +161,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<HubDataValue>(() => {
     const live = <T extends { deletedAt: string | null }>(list: T[] | undefined) =>
       (list ?? []).filter((r) => r.deletedAt === null);
-    function mergeRecords(incoming: Partial<Pick<HubData, Collection>>, customAreaTypes: CustomAreaType[] = []) {
+    function mergeRecords(incoming: Partial<Pick<HubData, Collection>>, customAreaTypes: CustomAreaType[] = [], customPinTypes: CustomPinType[] = []) {
       // Counted from the data as it is now; the update below applies the same rule.
       const result = { added: 0, updated: 0 };
       const collections = Object.keys(incoming) as Collection[];
@@ -192,6 +197,11 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
         const newTypes = customAreaTypes.filter((t) => !knownTypes.has(t.id));
         if (newTypes.length) {
           next.settings = { ...current.settings, customAreaTypes: [...current.settings.customAreaTypes, ...newTypes] };
+        }
+        const knownPins = new Set(current.settings.customPinTypes.map((t) => t.id));
+        const newPins = customPinTypes.filter((t) => !knownPins.has(t.id));
+        if (newPins.length) {
+          next.settings = { ...next.settings, customPinTypes: [...current.settings.customPinTypes, ...newPins] };
         }
         return next;
       });

@@ -3,7 +3,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
 import { Icon } from '@/components/Icon';
-import { MARKER_TYPES } from '@/lib/featureTypes';
+import { pinTypeList } from '@/lib/featureTypes';
 import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
   areaTypeList,
@@ -14,7 +14,7 @@ import {
   propertyColor,
   type AreaTypeView,
 } from '@/lib/styles';
-import type { CustomAreaType, HubSettings, MarkerShape, MarkerStyle, MarkerType } from '@/types/models';
+import type { CustomAreaType, CustomPinType, HubSettings, MarkerShape, MarkerStyle, MarkerType } from '@/types/models';
 
 interface SettingsPanelProps {
   settings: HubSettings;
@@ -60,6 +60,8 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
 export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
+  const setPinType = (id: string, patch: Partial<CustomPinType>) =>
+    onChange({ ...settings, customPinTypes: settings.customPinTypes.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
   const setCustom = (id: string, patch: Partial<CustomAreaType>) =>
     onChange({ ...settings, customAreaTypes: settings.customAreaTypes.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
 
@@ -111,25 +113,29 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
 
       <section className="sidebar-section">
         <h2>Pins</h2>
-        <p className="hint">Each type's color, shape and size. A single stand or pin can still get its own color.</p>
+        <p className="hint">Each type's color, shape and size, or add your own types. A single stand or pin can still get its own color.</p>
         <ul className="settings-list">
-          {(Object.keys(MARKER_TYPES) as MarkerType[]).map((type) => {
+          {pinTypeList(settings.customPinTypes).map(({ id: type, label, custom }) => {
             const style = categoryStyle(type, settings);
             return (
               <li key={type} className="pin-setting">
                 <div className="setting-row">
                   <PinPreview style={style} />
-                  <span className="row-title">{MARKER_TYPES[type].label}</span>
+                  {custom ? (
+                    <input type="text" className="inline-name" value={label} onChange={(e) => setPinType(type, { label: e.target.value })} aria-label="Pin type name" />
+                  ) : (
+                    <span className="row-title">{label}</span>
+                  )}
                   <input
                     type="color"
                     className="color-input"
                     value={style.color}
-                    onChange={(e) => setMarker(type, { color: e.target.value })}
-                    aria-label={`${MARKER_TYPES[type].label} color`}
+                    onChange={(e) => (custom ? setPinType(type, { color: e.target.value }) : setMarker(type, { color: e.target.value }))}
+                    aria-label={`${label} color`}
                   />
                 </div>
                 <div className="setting-row">
-                  <div className="shape-picker" role="radiogroup" aria-label={`${MARKER_TYPES[type].label} shape`}>
+                  <div className="shape-picker" role="radiogroup" aria-label={`${label} shape`}>
                     {MARKER_SHAPES.map((shape) => (
                       <button
                         key={shape.id}
@@ -150,14 +156,39 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
                     step={2}
                     value={style.size}
                     onChange={(e) => setMarker(type, { size: Number(e.target.value) })}
-                    aria-label={`${MARKER_TYPES[type].label} size`}
+                    aria-label={`${label} size`}
                     title={`Size ${style.size}px`}
                   />
                 </div>
+                {custom && (
+                  <div className="setting-row">
+                    <button
+                      className="link remove-type"
+                      onClick={() => {
+                        if (window.confirm(`Remove the "${label}" pin type? Pins already using it keep their look.`)) {
+                          setPinType(type, { deletedAt: new Date().toISOString() });
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </li>
             );
           })}
         </ul>
+        <button
+          className="add-type"
+          onClick={() =>
+            onChange({
+              ...settings,
+              customPinTypes: [...settings.customPinTypes, { id: `pin-${crypto.randomUUID()}`, label: 'New pin type', color: '#d4b04a', deletedAt: null }],
+            })
+          }
+        >
+          + Add pin type
+        </button>
       </section>
 
       <section className="sidebar-section">

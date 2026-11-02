@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
-import { FOOD_PLOT_CROPS, isPlotType, MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
+import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, WIND_MARKER_TYPES, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
@@ -27,7 +27,7 @@ interface Common {
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
-  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode } & Common)
+  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[] } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common);
 
 function headingFor(props: DetailPanelProps): string {
@@ -37,7 +37,7 @@ function headingFor(props: DetailPanelProps): string {
     case 'area':
       return props.areaTypes.find((t) => t.id === props.record.type)?.label ?? 'Area';
     case 'marker':
-      return MARKER_TYPES[props.record.type].label;
+      return props.pinTypes.find((t) => t.id === props.record.type)?.label ?? pinTypeInfo(props.record.type).label;
     case 'overlay':
       return 'Map image';
   }
@@ -72,7 +72,7 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} />}
         {props.kind === 'marker' && (
           <>
-            <MarkerFields record={props.record} onChange={props.onChange} />
+            <MarkerFields record={props.record} onChange={props.onChange} pinTypes={props.pinTypes} />
             {props.onLogHunt && (
               <button className="primary log-hunt" onClick={props.onLogHunt}>
                 Log a hunt here
@@ -82,7 +82,7 @@ export function DetailPanel(props: DetailPanelProps) {
             <ColorField
               label="Color"
               value={props.record.color ?? null}
-              fallback={props.defaultColor ?? MARKER_TYPES[props.record.type].color}
+              fallback={props.defaultColor ?? pinTypeInfo(props.record.type).color}
               onChange={(color) => props.onChange({ ...props.record, color })}
             />
           </>
@@ -215,7 +215,9 @@ function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange
   );
 }
 
-function MarkerFields({ record, onChange }: { record: MapMarker; onChange(m: MapMarker): void }) {
+function MarkerFields({ record, onChange, pinTypes }: { record: MapMarker; onChange(m: MapMarker): void; pinTypes: PinTypeView[] }) {
+  // Keep a removed custom type selectable for a pin that still uses it.
+  const options = pinTypes.some((t) => t.id === record.type) ? pinTypes : [...pinTypes, { ...pinTypeInfo(record.type), label: 'Removed type' }];
   const [copied, setCopied] = useState(false);
   const coords = formatLatLng(record.lat, record.lng);
   const toggleWind = (point: CompassPoint) => {
@@ -228,9 +230,9 @@ function MarkerFields({ record, onChange }: { record: MapMarker; onChange(m: Map
     <>
       <Field label="Type">
         <select value={record.type} onChange={(e) => onChange({ ...record, type: e.target.value as MarkerType })}>
-          {(Object.keys(MARKER_TYPES) as MarkerType[]).map((t) => (
-            <option key={t} value={t}>
-              {MARKER_TYPES[t].label}
+          {options.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
             </option>
           ))}
         </select>

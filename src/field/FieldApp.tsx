@@ -14,7 +14,7 @@ import {
 import { Icon } from '@/components/Icon';
 import { useCampSync, type CampStatus } from '@/field/useCampSync';
 import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
-import { MARKER_TYPES } from '@/lib/featureTypes';
+import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
 import { useFieldWeather } from '@/field/useFieldWeather';
@@ -22,7 +22,7 @@ import { WherePicker } from '@/field/WherePicker';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
 import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
-import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
+import type { CustomPinType, DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
 
@@ -111,7 +111,7 @@ export function FieldApp() {
 
       <main className="field-main">
         {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
-        {tab === 'pin' && <PinTab fix={gps.fix} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
+        {tab === 'pin' && <PinTab fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
         {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
           <HuntTab
@@ -166,7 +166,7 @@ export function FieldApp() {
   );
 }
 
-function PinTab(props: { fix: Fix | null; pins: FieldPin[]; onAdd(pin: FieldPin): void; onMessage(m: string): void }) {
+function PinTab(props: { fix: Fix | null; pinTypes: CustomPinType[]; pins: FieldPin[]; onAdd(pin: FieldPin): void; onMessage(m: string): void }) {
   const [type, setType] = useState<MarkerType>('stand');
   const [note, setNote] = useState('');
   const { fix } = props;
@@ -177,10 +177,10 @@ function PinTab(props: { fix: Fix | null; pins: FieldPin[]; onAdd(pin: FieldPin)
     <section className="field-card">
       <h2>Drop a pin where you're standing</h2>
       <div className="type-grid">
-        {PIN_TYPES.map((t) => (
+        {[...PIN_TYPES, ...props.pinTypes.map((t) => t.id)].map((t) => (
           <button key={t} className={type === t ? 'active' : ''} onClick={() => setType(t)}>
-            <span className="type-dot" style={{ background: MARKER_TYPES[t].color }} />
-            {MARKER_TYPES[t].label}
+            <span className="type-dot" style={{ background: pinTypeInfo(t, props.pinTypes).color }} />
+            {pinTypeInfo(t, props.pinTypes).label}
           </button>
         ))}
       </div>
@@ -192,10 +192,10 @@ function PinTab(props: { fix: Fix | null; pins: FieldPin[]; onAdd(pin: FieldPin)
           if (!fix) return;
           props.onAdd(record({ lat: fix.lat, lng: fix.lng, accuracyM: Math.round(fix.accuracyM), type, note: note.trim() || null, status: 'new' as const, markerId: null }));
           setNote('');
-          props.onMessage(`${MARKER_TYPES[type].label} pin saved (±${Math.round(fix.accuracyM)} m).`);
+          props.onMessage(`${pinTypeInfo(type, props.pinTypes).label} pin saved (±${Math.round(fix.accuracyM)} m).`);
         }}
       >
-        {fresh ? `Drop ${MARKER_TYPES[type].label.toLowerCase()} pin` : 'Waiting for GPS…'}
+        {fresh ? `Drop ${pinTypeInfo(type, props.pinTypes).label.toLowerCase()} pin` : 'Waiting for GPS…'}
       </button>
       {fix && fix.accuracyM > 25 && <p className="field-hint">GPS is rough right now (±{Math.round(fix.accuracyM)} m). Give it a minute in the open for a better fix.</p>}
 
@@ -205,9 +205,9 @@ function PinTab(props: { fix: Fix | null; pins: FieldPin[]; onAdd(pin: FieldPin)
           <ul className="field-list">
             {props.pins.map((p) => (
               <li key={p.id}>
-                <span className="type-dot" style={{ background: MARKER_TYPES[p.type].color }} />
+                <span className="type-dot" style={{ background: pinTypeInfo(p.type, props.pinTypes).color }} />
                 <span>
-                  {MARKER_TYPES[p.type].label}
+                  {pinTypeInfo(p.type, props.pinTypes).label}
                   {p.note ? ` · ${p.note}` : ''}
                 </span>
                 <span className="muted">{clock(p.createdAt)}</span>

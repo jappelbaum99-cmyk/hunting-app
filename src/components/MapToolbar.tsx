@@ -2,7 +2,7 @@ import { useRef, type MouseEvent } from 'react';
 
 import { IMAGE_ACCEPT } from '@/data/images';
 import { AreaBadge } from '@/components/AreaBadge';
-import { MARKER_TYPES } from '@/lib/featureTypes';
+import type { PinTypeView } from '@/lib/featureTypes';
 import { IMPORT_ACCEPT } from '@/lib/importGeo';
 import type { AreaTypeView } from '@/lib/styles';
 import type { AreaType, MarkerType } from '@/types/models';
@@ -15,6 +15,7 @@ interface MapToolbarProps {
   onDrawSection(): void;
   onDrawArea(type: AreaType): void;
   onPlaceMarker(type: MarkerType): void;
+  pinTypes: PinTypeView[];
   onImport(file: File): void;
   onAddImage(file: File): void;
 }
@@ -80,10 +81,10 @@ export function MapToolbar(props: MapToolbarProps) {
       <details className="dropdown">
         <summary className={disabled ? 'disabled' : ''}>Add pin ▾</summary>
         <div className="dropdown-menu">
-          {(Object.keys(MARKER_TYPES) as MarkerType[]).map((type) => (
-            <button key={type} onClick={(e) => pick(e, () => onPlaceMarker(type))}>
-              <span className="swatch round" style={{ background: MARKER_TYPES[type].color }} />
-              {MARKER_TYPES[type].label}
+          {props.pinTypes.map((type) => (
+            <button key={type.id} onClick={(e) => pick(e, () => onPlaceMarker(type.id))}>
+              <span className="swatch round" style={{ background: type.color }} />
+              {type.label}
             </button>
           ))}
         </div>

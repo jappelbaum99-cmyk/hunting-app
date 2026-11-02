@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 
 import { CAMP_SYNC_AVAILABLE, FIREBASE_CONFIG } from '@/lib/firebaseConfig';
-import type { CampLink, CompassPoint, FieldPin, HuntReport } from '@/types/models';
+import type { CampLink, CompassPoint, CustomPinType, FieldPin, HuntReport } from '@/types/models';
 
 export { CAMP_SYNC_AVAILABLE };
 export type { CampLink };
@@ -98,6 +98,32 @@ async function put(camp: CampLink, kind: Kind, id: string, data: object): Promis
   // JSON round trip drops anything Firestore can't store.
   const plain = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
   await setDoc(doc(firebase().db, 'camps', camp.code, kind, id), { ...plain, createdBy: uid });
+}
+
+// The hub that started the camp shares its custom pin types so phones can drop them.
+export async function publishPinTypes(camp: CampLink, pinTypes: CustomPinType[]): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { pinTypes: JSON.parse(JSON.stringify(pinTypes)) });
+}
+
+// The camp's shared pin types, now and whenever they change.
+export function watchPinTypes(camp: CampLink, onTypes: (types: CustomPinType[]) => void, onError: (message: string) => void): () => void {
+  let stop: (() => void) | null = null;
+  let stopped = false;
+  userId()
+    .then(() => {
+      if (stopped) return;
+      stop = onSnapshot(
+        doc(firebase().db, 'camps', camp.code),
+        (snap) => onTypes(((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt)),
+        (error) => onError(error.message),
+      );
+    })
+    .catch((error: unknown) => onError(error instanceof Error ? error.message : String(error)));
+  return () => {
+    stopped = true;
+    stop?.();
+  };
 }
 
 export const sendHunt = (camp: CampLink, report: HuntReport) => put(camp, 'hunts', report.id, report);

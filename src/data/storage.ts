@@ -43,6 +43,7 @@ export function emptyHubData(): HubData {
       areaColors: {},
       areaIcons: {},
       customAreaTypes: [],
+      customPinTypes: [],
       propertyLineColor: null,
       snapping: DEFAULT_SNAPPING,
     },

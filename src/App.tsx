@@ -21,7 +21,7 @@ import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
+import { WIND_MARKER_TYPES, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
@@ -348,7 +348,7 @@ export function App() {
       freshPins.length ? `${freshPins.length} pin${freshPins.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
-  });
+  }, hub.settings.customPinTypes);
 
   // Brings in a file saved by the phone's Send tab.
   const importPhone = async (file: File) => {
@@ -388,6 +388,7 @@ export function App() {
         title,
         records,
         customAreaTypes: hub.settings.customAreaTypes.filter((t) => usedTypes.has(t.id)),
+        customPinTypes: hub.settings.customPinTypes.filter((t) => records.markers.some((m) => m.type === t.id)),
         images,
       };
       const name = mapFileName(title);
@@ -415,7 +416,7 @@ export function App() {
       for (const [name, base64] of Object.entries(parsed.images)) {
         await saveImage(name, new Blob([new Uint8Array(base64ToBytes(base64))]));
       }
-      const { added, updated } = hub.mergeRecords(parsed.records, parsed.customAreaTypes);
+      const { added, updated } = hub.mergeRecords(parsed.records, parsed.customAreaTypes, parsed.customPinTypes);
       setNotice(
         added + updated === 0
           ? `Nothing new in "${parsed.title}". This map already has all of it.`
@@ -448,7 +449,7 @@ export function App() {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, [pin.lng, pin.lat])?.id ?? null,
         type: pin.type,
-        name: nextName(MARKER_TYPES[pin.type].label, hub.markers),
+        name: nextName(pinTypeInfo(pin.type, hub.settings.customPinTypes).label, hub.markers),
         lng: pin.lng,
         lat: pin.lat,
         notes: pin.note,
@@ -509,7 +510,7 @@ export function App() {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, position)?.id ?? null,
         type: mode.markerType,
-        name: nextName(MARKER_TYPES[mode.markerType].label, hub.markers),
+        name: nextName(pinTypeInfo(mode.markerType, hub.settings.customPinTypes).label, hub.markers),
         lng: position[0],
         lat: position[1],
         notes: null,
@@ -556,7 +557,7 @@ export function App() {
           ...newRecordFields(),
           propertyId: propertyContaining(allProperties, point.position)?.id ?? null,
           type,
-          name: point.name ?? nextName(MARKER_TYPES[type].label, hub.markers),
+          name: point.name ?? nextName(pinTypeInfo(type).label, hub.markers),
           lng: point.position[0],
           lat: point.position[1],
           notes: null,
@@ -645,7 +646,7 @@ export function App() {
   if (mode.kind === 'placeSighting') {
     modeTitle = 'deer you saw';
   } else if (mode.kind === 'place') {
-    modeTitle = MARKER_TYPES[mode.markerType].label.toLowerCase();
+    modeTitle = pinTypeInfo(mode.markerType, hub.settings.customPinTypes).label.toLowerCase();
   } else if (mode.kind === 'draw' && mode.target === 'property') {
     [draftColor, modeTitle] = [propertyColor(null, hub.settings), 'property line'];
   } else if (mode.kind === 'draw' && mode.target === 'section') {
@@ -849,6 +850,7 @@ export function App() {
           <MapToolbar
             disabled={mode.kind !== 'browse'}
             areaTypes={areaTypeList(hub.settings)}
+            pinTypes={pinTypeList(hub.settings.customPinTypes)}
             onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
             onDrawSection={() => startMode({ kind: 'draw', target: 'section' })}
             onDrawArea={(areaType) => startMode({ kind: 'draw', target: 'area', areaType })}
@@ -1011,6 +1013,7 @@ export function App() {
       <DetailPanel
         kind="marker"
         record={record}
+        pinTypes={pinTypeList(hub.settings.customPinTypes)}
         onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
         history={
           isStandMarker(record) ? (

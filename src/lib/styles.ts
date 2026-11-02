@@ -1,6 +1,6 @@
 // Resolves how things look: an item's own color, else its category's color
 // from Settings, else the built-in default.
-import { AREA_TYPES, MARKER_TYPES, PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
+import { AREA_TYPES, pinTypeInfo, PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
 import { iconName, type IconName } from '@/lib/icons';
 import type { AreaType, BuiltInAreaType, HubSettings, MapMarker, MarkerShape, MarkerStyle, MarkerType, Property } from '@/types/models';
 
@@ -33,7 +33,7 @@ export const COLOR_SWATCHES = [
 export function categoryStyle(type: MarkerType, settings: HubSettings): MarkerStyle {
   const custom = settings.markerStyles[type] ?? {};
   return {
-    color: custom.color ?? MARKER_TYPES[type].color,
+    color: custom.color ?? pinTypeInfo(type, settings.customPinTypes).color,
     shape: custom.shape ?? 'circle',
     size: custom.size ?? DEFAULT_MARKER_SIZE,
   };

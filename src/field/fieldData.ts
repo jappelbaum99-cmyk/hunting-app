@@ -1,6 +1,6 @@
 // What the phone keeps: its own pins and hunt reports, plus the stands sent
 // over from the hub. Stored in the phone browser, so it all works with no signal.
-import type { CampLink, CompassPoint, FieldPin, HuntReport } from '@/types/models';
+import type { CampLink, CompassPoint, CustomPinType, FieldPin, HuntReport } from '@/types/models';
 
 export interface FieldStand {
   id: string;
@@ -23,12 +23,14 @@ export interface FieldData {
   sent: Record<string, string>;
   // The camp's hunts as last seen (everyone's), kept for viewing with no signal.
   campHunts: HuntReport[];
+  // Pin types the hub added in Settings, shared through the camp.
+  pinTypes: CustomPinType[];
 }
 
 const KEY = 'hunting-hub-field';
 
 export function loadFieldData(): FieldData {
-  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [] };
+  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [] };
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? { ...empty, ...(JSON.parse(raw) as Partial<FieldData>) } : empty;

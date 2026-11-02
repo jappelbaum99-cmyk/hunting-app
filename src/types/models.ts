@@ -29,7 +29,7 @@ export interface Property extends Syncable {
   color?: string | null;
 }
 
-export type MarkerType =
+export type BuiltInMarkerType =
   | 'stand'
   | 'blind'
   | 'camera'
@@ -39,6 +39,17 @@ export type MarkerType =
   | 'water'
   | 'parking'
   | 'other';
+// A built-in pin type, or the id of a custom type added in Settings.
+export type MarkerType = BuiltInMarkerType | (string & {});
+
+// A pin type added in Settings (e.g. "Mineral lick"). Shape and size come from markerStyles.
+export interface CustomPinType {
+  id: string;
+  label: string;
+  color: string;
+  // Removed types stay so existing pins keep their look; they're hidden from pickers.
+  deletedAt: string | null;
+}
 
 export interface MapMarker extends Syncable {
   propertyId: string | null;
@@ -69,6 +80,7 @@ export interface HubSettings {
   // Icon overrides for built-in area types.
   areaIcons: Partial<Record<AreaType, string>>;
   customAreaTypes: CustomAreaType[];
+  customPinTypes: CustomPinType[];
   propertyLineColor: string | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
@@ -87,7 +99,7 @@ export interface CampLink {
   isOwner?: boolean;
 }
 
-export type BuiltInAreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
+export type BuiltInAreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'water' | 'other';
 // A built-in type, or the id of a custom type added in Settings.
 export type AreaType = BuiltInAreaType | (string & {});
 

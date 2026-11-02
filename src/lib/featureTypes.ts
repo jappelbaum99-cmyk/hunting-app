@@ -1,5 +1,5 @@
 import type { IconName } from '@/lib/icons';
-import type { BuiltInAreaType, MarkerType } from '@/types/models';
+import type { BuiltInAreaType, BuiltInMarkerType, CustomPinType, MarkerType } from '@/types/models';
 
 interface TypeInfo {
   label: string;
@@ -12,7 +12,7 @@ interface AreaTypeInfo extends TypeInfo {
   scentSensitive: boolean;
 }
 
-export const MARKER_TYPES: Record<MarkerType, TypeInfo> = {
+export const MARKER_TYPES: Record<BuiltInMarkerType, TypeInfo> = {
   stand: { label: 'Stand', color: '#f28c28' },
   blind: { label: 'Blind', color: '#b5792f' },
   camera: { label: 'Trail camera', color: '#3fa7e0' },
@@ -31,8 +31,32 @@ export const AREA_TYPES: Record<BuiltInAreaType, AreaTypeInfo> = {
   bedding: { label: 'Bedding', color: '#c9894a', icon: 'bed', scentSensitive: true },
   sanctuary: { label: 'Sanctuary', color: '#e05252', icon: 'sanctuary', scentSensitive: true },
   timber: { label: 'Timber', color: '#2f8f4e', icon: 'pine', scentSensitive: false },
+  water: { label: 'Water', color: '#3987e5', icon: 'water', scentSensitive: false },
   other: { label: 'Other', color: '#c8c8c8', icon: 'pin', scentSensitive: false },
 };
+
+export interface PinTypeView {
+  id: MarkerType;
+  label: string;
+  color: string;
+  custom: boolean;
+}
+
+// A pin type's name and default color: built-in, or one added in Settings.
+// A type this device doesn't know shows as a plain pin.
+export function pinTypeInfo(type: MarkerType, custom: CustomPinType[] = []): PinTypeView {
+  if (type in MARKER_TYPES) return { id: type, ...MARKER_TYPES[type as BuiltInMarkerType], custom: false };
+  const own = custom.find((t) => t.id === type);
+  return own ? { id: own.id, label: own.label || 'Pin', color: own.color, custom: true } : { id: type, label: 'Pin', color: MARKER_TYPES.other.color, custom: true };
+}
+
+// Every pin type to offer, built-in first, then ones added in Settings.
+export function pinTypeList(custom: CustomPinType[] = []): PinTypeView[] {
+  return [
+    ...(Object.keys(MARKER_TYPES) as BuiltInMarkerType[]).map((t) => pinTypeInfo(t)),
+    ...custom.filter((t) => !t.deletedAt).map((t) => pinTypeInfo(t.id, custom)),
+  ];
+}
 
 export const PROPERTY_LINE_COLOR = '#ffd400';
 

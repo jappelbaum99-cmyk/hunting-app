@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
-import { MARKER_TYPES } from '@/lib/featureTypes';
+import { pinTypeInfo } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
 import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
@@ -262,9 +262,9 @@ export function Sidebar(props: SidebarProps) {
                 {props.newFieldPins.map((p) => (
                   <li key={p.id} className="field-pin-row">
                     <button className="row" onClick={() => props.onFieldPin(p.id, 'show')}>
-                      <span className="swatch" style={{ background: MARKER_TYPES[p.type].color }} />
+                      <span className="swatch" style={{ background: pinTypeInfo(p.type, props.settings.customPinTypes).color }} />
                       <span className="row-title">
-                        {MARKER_TYPES[p.type].label}
+                        {pinTypeInfo(p.type, props.settings.customPinTypes).label}
                         {p.note ? ` · ${p.note}` : ''}
                       </span>
                       <span className="row-detail">{p.accuracyM !== null ? `±${p.accuracyM} m` : ''}</span>
@@ -326,7 +326,7 @@ export function Sidebar(props: SidebarProps) {
               onClick={() => onPick({ kind: 'marker', id: m.id })}
               swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
               title={m.name}
-              detail={MARKER_TYPES[m.type].label}
+              detail={pinTypeInfo(m.type, props.settings.customPinTypes).label}
             />
           ))}
         </Section>

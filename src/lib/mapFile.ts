@@ -3,6 +3,7 @@
 // and map images. Deleted records ride along so a delete reaches the other hub.
 import type {
   CustomAreaType,
+  CustomPinType,
   HubData,
   HuntReport,
   MapArea,
@@ -35,6 +36,8 @@ export interface MapFile {
   records: MapFileRecords;
   // Custom area types the shared areas use, so they look the same there.
   customAreaTypes: CustomAreaType[];
+  // Custom pin types the shared pins use (missing in older files).
+  customPinTypes?: CustomPinType[];
   // Map image files by file name, base64.
   images: Record<string, string>;
 }
@@ -124,6 +127,7 @@ export function parseMapFile(text: string): MapFile {
       reports: r.reports ?? [],
     },
     customAreaTypes: parsed.customAreaTypes ?? [],
+    customPinTypes: parsed.customPinTypes ?? [],
     images: parsed.images ?? {},
   };
 }

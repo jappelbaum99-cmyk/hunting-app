@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { sendStand, watchHunts, watchPins, watchStands, type CampStand } from '@/lib/camp';
-import type { CampLink, FieldPin, HuntReport } from '@/types/models';
+import { publishPinTypes, sendStand, watchHunts, watchPins, watchStands, type CampStand } from '@/lib/camp';
+import type { CampLink, CustomPinType, FieldPin, HuntReport } from '@/types/models';
 
 // Wait for edits to settle before publishing stands.
 const PUBLISH_DELAY_MS = 1500;
@@ -12,6 +12,7 @@ export function useHubCamp(
   camp: CampLink | null,
   stands: CampStand[],
   onIncoming: (incoming: { reports: HuntReport[]; pins: FieldPin[] }) => void,
+  pinTypes: CustomPinType[] = [],
 ): { error: string | null } {
   const [error, setError] = useState<string | null>(null);
   const [published, setPublished] = useState<Map<string, CampStand> | null>(null);
@@ -55,6 +56,16 @@ export function useHubCamp(
     }, PUBLISH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [camp?.code, camp?.isOwner, published, key]);
+
+  // Custom pin types, so phones can drop them too.
+  const typesKey = JSON.stringify(pinTypes);
+  useEffect(() => {
+    if (!camp?.isOwner) return;
+    const timer = setTimeout(() => {
+      publishPinTypes(camp, JSON.parse(typesKey) as CustomPinType[]).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    }, PUBLISH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [camp?.code, camp?.isOwner, typesKey]);
 
   return { error };
 }
