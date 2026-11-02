@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { Icon } from '@/components/Icon';
 
 import { compassPointOf } from '@/lib/standRating';
 import { DEER_KINDS, fromDateTimeInputs, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
@@ -92,7 +93,7 @@ export function ReportPanel(props: ReportPanelProps) {
           {props.weatherStatus !== 'idle' && props.weatherStatus !== 'loading' && <p className="hint warn">{props.weatherStatus}</p>}
         </Field>
 
-        <Field label={`Deer seen · ${sightingSummary(report)}`}>
+        <Field label={`Seen · ${sightingSummary(report)}`}>
           <ul className="sightings">
             {report.sightings.map((s) => (
               <SightingCard
@@ -145,8 +146,9 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
               key={kind}
               className={s.kind === kind ? 'active' : ''}
               style={{ '--deer': DEER_KINDS[kind].color } as CSSProperties}
-              onClick={() => onChange({ kind, ...(kind !== 'buck' ? { buckName: null, antlerPoints: null } : {}) })}
+              onClick={() => onChange({ kind, ...(kind !== 'buck' ? { buckName: null, antlerPoints: null } : {}), ...(kind !== 'other' && s.kind === 'other' ? { notes: null } : {}) })}
             >
+              {!DEER_KINDS[kind].deer && <Icon name={DEER_KINDS[kind].icon} size={14} />}
               {DEER_KINDS[kind].label}
             </button>
           ))}
@@ -174,6 +176,13 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
           <input type="time" value={toTimeInput(s.time)} onChange={(e) => onChange({ time: fromDateTimeInputs(date, e.target.value) })} />
         </label>
       </div>
+
+      {s.kind === 'other' && (
+        <label>
+          <span className="field-label">What was it</span>
+          <input type="text" placeholder="e.g. coyote" value={s.notes ?? ''} onChange={(e) => onChange({ notes: e.target.value || null })} />
+        </label>
+      )}
 
       {s.kind === 'buck' && (
         <div className="range-row">

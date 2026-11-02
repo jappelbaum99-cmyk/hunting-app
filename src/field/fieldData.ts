@@ -21,12 +21,14 @@ export interface FieldData {
   camp: CampLink | null;
   // The version (updatedAt) of each pin and hunt the camp has, by id.
   sent: Record<string, string>;
+  // The camp's hunts as last seen (everyone's), kept for viewing with no signal.
+  campHunts: HuntReport[];
 }
 
 const KEY = 'hunting-hub-field';
 
 export function loadFieldData(): FieldData {
-  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {} };
+  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [] };
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? { ...empty, ...(JSON.parse(raw) as Partial<FieldData>) } : empty;

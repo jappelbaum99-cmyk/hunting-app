@@ -16,7 +16,8 @@ import { useCampSync, type CampStatus } from '@/field/useCampSync';
 import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
-import { DEER_KINDS, HEADINGS, newSighting, sightingSummary } from '@/lib/reports';
+import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
+import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary } from '@/lib/reports';
 import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
@@ -59,6 +60,9 @@ function record<T extends object>(fields: T) {
   return { id: crypto.randomUUID(), createdAt: at, updatedAt: at, deletedAt: null, ...fields };
 }
 
+// Days of hunts listed before "Show older".
+const DAYS_SHOWN = 7;
+
 function clock(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
@@ -81,6 +85,9 @@ export function FieldApp() {
   // With a camp, what's still waiting for signal; without one, everything on the phone.
   const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length;
   const loggedBy = data.camp?.hunter ?? null;
+  // Everyone else's hunts in the camp; this phone's own come from data.reports.
+  const mine = new Set(data.reports.map((r) => r.id));
+  const campHunts = data.camp ? data.campHunts.filter((r) => !mine.has(r.id)) : [];
 
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
@@ -117,6 +124,7 @@ export function FieldApp() {
               });
               setData((d) => ({ ...d, reports: [report, ...d.reports], activeReportId: report.id }));
             }}
+            campHunts={campHunts}
             onChange={saveReport}
             onEnd={(report) => {
               saveReport({ ...report, end: new Date().toISOString() });
@@ -125,7 +133,7 @@ export function FieldApp() {
             }}
           />
         )}
-        {tab === 'stands' && <StandsTab data={data} />}
+        {tab === 'stands' && <StandsTab data={data} reports={[...data.reports, ...campHunts]} />}
         {tab === 'send' && <SendTab data={data} sync={sync} onData={setData} onMessage={setMessage} />}
       </main>
 
@@ -208,12 +216,17 @@ function HuntTab(props: {
   data: FieldData;
   active: HuntReport | null;
   fix: Fix | null;
+  // Hunts from the rest of the camp (not this phone's own).
+  campHunts: HuntReport[];
   onStart(standId: string | null): void;
   onChange(report: HuntReport): void;
   onEnd(report: HuntReport): void;
 }) {
-  const { data, active } = props;
+  const { data, active, campHunts } = props;
   const [standId, setStandId] = useState<string>('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const standName = (id: string | null) => data.stands.find((s) => s.id === id)?.name ?? 'No stand';
 
   // Suggest the closest stand from GPS.
   useEffect(() => {
@@ -223,8 +236,41 @@ function HuntTab(props: {
     setStandId(closest.id);
   }, [props.fix, data.stands, standId]);
 
-  if (!active) {
+  if (active) {
     return (
+      <QuickLog
+        key={active.id}
+        report={active}
+        standName={standName(active.standId)}
+        onChange={props.onChange}
+        doneLabel="Done hunting"
+        onDone={() => props.onEnd(active)}
+      />
+    );
+  }
+
+  const editing = data.reports.find((r) => r.id === editingId);
+  if (editing) {
+    return (
+      <QuickLog
+        key={editing.id}
+        report={editing}
+        standName={standName(editing.standId)}
+        past
+        onChange={props.onChange}
+        doneLabel="Done editing"
+        onDone={() => setEditingId(null)}
+      />
+    );
+  }
+
+  const mine = new Set(data.reports.map((r) => r.id));
+  const live = campHunts.filter((r) => isLive(r));
+  const days = huntsByDay([...data.reports, ...campHunts.filter((r) => !isLive(r))]);
+  const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
+
+  return (
+    <>
       <section className="field-card">
         <h2>Start a hunt</h2>
         <select value={standId} onChange={(e) => setStandId(e.target.value)}>
@@ -243,73 +289,157 @@ function HuntTab(props: {
         <button className="big-button" onClick={() => props.onStart(standId || null)}>
           I'm in the stand
         </button>
-
-        {data.reports.length > 0 && (
-          <>
-            <h3>Hunts on this phone</h3>
-            <ul className="field-list">
-              {data.reports.map((r) => (
-                <li key={r.id}>
-                  <span>{data.stands.find((s) => s.id === r.standId)?.name ?? 'No stand'}</span>
-                  <span className="muted">
-                    {new Date(r.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {sightingSummary(r)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
       </section>
-    );
-  }
 
-  return (
-    <QuickLog
-      report={active}
-      standName={data.stands.find((s) => s.id === active.standId)?.name ?? 'No stand'}
-      onChange={props.onChange}
-      onEnd={() => props.onEnd(active)}
-    />
+      {live.length > 0 && (
+        <section className="field-card">
+          <h3>In the stand now</h3>
+          <ul className="field-list">
+            {live.map((r) => (
+              <li key={r.id}>
+                <span className="live-dot" />
+                <span>
+                  {r.loggedBy ?? 'Someone'} · {standName(r.standId)}
+                </span>
+                <span className="muted">since {clock(r.start)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {days.length > 0 && (
+        <section className="field-card">
+          <h3>Hunts</h3>
+          {shownDays.map((day) => (
+            <div key={day.key} className="hunt-day">
+              <div className="hunt-day-head">
+                <span>{day.label}</span>
+                <span className="muted">{daySummary(day)}</span>
+              </div>
+              <ul className="field-list">
+                {day.reports.map((r) =>
+                  mine.has(r.id) ? (
+                    <li key={r.id}>
+                      <button className="hunt-row" onClick={() => setEditingId(r.id)}>
+                        <span className="hunt-row-text">
+                          <strong>{standName(r.standId)}</strong>
+                          <span className="muted">
+                            {clock(r.start)} · {sightingSummary(r)}
+                          </span>
+                        </span>
+                        <span className="edit-hint">Edit ›</span>
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={r.id}>
+                      <span className="hunt-row-text">
+                        <strong>{standName(r.standId)}</strong>
+                        <span className="muted">
+                          {clock(r.start)} · {r.loggedBy ?? 'Camp'} · {sightingSummary(r)}
+                        </span>
+                      </span>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
+          ))}
+          {days.length > DAYS_SHOWN && (
+            <button className="end-button" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show fewer days' : `Show ${days.length - DAYS_SHOWN} older days`}
+            </button>
+          )}
+        </section>
+      )}
+    </>
   );
 }
 
-// Fast logging from the stand: what, how many, which way, tap Save.
-function QuickLog(props: { report: HuntReport; standName: string; onChange(r: HuntReport): void; onEnd(): void }) {
+const KINDS = Object.keys(DEER_KINDS) as DeerKind[];
+
+// Logging what you see from the stand: what, how many, which way, tap Save.
+// Tap a sighting in the list to change or delete it. Also used to edit a past hunt.
+function QuickLog(props: {
+  report: HuntReport;
+  standName: string;
+  // Editing a hunt that's over: new sightings get the hunt's start time.
+  past?: boolean;
+  onChange(r: HuntReport): void;
+  doneLabel: string;
+  onDone(): void;
+}) {
   const { report } = props;
   const [kind, setKind] = useState<DeerKind>('doe');
   const [count, setCount] = useState(1);
   const [heading, setHeading] = useState<number | null>(null);
   const [buckName, setBuckName] = useState('');
+  const [otherName, setOtherName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const notes = useRef<HTMLTextAreaElement>(null);
 
-  const add = () => {
-    const sighting: Sighting = {
-      ...newSighting(new Date().toISOString()),
+  const reset = () => {
+    setEditingId(null);
+    setCount(1);
+    setHeading(null);
+    setBuckName('');
+    setOtherName('');
+  };
+
+  const startEditing = (s: Sighting) => {
+    setEditingId(s.id);
+    setKind(s.kind);
+    setCount(s.count);
+    setHeading(s.headingDeg);
+    setBuckName(s.buckName ?? '');
+    setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
+  };
+
+  const save = () => {
+    const fields = {
       kind,
       count,
       headingDeg: heading,
       buckName: kind === 'buck' ? buckName.trim() || null : null,
+      notes: kind === 'other' ? otherName.trim() || null : null,
     };
-    props.onChange({ ...report, sightings: [...report.sightings, sighting] });
-    setCount(1);
-    setHeading(null);
-    setBuckName('');
+    const sightings = editingId
+      ? report.sightings.map((s) => (s.id === editingId ? { ...s, ...fields } : s))
+      : [...report.sightings, { ...newSighting(props.past ? report.start : new Date().toISOString()), ...fields }];
+    props.onChange({ ...report, sightings });
+    reset();
   };
+
+  const remove = () => {
+    props.onChange({ ...report, sightings: report.sightings.filter((s) => s.id !== editingId) });
+    reset();
+  };
+
+  const info = DEER_KINDS[kind];
+  const saveLabel = `${editingId ? 'Update' : 'Save'} ${sightingLabel({ kind, count, notes: kind === 'other' ? otherName : null })}`;
 
   return (
     <section className="field-card">
       <h2>
-        {props.standName} <span className="muted">since {clock(report.start)}</span>
+        {props.standName}{' '}
+        <span className="muted">
+          {props.past
+            ? new Date(report.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+            : `since ${clock(report.start)}`}
+        </span>
       </h2>
+      {editingId && <p className="editing-note">Changing a sighting. Pick what's different, then tap Update.</p>}
 
       <div className="kind-row">
-        {(Object.keys(DEER_KINDS) as DeerKind[]).map((k) => (
+        {KINDS.map((k) => (
           <button key={k} className={kind === k ? 'active' : ''} style={{ '--deer': DEER_KINDS[k].color } as CSSProperties} onClick={() => setKind(k)}>
+            {DEER_KINDS[k].deer ? <span className="type-dot" style={{ background: DEER_KINDS[k].color }} /> : <Icon name={DEER_KINDS[k].icon} size={18} />}
             {DEER_KINDS[k].label}
           </button>
         ))}
       </div>
       {kind === 'buck' && <input type="text" placeholder="Which buck? e.g. Big 8" value={buckName} onChange={(e) => setBuckName(e.target.value)} />}
+      {kind === 'other' && <input type="text" placeholder="What was it? e.g. coyote" value={otherName} onChange={(e) => setOtherName(e.target.value)} />}
 
       <div className="count-row">
         <button onClick={() => setCount(Math.max(1, count - 1))} aria-label="Fewer">
@@ -330,24 +460,44 @@ function QuickLog(props: { report: HuntReport; standName: string; onChange(r: Hu
         <span className="h-C">{heading === null ? 'Still' : <span style={{ display: 'inline-block', transform: `rotate(${heading}deg)` }}>↑</span>}</span>
       </div>
 
-      <button className="big-button" onClick={add}>
-        Save {count} {count === 1 ? DEER_KINDS[kind].label.toLowerCase() : DEER_KINDS[kind].plural}
+      <button className="big-button" onClick={save} aria-label={saveLabel}>
+        {saveLabel}
       </button>
+      {editingId && (
+        <div className="edit-actions">
+          <button className="end-button" onClick={reset}>
+            Cancel
+          </button>
+          <button className="end-button danger" onClick={remove}>
+            Delete sighting
+          </button>
+        </div>
+      )}
+      {!info.deer && kind !== 'other' && <p className="field-hint">{info.label} sightings are kept apart from deer totals.</p>}
 
       {report.sightings.length > 0 && (
-        <ul className="field-list">
-          {[...report.sightings].reverse().map((s) => (
-            <li key={s.id}>
-              <span className="type-dot" style={{ background: DEER_KINDS[s.kind].color }} />
-              <span>
-                {s.count} {s.count === 1 ? DEER_KINDS[s.kind].label.toLowerCase() : DEER_KINDS[s.kind].plural}
-                {s.buckName ? ` (${s.buckName})` : ''}
-                {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
-              </span>
-              <span className="muted">{clock(s.time)}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="field-hint">Tap a sighting to change or delete it.</p>
+          <ul className="field-list">
+            {[...report.sightings].reverse().map((s) => (
+              <li key={s.id} className={s.id === editingId ? 'editing' : ''}>
+                <button className="sighting-row" onClick={() => startEditing(s)}>
+                  {kindInfo(s.kind).deer ? (
+                    <span className="type-dot" style={{ background: kindInfo(s.kind).color }} />
+                  ) : (
+                    <Icon name={kindInfo(s.kind).icon} size={18} />
+                  )}
+                  <span className="sighting-text">
+                    {sightingLabel(s)}
+                    {s.buckName ? ` (${s.buckName})` : ''}
+                    {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
+                  </span>
+                  <span className="muted">{clock(s.time)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <textarea
@@ -361,17 +511,19 @@ function QuickLog(props: { report: HuntReport; standName: string; onChange(r: Hu
         className="end-button"
         onClick={() => {
           // Keep notes typed but not yet blurred.
-          if (notes.current) props.onChange({ ...report, notes: notes.current.value || null });
-          props.onEnd();
+          if (notes.current && (notes.current.value || null) !== report.notes) props.onChange({ ...report, notes: notes.current.value || null });
+          props.onDone();
         }}
       >
-        Done hunting
+        {props.doneLabel}
       </button>
     </section>
   );
 }
 
-function StandsTab({ data }: { data: FieldData }) {
+// Each stand with its Apple Maps button, plus what hunting it has produced.
+function StandsTab({ data, reports }: { data: FieldData; reports: HuntReport[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
   if (data.stands.length === 0) {
     return (
       <section className="field-card">
@@ -385,21 +537,88 @@ function StandsTab({ data }: { data: FieldData }) {
   return (
     <section className="field-card">
       <h2>Your stands</h2>
-      <p className="field-hint">Apple Maps uses your downloaded offline maps to guide you in with no signal.</p>
+      <p className="field-hint">Apple Maps uses your downloaded offline maps to guide you in with no signal. Tap a stand for its hunt history.</p>
       <ul className="field-list stands">
-        {data.stands.map((s) => (
-          <li key={s.id}>
-            <span>
-              <strong>{s.name}</strong>
-              {s.goodWinds.length > 0 && <span className="muted"> · good on {s.goodWinds.join(' ')}</span>}
-            </span>
-            <a className="maps-button" href={appleMapsUrl(s)}>
-              Open in Apple Maps
-            </a>
-          </li>
-        ))}
+        {data.stands.map((s) => {
+          const standReports = reports.filter((r) => r.standId === s.id);
+          const stats = standStats(standReports);
+          const open = openId === s.id;
+          return (
+            <li key={s.id}>
+              <button className="stand-head" onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open}>
+                <span>
+                  <strong>{s.name}</strong>
+                  {s.goodWinds.length > 0 && <span className="muted"> · good on {s.goodWinds.join(' ')}</span>}
+                </span>
+                <span className="muted">
+                  {stats.hunts === 0
+                    ? 'No hunts yet'
+                    : `${stats.hunts} hunt${stats.hunts === 1 ? '' : 's'} · ${stats.deer} deer${stats.mainHeading ? ` · mostly ${stats.mainHeading}` : ''}`}
+                </span>
+              </button>
+              {open && stats.hunts > 0 && <FieldStandHistory stats={stats} reports={standReports} />}
+              <a className="maps-button" href={appleMapsUrl(s)}>
+                Open in Apple Maps
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </section>
+  );
+}
+
+function FieldStandHistory({ stats, reports }: { stats: StandStats; reports: HuntReport[] }) {
+  const most = Math.max(1, ...stats.headings.map((h) => h.count));
+  const other = otherAnimals(reports);
+  return (
+    <div className="stand-history">
+      <div className="stat-tiles">
+        <div>
+          <strong>{stats.hunts}</strong>
+          <span>hunts</span>
+        </div>
+        <div>
+          <strong>{stats.deer}</strong>
+          <span>deer</span>
+        </div>
+        <div>
+          <strong>{stats.hunts ? (stats.deer / stats.hunts).toFixed(1) : '–'}</strong>
+          <span>per hunt</span>
+        </div>
+      </div>
+      {stats.byKind.length > 0 && (
+        <p className="kind-totals">
+          {stats.byKind
+            .filter((k) => DEER_KINDS[k.kind].deer)
+            .map((k) => sightingLabel({ kind: k.kind, count: k.count, notes: null }))
+            .join(' · ')}
+          {other && ` · ${other}`}
+        </p>
+      )}
+      {stats.headings.some((h) => h.count > 0) && (
+        <>
+          <h4>Which way deer travel</h4>
+          <ul className="heading-bars">
+            {stats.headings.map((h) => (
+              <li key={h.point}>
+                <span className="heading-label">
+                  <span style={{ display: 'inline-block', transform: `rotate(${h.deg}deg)` }}>↑</span> {h.point}
+                </span>
+                <span className="heading-track">{h.count > 0 && <span className="heading-bar" style={{ width: `${(h.count / most) * 100}%` }} />}</span>
+                <span className="heading-count">{h.count || ''}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {(stats.morning.hunts > 0 || stats.evening.hunts > 0) && (
+        <p className="field-hint">
+          {stats.morning.hunts > 0 && `Mornings: ${(stats.morning.deer / stats.morning.hunts).toFixed(1)} deer a hunt. `}
+          {stats.evening.hunts > 0 && `Evenings: ${(stats.evening.deer / stats.evening.hunts).toFixed(1)} deer a hunt.`}
+        </p>
+      )}
+    </div>
   );
 }
 

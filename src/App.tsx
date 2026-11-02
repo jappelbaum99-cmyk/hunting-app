@@ -25,7 +25,7 @@ import { MARKER_TYPES, WIND_MARKER_TYPES } from '@/lib/featureTypes';
 import { boundsOf, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
-import { DEER_KINDS, reportWeather } from '@/lib/reports';
+import { kindInfo, reportWeather } from '@/lib/reports';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { ringsOf } from '@/lib/snap';
@@ -719,7 +719,7 @@ export function App() {
           const dLng = (SIGHTING_RING_M * Math.sin(angle)) / (111_320 * Math.cos((stand.lat * Math.PI) / 180));
           at = [stand.lng + dLng, stand.lat + dLat];
         }
-        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, color: DEER_KINDS[s.kind].color });
+        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, color: kindInfo(s.kind).color, ...(kindInfo(s.kind).deer ? {} : { icon: kindInfo(s.kind).icon }) });
       }
     }
   }

@@ -1,5 +1,5 @@
-import { daySummary, deerCount, isLive, standStats } from '@/lib/huntStats';
-import { DEER_KINDS, sightingSummary } from '@/lib/reports';
+import { daySummary, isLive, otherAnimals, standStats } from '@/lib/huntStats';
+import { DEER_KINDS, sightingLabel, sightingSummary } from '@/lib/reports';
 import type { HuntReport } from '@/types/models';
 
 // Shown on a stand's card: what hunting it has produced, and which way deer go.
@@ -42,12 +42,15 @@ export function StandHistory({ reports, onPickReport }: { reports: HuntReport[];
 
       {stats.byKind.length > 0 && (
         <ul className="kind-totals">
-          {stats.byKind.map(({ kind, count }) => (
-            <li key={kind}>
-              <span className="type-dot" style={{ background: DEER_KINDS[kind].color }} />
-              {count} {count === 1 ? DEER_KINDS[kind].label.toLowerCase() : DEER_KINDS[kind].plural}
-            </li>
-          ))}
+          {stats.byKind
+            .filter(({ kind }) => DEER_KINDS[kind].deer)
+            .map(({ kind, count }) => (
+              <li key={kind}>
+                <span className="type-dot" style={{ background: DEER_KINDS[kind].color }} />
+                {sightingLabel({ kind, count, notes: null })}
+              </li>
+            ))}
+          {otherAnimals(reports) && <li className="muted">Also seen: {otherAnimals(reports)}</li>}
         </ul>
       )}
 
@@ -114,7 +117,7 @@ export function StandHistory({ reports, onPickReport }: { reports: HuntReport[];
               </span>
               <span className="row-detail">
                 {r.loggedBy ? `${r.loggedBy} · ` : ''}
-                {deerCount([r]) ? sightingSummary(r) : 'No deer'}
+                {sightingSummary(r)}
               </span>
             </button>
           </li>

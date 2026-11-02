@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { FieldData } from '@/field/fieldData';
-import { sendHunt, sendPin, watchStands } from '@/lib/camp';
+import { sendHunt, sendPin, watchHunts, watchStands } from '@/lib/camp';
 
 const RETRY_MS = 30_000;
 
@@ -45,6 +45,19 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
           stands: live.map(({ id, name, lat, lng, goodWinds }) => ({ id, name, lat, lng, goodWinds })),
           standsUpdatedAt: new Date().toISOString(),
         }));
+        setError(null);
+      },
+      setError,
+    );
+  }, [camp?.code]);
+
+  // Everyone's hunts, for the day summaries, who's in the stand, and stand history.
+  useEffect(() => {
+    if (!camp) return;
+    return watchHunts(
+      camp,
+      (hunts) => {
+        setData((d) => ({ ...d, campHunts: hunts.filter((h) => !h.deletedAt) }));
         setError(null);
       },
       setError,

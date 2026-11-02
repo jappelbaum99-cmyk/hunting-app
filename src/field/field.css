@@ -377,3 +377,220 @@ textarea {
 .camp-heading .icon-wrap {
   color: var(--accent);
 }
+
+/* Hunt tab: days, who's out, editing */
+.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.hunt-day + .hunt-day {
+  margin-top: 12px;
+}
+
+.hunt-day-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 2px 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hunt-day-head .muted {
+  font-size: 13px;
+}
+
+.field-list li:has(> .hunt-row),
+.field-list li:has(> .sighting-row) {
+  padding: 0;
+}
+
+.hunt-row,
+.sighting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border-radius: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.hunt-row-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hunt-row-text .muted {
+  font-size: 13px;
+}
+
+.edit-hint {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sighting-text {
+  flex: 1;
+}
+
+.field-list li.editing {
+  outline: 2px solid var(--accent);
+}
+
+.editing-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(240, 138, 36, 0.14);
+  font-size: 14px;
+}
+
+.edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.end-button.danger {
+  color: var(--danger);
+}
+
+.kind-row button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  font-size: 14px;
+}
+
+.kind-row button.active .type-dot {
+  border-color: #1c130d;
+}
+
+.live-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(240, 138, 36, 0.6);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px rgba(240, 138, 36, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* Stands tab: hunt history per stand */
+.stand-head {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  background: none;
+  font-weight: 400;
+  text-align: left;
+}
+
+.stand-head .muted {
+  font-size: 13px;
+}
+
+.stand-history {
+  display: grid;
+  gap: 8px;
+}
+
+.stand-history h4 {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.stat-tiles div {
+  display: grid;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--fill);
+  text-align: center;
+}
+
+.stat-tiles strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tiles span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kind-totals {
+  margin: 0;
+  font-size: 14px;
+}
+
+.heading-bars {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heading-bars li {
+  display: grid;
+  grid-template-columns: 44px 1fr 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  font-size: 13px;
+}
+
+.heading-label {
+  color: var(--muted);
+}
+
+.heading-track {
+  height: 10px;
+  border-radius: 4px;
+  background: rgba(255, 232, 208, 0.06);
+  overflow: hidden;
+}
+
+.heading-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+.heading-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

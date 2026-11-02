@@ -191,7 +191,8 @@ export interface Plan extends Syncable {
   timber: TimberDetails | null;
 }
 
-export type DeerKind = 'buck' | 'doe' | 'fawn' | 'unknown';
+// What was seen: deer by kind, or another animal. (The name predates turkey and bear.)
+export type DeerKind = 'buck' | 'doe' | 'fawn' | 'unknown' | 'turkey' | 'bear' | 'other';
 
 export interface Sighting {
   id: string;
@@ -206,6 +207,7 @@ export interface Sighting {
   // Where they were seen; null = not placed (drawn at the stand).
   lat: number | null;
   lng: number | null;
+  // For "other", what it was (e.g. "coyote").
   notes: string | null;
 }
 

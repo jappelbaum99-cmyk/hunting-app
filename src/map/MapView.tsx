@@ -59,6 +59,8 @@ export interface SightingView {
   // Travel direction, 0 = north; null = not moving.
   headingDeg: number | null;
   color: string;
+  // Animals other than deer are drawn as their icon instead of an arrow.
+  icon?: IconName;
 }
 
 // A map-side control point while lining up an image.
@@ -198,14 +200,14 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'sighting-dots',
     type: 'circle',
     source: 'sightings',
-    filter: ['!', ['has', 'heading']],
+    filter: ['all', ['!', ['has', 'heading']], ['!', ['has', 'icon']]],
     paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#1c130d', 'circle-stroke-width': 2 },
   });
   map.addLayer({
     id: 'sighting-arrows',
     type: 'symbol',
     source: 'sightings',
-    filter: ['has', 'heading'],
+    filter: ['all', ['has', 'heading'], ['!', ['has', 'icon']]],
     layout: {
       'icon-image': 'deer-arrow',
       'icon-rotate': ['get', 'heading'],
@@ -216,6 +218,25 @@ function addFeatureLayers(map: maplibregl.Map): void {
     },
     paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#1c130d', 'icon-halo-width': 1.5 },
   });
+
+  // Turkeys, bears and other animals: their icon on a dark badge, so they're
+  // told apart by shape (they share one color). Images load below.
+  map.addLayer({
+    id: 'sighting-animals',
+    type: 'symbol',
+    source: 'sightings',
+    filter: ['has', 'icon'],
+    layout: {
+      'icon-image': ['concat', 'animal-', ['get', 'icon']],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  });
+  for (const icon of ANIMAL_ICONS) {
+    void animalBadgeImage(icon).then((image) => {
+      if (!map.hasImage(`animal-${icon}`)) map.addImage(`animal-${icon}`, image, { pixelRatio: 2 });
+    });
+  }
 
   // Arrows drifting downwind inside each cone (moved by the animation in MapView).
   map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2 });
@@ -271,6 +292,29 @@ function addFeatureLayers(map: maplibregl.Map): void {
 }
 
 // A solid arrow pointing up (north), white so it can be tinted (sdf icon).
+const ANIMAL_ICONS: IconName[] = ['turkey', 'bear', 'binoculars'];
+
+// An animal icon in light ink on a round dark badge, drawn from the app's SVG icons.
+async function animalBadgeImage(icon: IconName): Promise<ImageData> {
+  const size = 52;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#1c130d';
+  ctx.strokeStyle = '#c3c2b7';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  const svg = iconSvg(icon, 32).replace('stroke="currentColor"', 'stroke="#f0efec"').replace(/fill="currentColor"/g, 'fill="#f0efec"');
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}`;
+  await img.decode();
+  ctx.drawImage(img, (size - 32) / 2, (size - 32) / 2, 32, 32);
+  return ctx.getImageData(0, 0, size, size);
+}
+
 function deerArrowImage(): ImageData {
   const size = 44;
   const canvas = document.createElement('canvas');
@@ -479,7 +523,7 @@ export function MapView(props: MapViewProps) {
       }
       // Areas win over the sections they sit in.
       // A deer sighting opens its hunt report.
-      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-arrows', 'sighting-dots'] })[0];
+      const deer = map.queryRenderedFeatures(event.point, { layers: ['sighting-arrows', 'sighting-dots', 'sighting-animals'] })[0];
       if (deer) {
         onSelect({ kind: 'report', id: deer.properties.reportId as string });
         return;
@@ -498,7 +542,7 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind));
     });
 
-    for (const layer of ['area-fill', 'section-fill', 'sighting-arrows', 'sighting-dots']) {
+    for (const layer of ['area-fill', 'section-fill', 'sighting-arrows', 'sighting-dots', 'sighting-animals']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
       });
@@ -719,7 +763,7 @@ export function MapView(props: MapViewProps) {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
         // `heading` is left out (not null) for still deer, so the layer filters can test for it.
-        properties: { reportId: s.reportId, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}) },
+        properties: { reportId: s.reportId, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}), ...(s.icon ? { icon: s.icon } : {}) },
       })),
     });
   }, [sightings, readyTick]);

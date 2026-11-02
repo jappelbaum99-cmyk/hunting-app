@@ -1,13 +1,43 @@
 // Shared helpers for hunt reports (the hub and the phone page both use these).
+import type { IconName } from '@/lib/icons';
 import { COMPASS_POINTS, type DeerKind, type HuntReport, type ReportWeather, type Sighting } from '@/types/models';
 import type { ForecastHour } from '@/lib/weather';
 
-export const DEER_KINDS: Record<DeerKind, { label: string; plural: string; color: string }> = {
-  buck: { label: 'Buck', plural: 'bucks', color: '#e07b1f' },
-  doe: { label: 'Doe', plural: 'does', color: '#d9b48f' },
-  fawn: { label: 'Fawn', plural: 'fawns', color: '#f5e6cf' },
-  unknown: { label: 'Unknown', plural: 'unknown', color: '#a7a7a7' },
+interface KindInfo {
+  label: string;
+  plural: string;
+  color: string;
+  icon: IconName;
+  // Deer count toward deer totals and travel patterns; other animals are listed apart.
+  deer: boolean;
+}
+
+// Buck, doe and fawn use colors checked to stay distinct from each other
+// (including for color blindness) on the dark map. Everything else shares one
+// neutral and is told apart by its icon, with its name beside it.
+const NEUTRAL = '#c3c2b7';
+
+export const DEER_KINDS: Record<DeerKind, KindInfo> = {
+  buck: { label: 'Buck', plural: 'bucks', color: '#d95926', icon: 'deer', deer: true },
+  doe: { label: 'Doe', plural: 'does', color: '#3987e5', icon: 'deer', deer: true },
+  fawn: { label: 'Fawn', plural: 'fawns', color: '#199e70', icon: 'deer', deer: true },
+  unknown: { label: 'Deer', plural: 'deer', color: NEUTRAL, icon: 'deer', deer: true },
+  turkey: { label: 'Turkey', plural: 'turkeys', color: NEUTRAL, icon: 'turkey', deer: false },
+  bear: { label: 'Bear', plural: 'bears', color: NEUTRAL, icon: 'bear', deer: false },
+  other: { label: 'Other', plural: 'other', color: NEUTRAL, icon: 'binoculars', deer: false },
 };
+
+// The kind's look, falling back to plain "Deer" for a kind this version doesn't know.
+export function kindInfo(kind: string): KindInfo {
+  return DEER_KINDS[kind as DeerKind] ?? DEER_KINDS.unknown;
+}
+
+// "1 buck", "2 turkeys", or for other animals what they were: "1 coyote".
+export function sightingLabel(s: Pick<Sighting, 'kind' | 'count' | 'notes'>): string {
+  const info = kindInfo(s.kind);
+  if (s.kind === 'other' && s.notes?.trim()) return `${s.count} ${s.notes.trim()}`;
+  return `${s.count} ${s.count === 1 ? info.label.toLowerCase() : info.plural}`;
+}
 
 // Travel directions offered when logging a sighting.
 export const HEADINGS = COMPASS_POINTS.map((point, i) => ({ point, deg: i * 45 }));
@@ -37,17 +67,21 @@ export function reportWeather(hour: ForecastHour): ReportWeather {
   };
 }
 
-// "2 bucks, 3 does" or "No deer".
+// "2 bucks, 3 does, 1 turkey" or "Nothing seen".
 export function sightingSummary(report: Pick<HuntReport, 'sightings'>): string {
-  const totals = new Map<DeerKind, number>();
-  for (const s of report.sightings) totals.set(s.kind, (totals.get(s.kind) ?? 0) + s.count);
-  if (totals.size === 0) return 'No deer';
-  return (Object.keys(DEER_KINDS) as DeerKind[])
-    .filter((k) => totals.has(k))
-    .map((k) => {
-      const n = totals.get(k)!;
-      return `${n} ${n === 1 ? DEER_KINDS[k].label.toLowerCase() : DEER_KINDS[k].plural}`;
-    })
+  // Totals per kind, except "other" animals, which are listed by what they were.
+  const totals = new Map<string, { kind: DeerKind; count: number; notes: string | null }>();
+  for (const s of report.sightings) {
+    const key = s.kind === 'other' ? `other:${s.notes?.trim().toLowerCase() ?? ''}` : s.kind;
+    const entry = totals.get(key) ?? { kind: s.kind, count: 0, notes: s.notes };
+    entry.count += s.count;
+    totals.set(key, entry);
+  }
+  if (totals.size === 0) return 'Nothing seen';
+  const order = Object.keys(DEER_KINDS);
+  return [...totals.values()]
+    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+    .map(sightingLabel)
     .join(', ');
 }
 

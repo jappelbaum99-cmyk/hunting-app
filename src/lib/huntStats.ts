@@ -1,6 +1,6 @@
 // Hunt report summaries: who's in the stand now, hunts by day, and what each
 // stand has produced (deer seen and which way they travel).
-import { DEER_KINDS, HEADINGS } from '@/lib/reports';
+import { DEER_KINDS, HEADINGS, kindInfo, sightingSummary } from '@/lib/reports';
 import { compassPointOf } from '@/lib/standRating';
 import type { CompassPoint, DeerKind, HuntReport } from '@/types/models';
 
@@ -15,10 +15,17 @@ export function isLive(report: HuntReport, now = Date.now()): boolean {
   return started <= now && now - started < LIVE_FOR_MS;
 }
 
+// Deer seen (all kinds of deer, or one kind). Turkeys, bears and other animals don't count.
 export function deerCount(reports: Pick<HuntReport, 'sightings'>[], kind?: DeerKind): number {
   let n = 0;
-  for (const r of reports) for (const s of r.sightings) if (!kind || s.kind === kind) n += s.count;
+  for (const r of reports) for (const s of r.sightings) if (kind ? s.kind === kind : kindInfo(s.kind).deer) n += s.count;
   return n;
+}
+
+// Other animals seen, e.g. "2 turkeys, 1 bear, 1 coyote"; empty when none.
+export function otherAnimals(reports: Pick<HuntReport, 'sightings'>[]): string {
+  const others = reports.flatMap((r) => r.sightings.filter((s) => !kindInfo(s.kind).deer));
+  return others.length ? sightingSummary({ sightings: others }) : '';
 }
 
 function dayKey(iso: string): string {
@@ -33,6 +40,8 @@ export interface HuntDay {
   reports: HuntReport[];
   deer: number;
   bucks: number;
+  // Other animals, e.g. "2 turkeys"; empty when none.
+  others: string;
 }
 
 // Newest day first, newest hunt first within a day.
@@ -55,14 +64,15 @@ export function huntsByDay(reports: HuntReport[], now = new Date()): HuntDay[] {
     reports: list,
     deer: deerCount(list),
     bucks: deerCount(list, 'buck'),
+    others: otherAnimals(list),
   }));
 }
 
-// "3 hunts · 5 deer (2 bucks)".
-export function daySummary(day: Pick<HuntDay, 'reports' | 'deer' | 'bucks'>): string {
+// "3 hunts · 5 deer (2 bucks) · 1 turkey".
+export function daySummary(day: Pick<HuntDay, 'reports' | 'deer' | 'bucks'> & { others?: string }): string {
   const hunts = `${day.reports.length} hunt${day.reports.length === 1 ? '' : 's'}`;
-  if (day.deer === 0) return `${hunts} · no deer`;
-  return `${hunts} · ${day.deer} deer${day.bucks ? ` (${day.bucks} buck${day.bucks === 1 ? '' : 's'})` : ''}`;
+  const deer = day.deer === 0 ? 'no deer' : `${day.deer} deer${day.bucks ? ` (${day.bucks} buck${day.bucks === 1 ? '' : 's'})` : ''}`;
+  return [hunts, deer, day.others].filter(Boolean).join(' · ');
 }
 
 export interface StandStats {
@@ -89,7 +99,8 @@ export function standStats(reports: HuntReport[]): StandStats {
   for (const r of reports) {
     const deer = deerCount([r]);
     for (const s of r.sightings) {
-      if (s.headingDeg === null) continue;
+      // Travel patterns are about deer.
+      if (s.headingDeg === null || !kindInfo(s.kind).deer) continue;
       const slot = headings.find((h) => h.deg === Math.round(s.headingDeg! / 45) * 45 % 360);
       if (slot) slot.count += s.count;
     }
