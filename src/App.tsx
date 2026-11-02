@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 
 import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
-import { DrawBar } from '@/components/DrawBar';
+import { DrawBar, EditBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
@@ -30,12 +30,26 @@ import { importGeoFile } from '@/lib/importGeo';
 import { kindInfo, reportWeather } from '@/lib/reports';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
-import { ringsOf } from '@/lib/snap';
+import { ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView, type SightingView } from '@/map/MapView';
 import type { AreaGeometry, AreaType, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+
+type EditTarget = 'property' | 'section' | 'area' | 'trail';
+
+// A shape's corners for reshaping: each outer ring without its repeated last
+// point (holes are kept as they are), or a trail's points.
+function ringsOf(geometry: AreaGeometry): Position[][] {
+  return geometry.type === 'Polygon' ? [geometry.coordinates[0].slice(0, -1)] : geometry.coordinates.map((poly) => poly[0].slice(0, -1));
+}
+
+function withRings(geometry: AreaGeometry, rings: Position[][]): AreaGeometry {
+  const close = (ring: Position[]) => [...ring, ring[0]];
+  if (geometry.type === 'Polygon') return { type: 'Polygon', coordinates: [close(rings[0]), ...geometry.coordinates.slice(1)] };
+  return { type: 'MultiPolygon', coordinates: geometry.coordinates.map((poly, i) => [close(rings[i]), ...poly.slice(1)]) };
+}
 
 type Mode =
   | { kind: 'browse' }
@@ -44,6 +58,8 @@ type Mode =
   | { kind: 'draw'; target: 'section' }
   | { kind: 'draw'; target: 'area'; areaType: AreaType }
   | { kind: 'draw'; target: 'trail'; trailKind: TrailKind }
+  // Reshaping a saved shape: drag its corners.
+  | { kind: 'edit'; target: EditTarget; id: string }
   | { kind: 'align' }
   // Clicking the map sets where a sighting in a hunt report happened.
   | { kind: 'placeSighting'; reportId: string; sightingId: string };
@@ -102,6 +118,9 @@ export function App() {
   const [layers, setLayers] = useState<MapLayersState>(DEFAULT_LAYERS);
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   const [draftPoints, setDraftPoints] = useState<Position[]>([]);
+  // While reshaping: the corners as they are now, and earlier versions for Undo.
+  const [editRings, setEditRings] = useState<Position[][] | null>(null);
+  const [editHistory, setEditHistory] = useState<Position[][][]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // The sidebar's width, dragged from its edge (remembered on this PC).
@@ -146,6 +165,55 @@ export function App() {
   const cancelMode = useCallback(() => {
     setMode({ kind: 'browse' });
     setDraftPoints([]);
+    setEditRings(null);
+    setEditHistory([]);
+  }, []);
+
+  // Reshape a saved shape: its corners get handles until Done or Cancel.
+  const startEdit = (target: EditTarget, id: string) => {
+    const shape =
+      target === 'property'
+        ? hub.properties.find((p) => p.id === id)?.boundary
+        : target === 'section'
+          ? hub.sections.find((s) => s.id === id)?.geometry
+          : target === 'area'
+            ? hub.areas.find((a) => a.id === id)?.geometry
+            : null;
+    const trail = target === 'trail' ? hub.trails.find((t) => t.id === id) : null;
+    const rings = shape ? ringsOf(shape) : trail ? [trail.line.coordinates] : null;
+    if (!rings) return;
+    setDraftPoints([]);
+    setEditRings(rings);
+    setEditHistory([]);
+    setMode({ kind: 'edit', target, id });
+  };
+
+  const finishEdit = useCallback(() => {
+    if (mode.kind !== 'edit' || !editRings) return;
+    if (mode.target === 'property') {
+      const p = hub.properties.find((r) => r.id === mode.id);
+      if (p) hub.saveProperty({ ...p, boundary: withRings(p.boundary, editRings) });
+    } else if (mode.target === 'section') {
+      const s = hub.sections.find((r) => r.id === mode.id);
+      if (s) hub.saveSection({ ...s, geometry: withRings(s.geometry, editRings) });
+    } else if (mode.target === 'area') {
+      const a = hub.areas.find((r) => r.id === mode.id);
+      if (a) hub.saveArea({ ...a, geometry: withRings(a.geometry, editRings) });
+    } else {
+      const t = hub.trails.find((r) => r.id === mode.id);
+      if (t) hub.saveTrail({ ...t, line: { type: 'LineString', coordinates: editRings[0] } });
+    }
+    const selected: Selection = mode.target === 'property' ? { kind: 'property', id: mode.id } : mode.target === 'section' ? { kind: 'section', id: mode.id } : mode.target === 'area' ? { kind: 'area', id: mode.id } : { kind: 'trail', id: mode.id };
+    cancelMode();
+    setSelection(selected);
+  }, [mode, editRings, hub, cancelMode]);
+
+  const undoEdit = useCallback(() => {
+    setEditHistory((history) => {
+      if (history.length === 0) return history;
+      setEditRings(history[history.length - 1]);
+      return history.slice(0, -1);
+    });
   }, []);
 
   const startMode = (next: Mode) => {
@@ -685,6 +753,11 @@ export function App() {
       if (event.key === 'Escape') {
         if (mode.kind !== 'browse') cancelMode();
         else setSelection(null);
+      } else if (mode.kind === 'edit' && event.key === 'Enter') {
+        finishEdit();
+      } else if (mode.kind === 'edit' && event.key === 'z' && event.ctrlKey) {
+        event.preventDefault();
+        undoEdit();
       } else if (mode.kind === 'draw' && event.key === 'Enter') {
         finishDrawing();
       } else if (mode.kind === 'draw' && (event.key === 'Backspace' || (event.key === 'z' && event.ctrlKey))) {
@@ -694,7 +767,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, cancelMode, finishDrawing]);
+  }, [mode, cancelMode, finishDrawing, finishEdit, undoEdit]);
 
   useEffect(() => {
     if (!notice) return;
@@ -841,19 +914,40 @@ export function App() {
 
   // Lines a new shape can snap onto: property lines always, plus section and
   // area edges when drawing a section, area or trail, so neighbors share an edge.
+  const editing = mode.kind === 'edit' ? mode : null;
   const snapRings =
-    mode.kind === 'draw'
+    mode.kind === 'draw' || editing
       ? [
-          ...ringsOf([
-            ...hub.properties.map((p) => p.boundary),
-            ...(mode.target === 'property' ? [] : hub.sections.map((s) => s.geometry)),
+          ...ringsOfShapes([
+            ...hub.properties.filter((p) => p.id !== editing?.id).map((p) => p.boundary),
+            ...(mode.kind === 'draw' && mode.target === 'property' ? [] : hub.sections.filter((s) => s.id !== editing?.id).map((s) => s.geometry)),
             // Areas share edges with the areas next to them.
-            ...(mode.target === 'property' ? [] : hub.areas.map((a) => a.geometry)),
+            ...(mode.kind === 'draw' && mode.target === 'property' ? [] : hub.areas.filter((a) => a.id !== editing?.id).map((a) => a.geometry)),
           ]),
           // Trails can join existing trails.
-          ...(mode.target === 'trail' ? hub.trails.map((t) => t.line.coordinates) : []),
+          ...((mode.kind === 'draw' && mode.target === 'trail') || editing?.target === 'trail'
+            ? hub.trails.filter((t) => t.id !== editing?.id).map((t) => t.line.coordinates)
+            : []),
         ]
       : [];
+
+  // The shape being reshaped: its color and name for the map and the edit bar.
+  let editColor = '#ffffff';
+  let editTitle = '';
+  if (mode.kind === 'edit') {
+    if (mode.target === 'property') {
+      const p = hub.properties.find((r) => r.id === mode.id);
+      [editColor, editTitle] = [propertyColor(p ?? null, hub.settings), `${p?.name ?? 'property'} line`];
+    } else if (mode.target === 'section') {
+      [editColor, editTitle] = ['#f7efe6', hub.sections.find((r) => r.id === mode.id)?.name ?? 'section'];
+    } else if (mode.target === 'area') {
+      const a = hub.areas.find((r) => r.id === mode.id);
+      [editColor, editTitle] = [a ? areaTypeInfo(a.type, hub.settings).color : '#ffffff', a?.name ?? 'area'];
+    } else {
+      const t = hub.trails.find((r) => r.id === mode.id);
+      [editColor, editTitle] = [t ? (t.color ?? TRAIL_KINDS[t.kind].color) : '#ffffff', t?.name ?? 'trail'];
+    }
+  }
 
   const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
@@ -945,6 +1039,9 @@ export function App() {
           trails={hub.trails}
           fieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
           draftLine={mode.kind === 'draw' && mode.target === 'trail'}
+          editShape={editRings && mode.kind === 'edit' ? { rings: editRings, closed: mode.target !== 'trail', color: editColor } : null}
+          onEditBegin={() => editRings && setEditHistory((h) => [...h, editRings])}
+          onEditRings={setEditRings}
           settings={hub.settings}
           snapRings={snapRings}
           snapPx={hub.settings.snapping.enabled ? hub.settings.snapping.distancePx : 0}
@@ -982,6 +1079,17 @@ export function App() {
           />
         )}
         <LayerPanel layers={layers} onChange={setLayers} />
+        {mode.kind === 'edit' && editRings && (
+          <EditBar
+            title={editTitle}
+            line={mode.target === 'trail'}
+            rings={editRings}
+            canUndo={editHistory.length > 0}
+            onUndo={undoEdit}
+            onCancel={cancelMode}
+            onDone={finishEdit}
+          />
+        )}
         {(mode.kind === 'draw' || mode.kind === 'place' || mode.kind === 'placeSighting') && (
           <DrawBar
             kind={mode.kind === 'draw' ? 'draw' : 'place'}
@@ -1046,6 +1154,7 @@ export function App() {
       return (
         <SectionPanel
           section={record}
+          onEditShape={() => startEdit('section', record.id)}
           plans={hub.plans.filter((p) => p.sectionId === record.id)}
           propertyName={propertyName(record.propertyId)}
           forecast={forecast}
@@ -1092,6 +1201,7 @@ export function App() {
         <DetailPanel
           kind="trail"
           record={record}
+          onEditShape={() => startEdit('trail', record.id)}
           propertyName={propertyName(record.propertyId)}
           defaultColor={TRAIL_KINDS[record.kind]?.color}
           onChange={hub.saveTrail}
@@ -1110,6 +1220,7 @@ export function App() {
         <DetailPanel
           kind="property"
           record={record}
+          onEditShape={() => startEdit('property', record.id)}
           propertyName={null}
           defaultColor={propertyColor(null, hub.settings)}
           onChange={hub.saveProperty}
@@ -1137,6 +1248,7 @@ export function App() {
         <DetailPanel
           kind="area"
           record={record}
+          onEditShape={() => startEdit('area', record.id)}
           areaTypes={areaTypeList(hub.settings)}
           propertyName={propertyName(record.propertyId)}
           onChange={hub.saveArea}

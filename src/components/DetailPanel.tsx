@@ -22,6 +22,8 @@ import {
 
 interface Common {
   propertyName: string | null;
+  // Reshape the outline (property, area) or line (trail).
+  onEditShape?: () => void;
   // The color this item gets when it has none of its own (from Settings).
   defaultColor?: string;
   onZoom(): void;
@@ -119,6 +121,11 @@ export function DetailPanel(props: DetailPanelProps) {
 
       <footer className="detail-footer">
         <button onClick={onZoom}>Zoom to</button>
+        {props.onEditShape && (
+          <button onClick={props.onEditShape} title="Drag corners to reshape it">
+            {props.kind === 'area' ? 'Edit shape' : 'Edit line'}
+          </button>
+        )}
         {props.kind === 'property' && (
           <button onClick={props.onShare} title="Save this property with its stands, areas, sections, plans, hunts and map images as one file to send">
             Share

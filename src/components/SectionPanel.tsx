@@ -26,6 +26,8 @@ interface SectionPanelProps {
   onChange(section: Section): void;
   onDelete(): void;
   onZoom(): void;
+  // Reshape the section by dragging its corners.
+  onEditShape?: () => void;
   onClose(): void;
   onAddPlan(kind: PlanKind): void;
   onOpenPlan(id: string | null): void;
@@ -107,6 +109,11 @@ export function SectionPanel(props: SectionPanelProps) {
 
       <footer className="detail-footer">
         <button onClick={props.onZoom}>Zoom to</button>
+        {props.onEditShape && (
+          <button onClick={props.onEditShape} title="Drag corners to reshape it">
+            Edit shape
+          </button>
+        )}
         <button
           className="danger"
           onClick={() => {

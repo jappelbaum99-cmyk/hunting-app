@@ -3,7 +3,8 @@ import { useState, type CSSProperties } from 'react';
 import { AreaBadge } from '@/components/AreaBadge';
 import { isPlotType, pinTypeInfo, isHuntingSpot } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
-import { deerCount, otherAnimals } from '@/lib/huntStats';
+import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/huntStats';
+import { sightingSummary } from '@/lib/reports';
 import { areaTypeInfo } from '@/lib/styles';
 import { formatDistance, lineLengthM, TRAIL_KINDS } from '@/lib/trails';
 import type { HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
@@ -236,6 +237,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
           )}
           {seasons.length === 1 && <span className="muted">{season} season</span>}
         </h2>
+        <RecentHunts reports={reports} markers={props.markers} />
         {seasonReports.length === 0 ? (
           <p className="hint">No hunts logged yet.</p>
         ) : (
@@ -326,5 +328,74 @@ function MonthChart({ months }: { months: { month: number; hunts: number; deer: 
         ))}
       </div>
     </figure>
+  );
+}
+
+const DAY_MS = 86_400_000;
+
+function hoursOf(list: HuntReport[]): number {
+  return list.reduce((t, r) => t + (r.end ? Math.max(0, Date.parse(r.end) - Date.parse(r.start)) / 3_600_000 : 0), 0);
+}
+
+// Today's hunts one by one, and the last 7 days day by day.
+function RecentHunts({ reports, markers }: { reports: HuntReport[]; markers: MapMarker[] }) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const weekStart = todayStart - 6 * DAY_MS;
+  const today = reports.filter((r) => Date.parse(r.start) >= todayStart).sort((a, b) => a.start.localeCompare(b.start));
+  const week = reports.filter((r) => Date.parse(r.start) >= weekStart);
+  const standName = (r: HuntReport) => markers.find((m) => m.id === r.standId)?.name ?? 'No stand';
+  const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const totals = (list: HuntReport[]) => {
+    const deer = deerCount(list);
+    const bucks = deerCount(list, 'buck');
+    const others = otherAnimals(list);
+    const hours = Math.round(hoursOf(list));
+    return [`${list.length} hunt${list.length === 1 ? '' : 's'}`, hours ? `${hours} h` : null, `${deer} deer${bucks ? ` (${bucks} buck${bucks === 1 ? '' : 's'})` : ''}`, others || null]
+      .filter(Boolean)
+      .join(' · ');
+  };
+
+  return (
+    <div className="recent-hunts-summary">
+      <div className="recent-card">
+        <div className="recent-head">
+          <span>Today</span>
+          <span className="muted">{today.length ? totals(today) : 'No hunts yet'}</span>
+        </div>
+        {today.length > 0 && (
+          <ul>
+            {today.map((r) => (
+              <li key={r.id}>
+                <span>
+                  {isLive(r) && <span className="live-dot" title="In the stand now" />}
+                  {r.loggedBy ? `${r.loggedBy} · ` : ''}
+                  {standName(r)}
+                </span>
+                <span className="muted">
+                  {clock(r.start)} · {sightingSummary(r)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="recent-card">
+        <div className="recent-head">
+          <span>Last 7 days</span>
+          <span className="muted">{week.length ? totals(week) : 'No hunts'}</span>
+        </div>
+        {week.length > 0 && (
+          <ul>
+            {huntsByDay(week).map((day) => (
+              <li key={day.key}>
+                <span>{day.label}</span>
+                <span className="muted">{daySummary(day)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

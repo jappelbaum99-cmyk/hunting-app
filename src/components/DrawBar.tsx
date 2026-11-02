@@ -45,3 +45,34 @@ export function DrawBar({ kind, title, points, onUndo, onCancel, onFinish, minPo
     </div>
   );
 }
+
+// Shown while reshaping a saved shape.
+export function EditBar(props: {
+  title: string;
+  line: boolean;
+  rings: Position[][];
+  canUndo: boolean;
+  onUndo(): void;
+  onCancel(): void;
+  onDone(): void;
+}) {
+  const size = props.line
+    ? formatDistance(lineLengthM(props.rings[0] ?? []))
+    : formatAcres(props.rings.reduce((t, ring) => t + (ring.length >= 3 ? acresOf(pointsToPolygon(ring)) : 0), 0));
+  return (
+    <div className="draw-bar">
+      <span>
+        Editing <strong>{props.title}</strong>: drag corners, click + to add one, right-click a corner to remove it. · {size}
+      </span>
+      <button onClick={props.onUndo} disabled={!props.canUndo} title="Ctrl+Z">
+        Undo
+      </button>
+      <button onClick={props.onCancel} title="Esc">
+        Cancel
+      </button>
+      <button className="primary" onClick={props.onDone} title="Enter">
+        Done
+      </button>
+    </div>
+  );
+}

@@ -41,7 +41,7 @@ export interface MapViewHandle {
   flyTo(lng: number, lat: number): void;
 }
 
-export type MapInteraction = 'browse' | 'place' | 'draw' | 'align';
+export type MapInteraction = 'browse' | 'place' | 'draw' | 'align' | 'edit';
 
 // A map image ready to draw: corners are top-left, top-right, bottom-right, bottom-left.
 export interface OverlayView {
@@ -101,6 +101,11 @@ interface MapViewProps {
   draftColor: string;
   // Drawing a line (trail) rather than a closed shape.
   draftLine: boolean;
+  // A shape being reshaped: its rings (corners, not repeating the first), or null.
+  editShape: { rings: Position[][]; closed: boolean; color: string } | null;
+  // A drag, add or remove is starting (so it can be undone), then the new corners.
+  onEditBegin(): void;
+  onEditRings(rings: Position[][]): void;
   onMapClick(position: Position): void;
   onSelect(selection: Selection | null): void;
   onMarkerMoved(id: string, position: Position): void;
@@ -131,6 +136,7 @@ function saveCamera(map: maplibregl.Map): void {
 function addFeatureLayers(map: maplibregl.Map): void {
   map.addSource('properties', { type: 'geojson', data: EMPTY });
   map.addSource('areas', { type: 'geojson', data: EMPTY });
+  map.addSource('edit', { type: 'geojson', data: EMPTY });
   map.addSource('draft', { type: 'geojson', data: EMPTY });
   map.addSource('scent', { type: 'geojson', data: EMPTY });
   map.addSource('sections', { type: 'geojson', data: EMPTY });
@@ -294,6 +300,20 @@ function addFeatureLayers(map: maplibregl.Map): void {
       'icon-size': 1.6,
     },
     paint: { 'icon-opacity': ['get', 'opacity'], 'icon-color': ['get', 'color'], 'icon-halo-color': 'rgba(10, 20, 35, 0.55)', 'icon-halo-width': 1.2 },
+  });
+  map.addLayer({
+    id: 'edit-fill',
+    type: 'fill',
+    source: 'edit',
+    filter: ['==', ['geometry-type'], 'Polygon'],
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
+  });
+  map.addLayer({
+    id: 'edit-line',
+    type: 'line',
+    source: 'edit',
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': 3 },
   });
   map.addLayer({
     id: 'draft-fill',
@@ -540,6 +560,7 @@ export function MapView(props: MapViewProps) {
   const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10' });
   const markerElements = useRef(new Map<string, maplibregl.Marker>());
   const labelElements = useRef(new Map<string, maplibregl.Marker>());
+  const editHandles = useRef(new Map<string, maplibregl.Marker>());
   const alignElements = useRef(new Map<string, maplibregl.Marker>());
   // Overlay id -> image URL currently loaded into its maplibre source.
   const overlayUrls = useRef(new Map<string, string>());
@@ -608,6 +629,7 @@ export function MapView(props: MapViewProps) {
     map.on('click', (event) => {
       const { interaction: mode, onMapClick, onSelect } = latest.current;
       const position: Position = snapAt(event.point)?.position ?? [event.lngLat.lng, event.lngLat.lat];
+      if (mode === 'edit') return;
       if (mode !== 'browse') {
         onMapClick(position);
         return;
@@ -925,6 +947,87 @@ export function MapView(props: MapViewProps) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [readyTick]);
+
+  // Shape being reshaped: the outline, a draggable handle on each corner, and a
+  // "+" between corners to add one. Right-click a corner to remove it.
+  const { editShape } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const source = map.getSource<GeoJSONSource>('edit');
+    if (!editShape) {
+      source?.setData(EMPTY);
+      for (const marker of editHandles.current.values()) marker.remove();
+      editHandles.current.clear();
+      return;
+    }
+    const { rings, closed, color } = editShape;
+    source?.setData({
+      type: 'FeatureCollection',
+      features: rings.map((ring) => ({
+        type: 'Feature',
+        geometry: closed && ring.length >= 3 ? { type: 'Polygon', coordinates: [[...ring, ring[0]]] } : { type: 'LineString', coordinates: ring },
+        properties: { color },
+      })),
+    });
+
+    const wanted = new Map<string, { kind: 'corner' | 'add'; ring: number; index: number; at: [number, number] }>();
+    rings.forEach((ring, r) => {
+      ring.forEach((p, i) => {
+        wanted.set(`v-${r}-${i}`, { kind: 'corner', ring: r, index: i, at: [p[0], p[1]] });
+        const next = ring[i + 1] ?? (closed ? ring[0] : null);
+        if (next) wanted.set(`m-${r}-${i}`, { kind: 'add', ring: r, index: i, at: [(p[0] + next[0]) / 2, (p[1] + next[1]) / 2] });
+      });
+    });
+    syncHtmlMarkers(
+      map,
+      editHandles.current,
+      wanted,
+      (item, existing) => {
+        const el = existing ?? document.createElement('div');
+        el.classList.add('edit-handle', `edit-${item.kind}`);
+        el.title = item.kind === 'corner' ? 'Drag to move · right-click to remove' : 'Click to add a corner here';
+        return el;
+      },
+      { anchor: 'center' },
+      (marker, id) => {
+        const [kind, r, i] = id.split('-');
+        const ringIndex = Number(r);
+        const index = Number(i);
+        const el = marker.getElement();
+        const current = () => latest.current.editShape?.rings ?? [];
+        const withRing = (ring: Position[]) => current().map((x, n) => (n === ringIndex ? ring : x));
+        if (kind === 'v') {
+          marker.setDraggable(true);
+          marker.on('dragstart', () => latest.current.onEditBegin());
+          marker.on('drag', () => {
+            const { lng, lat } = marker.getLngLat();
+            const snap = findSnap(map.project([lng, lat]), latest.current.snapRings, latest.current.snapPx, (p) => map.project(p));
+            const at = snap?.position ?? [lng, lat];
+            latest.current.onEditRings(withRing(current()[ringIndex].map((p, n) => (n === index ? at : p))));
+          });
+          el.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            const ring = current()[ringIndex];
+            const min = latest.current.editShape?.closed ? 3 : 2;
+            if (!ring || ring.length <= min) return;
+            latest.current.onEditBegin();
+            latest.current.onEditRings(withRing(ring.filter((_, n) => n !== index)));
+          });
+        } else {
+          el.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const ring = current()[ringIndex];
+            if (!ring) return;
+            const next = ring[index + 1] ?? ring[0];
+            const mid: Position = [(ring[index][0] + next[0]) / 2, (ring[index][1] + next[1]) / 2];
+            latest.current.onEditBegin();
+            latest.current.onEditRings(withRing([...ring.slice(0, index + 1), mid, ...ring.slice(index + 1)]));
+          });
+        }
+      },
+    );
+  }, [editShape, readyTick]);
 
   // Shape being drawn.
   useEffect(() => {

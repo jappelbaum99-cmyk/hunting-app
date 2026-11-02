@@ -2970,3 +2970,93 @@ body.resizing {
 .phone-join .camp-live {
   margin: 0 8px 6px;
 }
+
+/* Reshaping a shape: corner handles and "+" handles */
+.edit-handle {
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.edit-corner {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 3px solid var(--accent);
+  cursor: grab;
+}
+
+.edit-corner:active {
+  cursor: grabbing;
+}
+
+.edit-add {
+  width: 12px;
+  height: 12px;
+  background: rgba(28, 19, 13, 0.75);
+  border: 2px solid #fff;
+  cursor: copy;
+  opacity: 0.8;
+}
+
+.edit-add::after {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 1px;
+  background:
+    linear-gradient(#fff, #fff) center / 6px 2px no-repeat,
+    linear-gradient(#fff, #fff) center / 2px 6px no-repeat;
+}
+
+.edit-add:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+/* Summary › Today and Last 7 days */
+.recent-hunts-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 8px 10px;
+}
+
+.recent-card {
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+  font-size: 13px;
+}
+
+.recent-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.recent-head .muted,
+.recent-card li .muted {
+  color: var(--muted);
+  font-weight: 400;
+  text-align: right;
+}
+
+.recent-card ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.recent-card li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recent-card li > span:first-child {
+  display: inline-flex;
+  align-items: center;
+}
