@@ -21,7 +21,6 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import { DEER_KINDS } from '@/lib/reports';
 import type { AreaGeometry, DeerKind, HubSettings, MapArea, MapMarker, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
@@ -192,10 +191,6 @@ function addFeatureLayers(map: maplibregl.Map): void {
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
   // is a dot. Pill images are drawn per kind on a canvas below.
-  for (const kind of Object.keys(DEER_KINDS) as DeerKind[]) {
-    map.addImage(`pill-${kind}`, pillImage(DEER_KINDS[kind].color, true), { pixelRatio: 2 });
-    map.addImage(`pill-still-${kind}`, pillImage(DEER_KINDS[kind].color, false), { pixelRatio: 2 });
-  }
   map.addSource('sightings', { type: 'geojson', data: EMPTY });
   map.addLayer({
     id: 'sighting-pills-still',
@@ -203,7 +198,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'sightings',
     filter: ['!', ['has', 'heading']],
     layout: {
-      'icon-image': ['concat', 'pill-still-', ['get', 'kind']],
+      'icon-image': ['get', 'pill'],
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
@@ -214,7 +209,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     source: 'sightings',
     filter: ['has', 'heading'],
     layout: {
-      'icon-image': ['concat', 'pill-', ['get', 'kind']],
+      'icon-image': ['get', 'pill'],
       'icon-rotate': ['get', 'heading'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
@@ -319,6 +314,14 @@ async function iconImage(icon: IconName, size: number, ink: string): Promise<Ima
 // A pill pointing up (north), with a chevron at its front end when the animal
 // was moving; the layer turns it to face the way it went. A cream outline keeps
 // dark browns visible on the map. Drawn at 2x for sharp edges.
+// The map image for a pill of this color, made the first time it's needed
+// (named by its color, so a color change always gets a fresh image).
+function pillName(map: maplibregl.Map, color: string, moving: boolean): string {
+  const name = `pill-${moving ? 'moving' : 'still'}-${color.replace('#', '')}`;
+  if (!map.hasImage(name)) map.addImage(name, pillImage(color, moving), { pixelRatio: 2 });
+  return name;
+}
+
 function pillImage(color: string, moving: boolean): ImageData {
   const w = 30;
   const h = 64;
@@ -807,7 +810,13 @@ export function MapView(props: MapViewProps) {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
         // `heading` is left out (not null) for still deer, so the layer filters can test for it.
-        properties: { reportId: s.reportId, kind: s.kind, color: s.color, ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}), ...(s.icon ? { icon: s.icon } : {}) },
+        properties: {
+          reportId: s.reportId,
+          kind: s.kind,
+          pill: pillName(map, s.color, s.headingDeg !== null),
+          ...(s.headingDeg !== null ? { heading: s.headingDeg } : {}),
+          ...(s.icon ? { icon: s.icon } : {}),
+        },
       })),
     });
   }, [sightings, readyTick]);

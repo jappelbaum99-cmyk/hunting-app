@@ -23,5 +23,6 @@ export default defineConfig(({ mode }) => ({
         : { main: page('./index.html'), field: page('./field.html') }) as Record<string, string>,
     },
   },
-  server: { port: 5173 },
+  // Build output isn't source; don't reload the dev window when it changes.
+  server: { port: 5173, watch: { ignored: ['**/site-dist/**', '**/release/**', '**/dist/**'] } },
 }));
