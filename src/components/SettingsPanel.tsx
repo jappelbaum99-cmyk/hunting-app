@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
+import { CampSettings } from '@/components/CampSettings';
 import { AREA_ICONS, MARKER_TYPES } from '@/lib/featureTypes';
 import {
   areaTypeList,
@@ -67,6 +68,8 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
         </button>
         <h2>Settings</h2>
       </div>
+
+      <CampSettings camp={settings.camp ?? null} onChange={(camp) => onChange({ ...settings, camp })} />
 
       <section className="sidebar-section">
         <h2>Drawing</h2>

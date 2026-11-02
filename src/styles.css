@@ -2257,3 +2257,67 @@ button.mini {
   font-size: 12px;
   flex-shrink: 0;
 }
+
+/* Settings › Camp sync */
+
+.camp-form {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.camp-join summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.camp-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+}
+
+.camp-code strong {
+  flex: 1;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.camp-code-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.camp-live {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.camp-live strong {
+  color: var(--text);
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.link-button {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}

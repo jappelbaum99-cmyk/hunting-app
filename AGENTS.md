@@ -7,6 +7,7 @@ Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapp
 - Data lives in `Documents\Hunting Hub\hub-data.json`, written by `electron/main.cjs` (temp file + rename, previous copy kept as `.bak`). In a plain browser it falls back to localStorage, which is for development only.
 - Records use UUID ids, `createdAt`/`updatedAt`, and soft deletes (`deletedAt`) so they can sync with the phone site later. Never hard-delete records.
 - Map images (overlays) are files in `Documents\Hunting Hub\images`, written and read through the `hub:saveImage`/`hub:loadImage` IPC handlers, which only accept plain file names. In a plain browser they go to IndexedDB. Their placement is computed from control points in `src/lib/georef.ts`.
+- Camp sync (phone hunts and GPS pins to the hub, stands to the phones) runs on Firebase's free Spark plan with anonymous sign-in: `src/lib/camp.ts`, config in `src/lib/firebaseConfig.ts`, access rules in `firestore.rules` (pasted into the Firebase console). Only hunts, pins and stands go there; maps are shared by file.
 - The renderer has no Node access. Add new desktop abilities as small IPC handlers in `electron/main.cjs` exposed through `electron/preload.cjs`.
 - Map labels and pins are HTML markers (no glyph/font server needed). Update their classes with `classList`, never `className`, because maplibre adds its own positioning classes.
 

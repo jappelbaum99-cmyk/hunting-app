@@ -11,6 +11,8 @@ import {
   type PhoneFile,
   type StandsFile,
 } from '@/field/fieldData';
+import { useCampSync, type CampStatus } from '@/field/useCampSync';
+import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import { DEER_KINDS, HEADINGS, newSighting, sightingSummary } from '@/lib/reports';
 import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
@@ -72,8 +74,11 @@ export function FieldApp() {
   }, [message]);
 
   const gps = useGps(tab === 'pin' || tab === 'hunt');
+  const sync = useCampSync(data, setData);
   const active = data.reports.find((r) => r.id === data.activeReportId) ?? null;
-  const unsent = data.pins.length + data.reports.length;
+  // With a camp, what's still waiting for signal; without one, everything on the phone.
+  const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length;
+  const loggedBy = data.camp?.hunter ?? null;
 
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
@@ -90,7 +95,7 @@ export function FieldApp() {
 
       <main className="field-main">
         {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
-        {tab === 'pin' && <PinTab fix={gps.fix} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [pin, ...d.pins] }))} onMessage={setMessage} />}
+        {tab === 'pin' && <PinTab fix={gps.fix} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
         {tab === 'hunt' && (
           <HuntTab
             data={data}
@@ -106,6 +111,7 @@ export function FieldApp() {
                 sightings: [],
                 notes: null,
                 source: 'phone' as const,
+                loggedBy,
               });
               setData((d) => ({ ...d, reports: [report, ...d.reports], activeReportId: report.id }));
             }}
@@ -113,12 +119,12 @@ export function FieldApp() {
             onEnd={(report) => {
               saveReport({ ...report, end: new Date().toISOString() });
               setData((d) => ({ ...d, activeReportId: null }));
-              setMessage('Hunt saved. Send it to the hub from the Send tab.');
+              setMessage(data.camp ? 'Hunt saved. It goes to camp as soon as you have signal.' : 'Hunt saved. Send it to the hub from the Send tab.');
             }}
           />
         )}
         {tab === 'stands' && <StandsTab data={data} />}
-        {tab === 'send' && <SendTab data={data} onData={setData} onMessage={setMessage} />}
+        {tab === 'send' && <SendTab data={data} sync={sync} onData={setData} onMessage={setMessage} />}
       </main>
 
       {message && <div className="field-toast">{message}</div>}
@@ -129,7 +135,7 @@ export function FieldApp() {
             ['pin', '📍', 'Pin'],
             ['hunt', '🦌', active ? 'Hunting' : 'Hunt'],
             ['stands', '🪜', 'Stands'],
-            ['send', '📤', unsent ? `Send (${unsent})` : 'Send'],
+            ['send', data.camp ? '🏕️' : '📤', `${data.camp ? 'Camp' : 'Send'}${unsent ? ` (${unsent})` : ''}`],
           ] as const
         ).map(([id, icon, label]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
@@ -227,7 +233,11 @@ function HuntTab(props: {
             </option>
           ))}
         </select>
-        {data.stands.length === 0 && <p className="field-hint">Send your stands from the hub (Send tab) to pick one here.</p>}
+        {data.stands.length === 0 && (
+          <p className="field-hint">
+            {data.camp ? 'Stands show up here once the hub turns on camp sync.' : 'Join your camp (Camp tab) to pick a stand here.'}
+          </p>
+        )}
         <button className="big-button" onClick={() => props.onStart(standId || null)}>
           I'm in the stand
         </button>
@@ -364,7 +374,9 @@ function StandsTab({ data }: { data: FieldData }) {
     return (
       <section className="field-card">
         <h2>Your stands</h2>
-        <p className="field-hint">No stands yet. In the hub, use “Send stands to phone”, then load the file on the Send tab.</p>
+        <p className="field-hint">
+          {data.camp ? 'No stands yet. They show up here once the hub turns on camp sync.' : 'No stands yet. Join your camp on the Camp tab and they show up here.'}
+        </p>
       </section>
     );
   }
@@ -389,12 +401,17 @@ function StandsTab({ data }: { data: FieldData }) {
   );
 }
 
-function SendTab(props: { data: FieldData; onData(update: (d: FieldData) => FieldData): void; onMessage(m: string): void }) {
+function SendTab(props: {
+  data: FieldData;
+  sync: CampStatus;
+  onData(update: (d: FieldData) => FieldData): void;
+  onMessage(m: string): void;
+}) {
   const { data } = props;
   const fileInput = useRef<HTMLInputElement>(null);
 
-  return (
-    <section className="field-card">
+  const files = (
+    <>
       <h2>Send to the hub</h2>
       <p className="field-hint">
         {data.pins.length} pin{data.pins.length === 1 ? '' : 's'} and {data.reports.length} hunt{data.reports.length === 1 ? '' : 's'} on this phone.
@@ -450,6 +467,93 @@ function SendTab(props: { data: FieldData; onData(update: (d: FieldData) => Fiel
           }
         }}
       />
+    </>
+  );
+
+  if (!CAMP_SYNC_AVAILABLE) return <section className="field-card">{files}</section>;
+  return (
+    <>
+      <CampCard data={data} sync={props.sync} onData={props.onData} onMessage={props.onMessage} />
+      <section className="field-card">
+        <details>
+          <summary>No internet at all? Use files instead</summary>
+          {files}
+        </details>
+      </section>
+    </>
+  );
+}
+
+// Join a camp, then see whether everything has gone up.
+function CampCard(props: { data: FieldData; sync: CampStatus; onData(update: (d: FieldData) => FieldData): void; onMessage(m: string): void }) {
+  const { data, sync } = props;
+  const [hunter, setHunter] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (data.camp) {
+    const camp = data.camp;
+    return (
+      <section className="field-card">
+        <h2>🏕️ {camp.name}</h2>
+        <p className="field-hint">
+          You're <strong>{camp.hunter}</strong>. Your pins and hunts go to camp on their own whenever you have signal.
+        </p>
+        <p className={`camp-status${sync.waiting === 0 ? ' ok' : ''}`}>
+          {sync.waiting === 0
+            ? '✓ Everything is at camp'
+            : `${sync.waiting} waiting to send${sync.online ? '…' : ' (no signal yet)'}`}
+        </p>
+        {sync.error && sync.online && <p className="field-warn">Couldn't reach camp: {sync.error}</p>}
+        <p className="field-hint">
+          {data.stands.length} stand{data.stands.length === 1 ? '' : 's'} from the hub.
+        </p>
+        <button
+          className="end-button"
+          onClick={() => {
+            if (window.confirm(`Leave ${camp.name}? Pins and hunts stay on this phone.`)) props.onData((d) => ({ ...d, camp: null }));
+          }}
+        >
+          Leave camp
+        </button>
+      </section>
+    );
+  }
+
+  const join = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const link = await joinCamp(code, hunter.trim());
+      // Anything already on the phone goes up too.
+      props.onData((d) => ({ ...d, camp: link, sent: {} }));
+      props.onMessage(`Joined ${link.name}.`);
+    } catch (e) {
+      setError(navigator.onLine ? (e instanceof Error ? e.message : String(e)) : 'Joining needs signal. Try again when you have some.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="field-card">
+      <h2>Join your camp</h2>
+      <p className="field-hint">Get the camp code from whoever runs the hub (Settings › Camp sync). You only do this once.</p>
+      <input type="text" placeholder="Your name, e.g. Dad" value={hunter} onChange={(e) => setHunter(e.target.value)} autoComplete="name" />
+      <input
+        type="text"
+        placeholder="Camp code, e.g. ABCD-EFGH-JKMN"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {error && <p className="field-warn">{error}</p>}
+      <button className="big-button" disabled={busy || !hunter.trim() || code.replace(/[^A-Za-z0-9]/g, '').length < 12} onClick={() => void join()}>
+        {busy ? 'Joining…' : 'Join camp'}
+      </button>
     </section>
   );
 }

@@ -15,6 +15,7 @@ import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
+import { useHubCamp } from '@/data/useHubCamp';
 import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
@@ -31,7 +32,7 @@ import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView, type SightingView } from '@/map/MapView';
-import type { AreaGeometry, AreaType, HuntReport, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import type { AreaGeometry, AreaType, FieldPin, HuntReport, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type Mode =
   | { kind: 'browse' }
@@ -274,24 +275,67 @@ export function App() {
     }
   };
 
+  // Brings in hunts and pins from phones, by file or from camp. What the hub
+  // added to them (weather, and whether a pin was added to the map) is kept.
+  const bringInFromPhones = (incomingReports: HuntReport[], incomingPins: FieldPin[]) => {
+    const all = hub.allData;
+    const reports = incomingReports.map((r) => {
+      const have = all?.reports.find((h) => h.id === r.id);
+      return {
+        ...r,
+        // Phone hunts know their stand; link the property from it here.
+        propertyId: r.propertyId ?? hub.markers.find((m) => m.id === r.standId)?.propertyId ?? null,
+        weather: r.weather ?? have?.weather ?? null,
+      };
+    });
+    const pins = incomingPins.map((p) => {
+      const have = all?.fieldPins.find((h) => h.id === p.id);
+      return have ? { ...p, status: have.status, markerId: have.markerId } : p;
+    });
+    const result = hub.mergeFromPhone({ reports, fieldPins: pins });
+    // The phone has no internet in the stand, so look up weather for its hunts now.
+    for (const r of reports) {
+      const have = all?.reports.find((h) => h.id === r.id);
+      if (!r.weather && !(have && have.updatedAt >= r.updatedAt)) void fillWeather(r);
+    }
+    return result;
+  };
+
+  // Camp sync: hunts and pins arrive from phones, and stands go out to them.
+  const campStands = (hub.allData?.markers ?? []).filter(isStandMarker).map((m) => ({
+    id: m.id,
+    name: m.name,
+    lat: m.lat,
+    lng: m.lng,
+    goodWinds: m.goodWinds,
+    updatedAt: m.updatedAt,
+    deletedAt: m.deletedAt,
+  }));
+  const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins }) => {
+    const before = new Set([...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? [])].map((r) => r.id));
+    const freshHunts = reports.filter((r) => !before.has(r.id));
+    const freshPins = pins.filter((p) => !before.has(p.id));
+    bringInFromPhones(reports, pins);
+    if (freshHunts.length + freshPins.length === 0) return;
+    const who = [...new Set([...freshHunts, ...freshPins].map((r) => r.loggedBy).filter(Boolean))].join(', ');
+    const parts = [
+      freshHunts.length ? `${freshHunts.length} hunt${freshHunts.length === 1 ? '' : 's'}` : '',
+      freshPins.length ? `${freshPins.length} pin${freshPins.length === 1 ? '' : 's'}` : '',
+    ].filter(Boolean);
+    setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
+  });
+
   // Brings in a file saved by the phone's Send tab.
   const importPhone = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as PhoneFile;
       if (parsed.kind !== PHONE_FILE_KIND) throw new Error("That isn't a file from the phone's Send tab.");
-      // Phone hunts know their stand; link the property from it here.
-      const reports = parsed.reports.map((r) => ({
-        ...r,
-        propertyId: r.propertyId ?? hub.markers.find((m) => m.id === r.standId)?.propertyId ?? null,
-      }));
-      const { added, updated } = hub.mergeFromPhone({ reports, fieldPins: parsed.pins });
+      const { added, updated } = bringInFromPhones(parsed.reports, parsed.pins);
       setNotice(
         added + updated === 0
           ? 'Nothing new in that file.'
-          : `Brought in ${parsed.pins.length} pin${parsed.pins.length === 1 ? '' : 's'} and ${reports.length} hunt${reports.length === 1 ? '' : 's'} (${added} new, ${updated} updated).`,
+          : `Brought in ${parsed.pins.length} pin${parsed.pins.length === 1 ? '' : 's'} and ${parsed.reports.length} hunt${parsed.reports.length === 1 ? '' : 's'} (${added} new, ${updated} updated).`,
       );
-      // The phone has no internet in the stand, so look up weather for its hunts now.
-      for (const r of reports) if (!r.weather && !hub.reports.some((h) => h.id === r.id && h.weather)) void fillWeather(r);
     } catch (error) {
       setNotice(`Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -696,6 +740,8 @@ export function App() {
         reports={hub.reports}
         newFieldPins={hub.fieldPins.filter((p) => p.status === 'new')}
         onImportPhone={(file) => void importPhone(file)}
+        camp={hub.settings.camp ?? null}
+        campError={camp.error}
         onSendStands={sendStandsToPhone}
         onExportMap={() => void exportMap(null)}
         onImportMap={(file) => void importMap(file)}

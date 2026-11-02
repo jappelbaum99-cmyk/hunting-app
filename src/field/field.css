@@ -338,3 +338,26 @@ textarea {
   background: none;
   color: var(--accent);
 }
+
+/* Camp sync status */
+.camp-status {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-weight: 600;
+}
+
+.camp-status.ok {
+  color: #7fd67f;
+}
+
+.field-card details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.field-card details[open] summary {
+  margin-bottom: 12px;
+}

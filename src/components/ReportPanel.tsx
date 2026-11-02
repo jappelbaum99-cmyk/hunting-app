@@ -115,7 +115,7 @@ export function ReportPanel(props: ReportPanelProps) {
         <Field label="Notes">
           <textarea rows={4} value={report.notes ?? ''} onChange={(e) => set({ notes: e.target.value || null })} />
         </Field>
-        {report.source === 'phone' && <p className="hint">Logged on the phone.</p>}
+        {report.source === 'phone' && <p className="hint">Logged on the phone{report.loggedBy ? ` by ${report.loggedBy}` : ''}.</p>}
       </div>
 
       <footer className="detail-footer">

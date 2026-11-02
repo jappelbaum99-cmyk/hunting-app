@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Camp sync rules. Paste these into Firebase console > Firestore > Rules.
+// A camp's document id is its code; knowing the code lets someone join.
+// Members can read everything in their camp. Each person can only change
+// their own hunts and pins; only the hub that started the camp writes stands.
+// Nothing can be deleted (records use soft deletes).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function camp(code) {
+      return get(/databases/$(database)/documents/camps/$(code)).data;
+    }
+
+    function isMember(code) {
+      return signedIn() && request.auth.uid in camp(code).members;
+    }
+
+    match /camps/{code} {
+      // Only a lookup by code, never a list of all camps.
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.members == [request.auth.uid];
+      // Joining adds only yourself, and your own name.
+      allow update: if signedIn() && (
+        request.auth.uid == resource.data.ownerUid
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'names'])
+          && request.resource.data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
+          && request.resource.data.names.diff(resource.data.names).affectedKeys().hasOnly([request.auth.uid])
+        )
+      );
+
+      match /{kind}/{id} {
+        allow read: if isMember(code);
+        allow create: if isMember(code)
+          && kind in ['hunts', 'pins', 'stands']
+          && (kind != 'stands' || camp(code).ownerUid == request.auth.uid)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.id == id;
+        allow update: if isMember(code)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.id == id
+          && resource.data.createdBy == request.auth.uid;
+      }
+    }
+  }
+}

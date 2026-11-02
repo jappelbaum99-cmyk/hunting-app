@@ -72,6 +72,19 @@ export interface HubSettings {
   propertyLineColor: string | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
+  // The camp this hub gets phone hunts and pins from, if any.
+  camp?: CampLink | null;
+}
+
+// A shared camp in Firebase that phones send hunts and pins to (see src/lib/camp.ts).
+export interface CampLink {
+  // The camp code; whoever has it can join.
+  code: string;
+  name: string;
+  // The person using this device, shown on their hunts and pins.
+  hunter: string;
+  // Set on the hub that started the camp; only it publishes the stand list.
+  isOwner?: boolean;
 }
 
 export type BuiltInAreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'other';
@@ -215,6 +228,8 @@ export interface HuntReport extends Syncable {
   notes: string | null;
   // Logged here, or on the phone and brought in.
   source: 'hub' | 'phone';
+  // Who logged it, from the phone's camp name.
+  loggedBy?: string | null;
 }
 
 // A GPS pin dropped on the phone, waiting to become a stand or pin here.
@@ -228,6 +243,8 @@ export interface FieldPin extends Syncable {
   status: 'new' | 'added' | 'dismissed';
   // The stand or pin made from it.
   markerId: string | null;
+  // Who dropped it, from the phone's camp name.
+  loggedBy?: string | null;
 }
 
 export interface HubData {

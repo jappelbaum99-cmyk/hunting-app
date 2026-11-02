@@ -5,7 +5,7 @@ import { AreaBadge } from '@/components/AreaBadge';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { sightingSummary } from '@/lib/reports';
-import type { FieldPin, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
+import type { CampLink, FieldPin, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
   properties: Property[];
@@ -16,6 +16,9 @@ interface SidebarProps {
   // GPS pins from the phone that haven't been added or dismissed yet.
   newFieldPins: FieldPin[];
   onImportPhone(file: File): void;
+  // The camp phones send hunts and pins to, and the last problem reaching it.
+  camp: CampLink | null;
+  campError: string | null;
   onSendStands(): void;
   // Map files for sharing with someone else's hub.
   onExportMap(): void;
@@ -62,6 +65,17 @@ export function Sidebar(props: SidebarProps) {
   const shownAreas = matches(areas);
   const shownOverlays = matches(overlays);
   const shownSections = matches(props.sections);
+
+  const phoneFileButtons = () => (
+    <div className="phone-buttons">
+      <button onClick={() => phoneInput.current?.click()} title="Bring in pins and hunts sent from the phone">
+        Import from phone
+      </button>
+      <button onClick={props.onSendStands} title="Make the file the phone loads for its stand list and Apple Maps buttons">
+        Send stands to phone
+      </button>
+    </div>
+  );
   const nothingFound =
     needle !== '' &&
     shownProperties.length + shownSections.length + stands.length + otherPins.length + shownAreas.length + shownOverlays.length === 0;
@@ -200,14 +214,27 @@ export function Sidebar(props: SidebarProps) {
             <h2>
               Phone <span className="count">{props.newFieldPins.length ? `${props.newFieldPins.length} new` : ''}</span>
             </h2>
-            <div className="phone-buttons">
-              <button onClick={() => phoneInput.current?.click()} title="Bring in pins and hunts sent from the phone">
-                Import from phone
-              </button>
-              <button onClick={props.onSendStands} title="Make the file the phone loads for its stand list and Apple Maps buttons">
-                Send stands to phone
-              </button>
-            </div>
+            {props.camp ? (
+              <p className="camp-live">
+                🏕️ <strong>{props.camp.name}</strong>: hunts and pins arrive by themselves.
+                {props.campError && <span className="error-text"> Can't reach camp right now ({props.campError}).</span>}
+              </p>
+            ) : (
+              <p className="camp-live">
+                <button className="link-button" onClick={props.onOpenSettings}>
+                  Set up camp sync
+                </button>{' '}
+                to get phone hunts and pins without files.
+              </p>
+            )}
+            {props.camp ? (
+              <details className="camp-join">
+                <summary>Use files instead</summary>
+                {phoneFileButtons()}
+              </details>
+            ) : (
+              phoneFileButtons()
+            )}
             <input
               ref={phoneInput}
               type="file"
@@ -264,7 +291,7 @@ export function Sidebar(props: SidebarProps) {
                       onClick={() => onPick({ kind: 'report', id: r.id })}
                       swatch={<span className="swatch report">🦌</span>}
                       title={`${markers.find((m) => m.id === r.standId)?.name ?? 'No stand'} · ${new Date(r.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                      detail={sightingSummary(r)}
+                      detail={r.loggedBy ? `${r.loggedBy} · ${sightingSummary(r)}` : sightingSummary(r)}
                     />
                   ))}
               </ul>
