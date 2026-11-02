@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const detector = require('./detector.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
@@ -304,6 +305,13 @@ app.whenReady().then(() => {
   ipcMain.handle('hub:libraryPhotoExists', libraryPhotoExists);
   ipcMain.handle('hub:writeLibraryPhoto', writeLibraryPhoto);
   ipcMain.handle('hub:moveLibraryPhoto', moveLibraryPhoto);
+  ipcMain.handle('hub:detectorStatus', () => detector.status());
+  ipcMain.handle('hub:downloadDetector', (event) =>
+    detector.download((received, total) => {
+      if (!event.sender.isDestroyed()) event.sender.send('hub:detectorProgress', received, total);
+    }),
+  );
+  ipcMain.handle('hub:detectPhoto', (_event, rel) => detector.detect(inside(libraryRoot, rel)));
   ipcMain.handle('hub:openLibraryFolder', (_event, rel) => shell.openPath(rel ? inside(libraryRoot, rel) : libraryRoot));
   createWindow();
 });

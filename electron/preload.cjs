@@ -20,4 +20,12 @@ contextBridge.exposeInMainWorld('hub', {
   writeLibraryPhoto: (rel, bytes) => ipcRenderer.invoke('hub:writeLibraryPhoto', rel, bytes),
   moveLibraryPhoto: (from, to) => ipcRenderer.invoke('hub:moveLibraryPhoto', from, to),
   openLibraryFolder: (rel) => ipcRenderer.invoke('hub:openLibraryFolder', rel),
+  detectorStatus: () => ipcRenderer.invoke('hub:detectorStatus'),
+  downloadDetector: () => ipcRenderer.invoke('hub:downloadDetector'),
+  onDetectorProgress: (callback) => {
+    const listener = (_event, received, total) => callback(received, total);
+    ipcRenderer.on('hub:detectorProgress', listener);
+    return () => ipcRenderer.removeListener('hub:detectorProgress', listener);
+  },
+  detectPhoto: (rel) => ipcRenderer.invoke('hub:detectPhoto', rel),
 });

@@ -46,7 +46,10 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**",
+      "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
+      "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
     ],
     "win": {
       "target": "nsis",
@@ -60,6 +63,12 @@
       "shortcutName": "Hunting Hub",
       "artifactName": "Hunting-Hub-Setup.${ext}"
     },
-    "publish": null
+    "publish": null,
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**"
+    ]
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.31.1"
   }
 }

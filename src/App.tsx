@@ -1140,6 +1140,14 @@ export function App() {
               newCameraId={newCameraId}
               initialCamera={cameraFocus}
               newRecord={newRecordFields}
+              buckNames={[
+                ...new Set(
+                  [
+                    ...hub.reports.flatMap((r) => r.sightings.map((x) => x.buckName)),
+                    ...hub.photos.flatMap((p) => (p.tally ?? []).map((t) => t.buckName)),
+                  ].filter((n): n is string => !!n && n.trim() !== ''),
+                ),
+              ].sort()}
               onShowCamera={(id) => {
                 setCamerasOpen(false);
                 setSelection({ kind: 'marker', id });

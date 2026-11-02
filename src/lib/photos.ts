@@ -3,7 +3,7 @@
 // <Camera name>/<YYYY-MM>/<YYYY-MM-DD_HHMMSS>.jpg (empties go in <Camera name>/Empty).
 import piexif from 'piexifjs';
 
-import type { CameraPhoto, MapMarker } from '@/types/models';
+import type { CameraPhoto, DeerKind, MapMarker, PhotoDetection, PhotoTally } from '@/types/models';
 
 function toBinary(bytes: Uint8Array): string {
   let s = '';
@@ -162,4 +162,27 @@ export async function importPhotos(options: {
 // The address the hub's window loads a library photo (or its small preview) from.
 export function photoUrl(file: string, preview = false): string {
   return `hubphoto://${preview ? 'preview' : 'photo'}/${file.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+// How MegaDetector's boxes sort a photo. Careful on purpose: only a clear
+// animal counts as one, and only a photo with nothing at all counts as empty;
+// everything in between is left for a person to look at.
+export const ANIMAL_SCORE = 0.5;
+export const EMPTY_BELOW = 0.15;
+
+export function judge(detections: PhotoDetection[]): NonNullable<CameraPhoto['ai']> {
+  const best = (label: PhotoDetection['label']) => Math.max(0, ...detections.filter((d) => d.label === label).map((d) => d.score));
+  if (best('animal') >= ANIMAL_SCORE) return 'animal';
+  if (best('person') >= ANIMAL_SCORE || best('vehicle') >= ANIMAL_SCORE) return 'person';
+  if (Math.max(0, ...detections.map((d) => d.score)) < EMPTY_BELOW) return 'empty';
+  return 'unsure';
+}
+
+// The photo's tally, or one made from older single tags.
+export function tallyOf(photo: CameraPhoto): PhotoTally[] {
+  return photo.tally ?? photo.kinds.map((kind) => ({ kind, count: 1, buckName: null }));
+}
+
+export function kindsOf(tally: PhotoTally[]): DeerKind[] {
+  return [...new Set(tally.filter((t) => t.count > 0).map((t) => t.kind))];
 }

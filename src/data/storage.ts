@@ -1,4 +1,4 @@
-import type { HubData } from '@/types/models';
+import type { HubData, PhotoDetection } from '@/types/models';
 
 // Provided by electron/preload.cjs when running as the desktop app.
 interface HubBridge {
@@ -24,6 +24,11 @@ interface HubBridge {
   writeLibraryPhoto(rel: string, bytes: Uint8Array): Promise<boolean>;
   moveLibraryPhoto(from: string, to: string): Promise<void>;
   openLibraryFolder(rel?: string): Promise<string>;
+  // Finding animals in photos (MegaDetector, downloaded once on first use).
+  detectorStatus(): Promise<{ name: string; ready: boolean; bytes: number }>;
+  downloadDetector(): Promise<{ name: string; ready: boolean; bytes: number }>;
+  onDetectorProgress(callback: (received: number, total: number) => void): () => void;
+  detectPhoto(rel: string): Promise<{ detections: PhotoDetection[]; ms: number; model: string }>;
 }
 
 declare global {

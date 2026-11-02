@@ -307,6 +307,19 @@ export interface FieldTrack extends Syncable {
   trailId: string | null;
 }
 
+export interface PhotoTally {
+  kind: DeerKind;
+  count: number;
+  buckName: string | null;
+}
+
+// A box MegaDetector drew: [x, y, width, height] as fractions of the photo.
+export interface PhotoDetection {
+  label: 'animal' | 'person' | 'vehicle';
+  score: number;
+  box: [number, number, number, number];
+}
+
 // A trail camera photo, filed in the photo library (see src/lib/photos.ts).
 export interface CameraPhoto extends Syncable {
   // The camera's map pin.
@@ -319,8 +332,13 @@ export interface CameraPhoto extends Syncable {
   takenAt: string;
   // Not looked at yet, has animals, or nothing in it.
   status: 'new' | 'animal' | 'empty';
-  // What's in it, when tagged.
+  // What's in it, when tagged (kept in step with tally).
   kinds: DeerKind[];
+  // How many of each, with buck names: "2 does, 1 buck (Big 8)".
+  tally?: PhotoTally[];
+  // What MegaDetector found, and what that says about the photo.
+  detections?: PhotoDetection[];
+  ai?: 'animal' | 'empty' | 'unsure' | 'person' | null;
   notes: string | null;
   // The import it came in with.
   batchId: string;

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { Icon } from '@/components/Icon';
-import { emptyPath, importPhotos, photoUrl, type ImportFile, type ImportProgress } from '@/lib/photos';
+import { emptyPath, importPhotos, judge, kindsOf, photoUrl, tallyOf, type ImportFile, type ImportProgress } from '@/lib/photos';
 import { DEER_KINDS } from '@/lib/reports';
-import type { CameraPhoto, DeerKind, MapMarker } from '@/types/models';
+import type { CameraPhoto, DeerKind, MapMarker, PhotoTally } from '@/types/models';
 
 interface CameraViewProps {
   photos: CameraPhoto[];
@@ -20,6 +20,8 @@ interface CameraViewProps {
   newRecord(): { id: string; createdAt: string; updatedAt: string; deletedAt: null };
   onShowCamera(id: string): void;
   onClose(): void;
+  // Buck names used before (hunt reports and photos), offered as suggestions.
+  buckNames: string[];
 }
 
 type StatusFilter = 'new' | 'animal' | 'empty' | 'all';
@@ -83,9 +85,15 @@ export function CameraView(props: CameraViewProps) {
       setSelectedId(next?.id ?? null);
     }
   };
-  const toggleKind = (photo: CameraPhoto, kind: DeerKind) => {
-    const kinds = photo.kinds.includes(kind) ? photo.kinds.filter((k) => k !== kind) : [...photo.kinds, kind];
-    update(photo, { kinds, status: kinds.length ? 'animal' : photo.status === 'empty' ? 'empty' : 'animal' });
+  // Counts per kind ("2 does, 1 buck"); any count makes it an animal photo.
+  const setTally = (photo: CameraPhoto, tally: PhotoTally[]) => {
+    const kept = tally.filter((t) => t.count > 0);
+    update(photo, { tally: kept, kinds: kindsOf(kept), status: kept.length ? 'animal' : photo.status });
+  };
+  const addOne = (photo: CameraPhoto, kind: DeerKind) => {
+    const tally = tallyOf(photo);
+    const i = tally.findIndex((t) => t.kind === kind && !t.buckName);
+    setTally(photo, i >= 0 ? tally.map((t, n) => (n === i ? { ...t, count: t.count + 1 } : t)) : [...tally, { kind, count: 1, buckName: null }]);
   };
 
   // Keys while a photo is open: E empty, A animal, B/D/F/T tag, arrows to move.
@@ -96,13 +104,13 @@ export function CameraView(props: CameraViewProps) {
     const i = shown.findIndex((p) => p.id === selected.id);
     if (key === 'arrowright' || key === 'arrowdown') setSelectedId(shown[i + 1]?.id ?? selected.id);
     else if (key === 'arrowleft' || key === 'arrowup') setSelectedId(shown[i - 1]?.id ?? selected.id);
-    else if (key === 'e') update(selected, { status: 'empty', kinds: [] }, status === 'new');
+    else if (key === 'e') update(selected, { status: 'empty', kinds: [], tally: [] }, status === 'new');
     else if (key === 'a') update(selected, { status: 'animal' }, status === 'new');
     else if (key === 'escape') setSelectedId(null);
     else {
       const quick = QUICK_KINDS.find((q) => q.key === key);
       if (!quick) return;
-      toggleKind(selected, quick.kind);
+      addOne(selected, quick.kind);
     }
     event.preventDefault();
   };
@@ -111,6 +119,65 @@ export function CameraView(props: CameraViewProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // MegaDetector: whether the model is on this PC, its download, and a scan in progress.
+  const [detector, setDetector] = useState<{ ready: boolean; bytes: number } | null>(null);
+  const [download, setDownload] = useState<{ received: number; total: number } | null>(null);
+  const [scan, setScan] = useState<{ done: number; total: number; animals: number; empty: number; unsure: number } | null>(null);
+  const [detectError, setDetectError] = useState<string | null>(null);
+  const stopScan = useRef(false);
+  useEffect(() => {
+    void window.hub?.detectorStatus().then(setDetector);
+  }, []);
+  const unscanned = props.photos.filter((p) => p.status === 'new' && !p.detections);
+
+  const getModel = async () => {
+    const hub = window.hub!;
+    setDetectError(null);
+    setDownload({ received: 0, total: detector?.bytes ?? 0 });
+    const stop = hub.onDetectorProgress((received, total) => setDownload({ received, total }));
+    try {
+      setDetector(await hub.downloadDetector());
+    } catch (e) {
+      setDetectError(e instanceof Error ? e.message : String(e));
+    } finally {
+      stop();
+      setDownload(null);
+    }
+  };
+
+  // Looks at each photo not reviewed yet: clear animals and clear empties are
+  // sorted; anything in between stays in To review.
+  const findEmpties = async () => {
+    const hub = window.hub!;
+    const list = [...unscanned];
+    stopScan.current = false;
+    setDetectError(null);
+    const tally = { done: 0, total: list.length, animals: 0, empty: 0, unsure: 0 };
+    setScan({ ...tally });
+    let batch: CameraPhoto[] = [];
+    for (const photo of list) {
+      if (stopScan.current) break;
+      try {
+        const result = await hub.detectPhoto(photo.file);
+        const ai = judge(result.detections);
+        batch.push({ ...photo, detections: result.detections, ai, status: ai === 'animal' ? 'animal' : ai === 'empty' ? 'empty' : 'new' });
+        if (ai === 'animal') tally.animals += 1;
+        else if (ai === 'empty') tally.empty += 1;
+        else tally.unsure += 1;
+      } catch (e) {
+        setDetectError(e instanceof Error ? e.message : String(e));
+      }
+      tally.done += 1;
+      setScan({ ...tally });
+      if (batch.length >= 20) {
+        props.onSavePhotos(batch);
+        batch = [];
+      }
+    }
+    props.onSavePhotos(batch);
+    setScan({ ...tally, total: tally.done });
+  };
 
   // Puts empty photos in each camera's Empty folder (and brings back ones no longer marked empty).
   const organize = async () => {
@@ -160,6 +227,47 @@ export function CameraView(props: CameraViewProps) {
           <button className="primary camera-import" onClick={() => setImporting({ step: 'pick' })} disabled={!!importing && importing.step === 'sorting'}>
             <Icon name="send" size={16} /> Import photos
           </button>
+
+          <div className="detector-box">
+            <strong>Find empties automatically</strong>
+            {detector && !detector.ready && !download && (
+              <>
+                <span className="hint">Uses MegaDetector, a free model from Microsoft that runs on this PC. One-time download, {Math.round(detector.bytes / 1e6)} MB.</span>
+                <button onClick={() => void getModel()}>Download MegaDetector</button>
+              </>
+            )}
+            {download && (
+              <>
+                <span className="hint">
+                  Downloading… {Math.round(download.received / 1e6)} of {Math.round(download.total / 1e6)} MB
+                </span>
+                <div className="import-bar">
+                  <span style={{ width: `${(download.received / Math.max(1, download.total)) * 100}%` }} />
+                </div>
+              </>
+            )}
+            {detector?.ready && !scan && (
+              <button className="primary" disabled={unscanned.length === 0} onClick={() => void findEmpties()}>
+                {unscanned.length ? `Find empties (${unscanned.length.toLocaleString()} photos)` : 'All photos checked'}
+              </button>
+            )}
+            {scan && (
+              <>
+                <div className="import-bar">
+                  <span style={{ width: `${(scan.done / Math.max(1, scan.total)) * 100}%` }} />
+                </div>
+                <span className="hint">
+                  {scan.done} of {scan.total} · {scan.animals} animals · {scan.empty} empty · {scan.unsure} not sure
+                </span>
+                {scan.done < scan.total ? (
+                  <button onClick={() => (stopScan.current = true)}>Stop</button>
+                ) : (
+                  <button onClick={() => setScan(null)}>Done</button>
+                )}
+              </>
+            )}
+            {detectError && <span className="error-text">{detectError}</span>}
+          </div>
 
           <h3>Cameras</h3>
           <ul className="camera-list">
@@ -263,8 +371,10 @@ export function CameraView(props: CameraViewProps) {
                       <img src={photoUrl(p.file, true)} alt="" loading="lazy" decoding="async" />
                       <span className="photo-caption">
                         {shortDate(p.takenAt)}
-                        {p.kinds.length > 0 && ` · ${p.kinds.map((k) => DEER_KINDS[k].label).join(', ')}`}
+                        {tallyOf(p).length > 0 && ` · ${tallySummary(tallyOf(p))}`}
                         {p.status === 'empty' && ' · empty'}
+                        {p.status === 'new' && p.ai === 'unsure' && ' · not sure'}
+                        {p.status === 'new' && p.ai === 'person' && ' · person?'}
                       </span>
                     </button>
                   ))}
@@ -289,7 +399,20 @@ export function CameraView(props: CameraViewProps) {
 
         {selected && !importing && (
           <aside className="photo-detail">
-            <img src={photoUrl(selected.file)} alt={`Photo from ${cameraName(selected.cameraId)}`} />
+            <div className="photo-frame">
+              <img src={photoUrl(selected.file)} alt={`Photo from ${cameraName(selected.cameraId)}`} />
+              {(selected.detections ?? []).filter((d) => d.score >= 0.15).map((d, i) => (
+                <span
+                  key={i}
+                  className={`photo-box ${d.label}${d.score < 0.5 ? ' weak' : ''}`}
+                  style={{ left: `${d.box[0] * 100}%`, top: `${d.box[1] * 100}%`, width: `${d.box[2] * 100}%`, height: `${d.box[3] * 100}%` }}
+                >
+                  <span>
+                    {d.label} {Math.round(d.score * 100)}%
+                  </span>
+                </span>
+              ))}
+            </div>
             <div className="photo-detail-info">
               <strong>{cameraName(selected.cameraId)}</strong>
               <span className="muted">{new Date(selected.takenAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
@@ -302,13 +425,7 @@ export function CameraView(props: CameraViewProps) {
                 Animal <kbd>A</kbd>
               </button>
             </div>
-            <div className="kind-chips">
-              {(Object.keys(DEER_KINDS) as DeerKind[]).map((k) => (
-                <button key={k} className={selected.kinds.includes(k) ? 'active' : ''} style={{ '--deer': DEER_KINDS[k].color } as CSSProperties} onClick={() => toggleKind(selected, k)}>
-                  {DEER_KINDS[k].label}
-                </button>
-              ))}
-            </div>
+            <TallyEditor tally={tallyOf(selected)} buckNames={props.buckNames} onChange={(t) => setTally(selected, t)} />
             <textarea rows={2} placeholder="Notes (e.g. big 8, same buck as last week)" value={selected.notes ?? ''} onChange={(e) => update(selected, { notes: e.target.value || null })} />
             <p className="hint photo-file" title={selected.file}>
               {selected.file} · from {selected.originalName}
@@ -524,6 +641,74 @@ function ImportFlow(props: {
         </button>
         <button onClick={() => setState({ step: 'pick' })}>Import another card</button>
       </div>
+    </div>
+  );
+}
+
+function tallySummary(tally: PhotoTally[]): string {
+  return tally
+    .filter((t) => t.count > 0)
+    .map((t) => `${t.count} ${t.count === 1 ? DEER_KINDS[t.kind].label.toLowerCase() : DEER_KINDS[t.kind].plural}${t.buckName ? ` (${t.buckName})` : ''}`)
+    .join(', ');
+}
+
+// What's in the photo: a count for each kind, and a name for each buck you know.
+function TallyEditor({ tally, buckNames, onChange }: { tally: PhotoTally[]; buckNames: string[]; onChange(tally: PhotoTally[]): void }) {
+  const kinds = Object.keys(DEER_KINDS) as DeerKind[];
+  const countOf = (kind: DeerKind) => tally.filter((t) => t.kind === kind && !(kind === 'buck' && t.buckName)).reduce((n, t) => n + t.count, 0);
+  const setCount = (kind: DeerKind, count: number) => {
+    const rest = tally.filter((t) => !(t.kind === kind && !(kind === 'buck' && t.buckName)));
+    onChange(count > 0 ? [...rest, { kind, count, buckName: null }] : rest);
+  };
+  const named = tally.filter((t) => t.kind === 'buck' && t.buckName !== null);
+  return (
+    <div className="tally">
+      <div className="tally-head">
+        <span>What's in it</span>
+        <span className="muted">{tallySummary(tally) || 'Nothing tagged'}</span>
+      </div>
+      {kinds.map((kind) => {
+        const n = countOf(kind);
+        return (
+          <div key={kind} className={`tally-row${n ? ' on' : ''}`} style={{ '--deer': DEER_KINDS[kind].color } as CSSProperties}>
+            <span className="tally-label">
+              {DEER_KINDS[kind].deer ? <span className="type-dot" style={{ background: DEER_KINDS[kind].color }} /> : <Icon name={DEER_KINDS[kind].icon} size={16} />}
+              {kind === 'buck' ? 'Buck (no name)' : DEER_KINDS[kind].label}
+            </span>
+            <span className="stepper">
+              <button onClick={() => setCount(kind, Math.max(0, n - 1))} disabled={n === 0} aria-label={`One fewer ${DEER_KINDS[kind].label}`}>
+                <Icon name="minus" size={14} />
+              </button>
+              <strong>{n}</strong>
+              <button onClick={() => setCount(kind, n + 1)} aria-label={`One more ${DEER_KINDS[kind].label}`}>
+                <Icon name="plus" size={14} />
+              </button>
+            </span>
+          </div>
+        );
+      })}
+      {named.map((t, i) => (
+        <div key={i} className="tally-row on buck-name-row" style={{ '--deer': DEER_KINDS.buck.color } as CSSProperties}>
+          <input
+            type="text"
+            list="buck-names"
+            placeholder="Buck's name, e.g. Big 8"
+            value={t.buckName ?? ''}
+            onChange={(e) => onChange(tally.map((x) => (x === t ? { ...x, buckName: e.target.value } : x)))}
+          />
+          <button className="icon" aria-label="Remove this buck" onClick={() => onChange(tally.filter((x) => x !== t))}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      ))}
+      <button className="add-buck" onClick={() => onChange([...tally, { kind: 'buck', count: 1, buckName: '' }])}>
+        <Icon name="plus" size={14} /> {named.length ? 'Another named buck' : 'Named buck'}
+      </button>
+      <datalist id="buck-names">
+        {buckNames.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
     </div>
   );
 }
