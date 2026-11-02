@@ -1,6 +1,7 @@
 // Resolves how things look: an item's own color, else its category's color
 // from Settings, else the built-in default.
 import { AREA_TYPES, MARKER_TYPES, PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
+import { iconName, type IconName } from '@/lib/icons';
 import type { AreaType, BuiltInAreaType, HubSettings, MapMarker, MarkerShape, MarkerStyle, MarkerType, Property } from '@/types/models';
 
 export const DEFAULT_MARKER_SIZE = 16;
@@ -47,7 +48,7 @@ export interface AreaTypeView {
   id: AreaType;
   label: string;
   color: string;
-  icon: string;
+  icon: IconName;
   scentSensitive: boolean;
   custom: boolean;
 }
@@ -67,14 +68,14 @@ export function areaTypeInfo(type: AreaType, settings: HubSettings): AreaTypeVie
       id: type,
       label: base.label,
       color: settings.areaColors[type] ?? base.color,
-      icon: settings.areaIcons[type] ?? base.icon,
+      icon: iconName(settings.areaIcons[type] ?? base.icon),
       scentSensitive: base.scentSensitive,
       custom: false,
     };
   }
   const custom = settings.customAreaTypes.find((t) => t.id === type);
   if (!custom) return { ...areaTypeInfo('other', settings), id: type };
-  return { id: custom.id, label: custom.label, color: custom.color, icon: custom.icon, scentSensitive: custom.scentSensitive, custom: true };
+  return { id: custom.id, label: custom.label, color: custom.color, icon: iconName(custom.icon), scentSensitive: custom.scentSensitive, custom: true };
 }
 
 // Every area type that can be picked: built-ins, then custom types not removed.

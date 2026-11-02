@@ -2,8 +2,10 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { MARKER_TYPES } from '@/lib/featureTypes';
 import { AreaBadge } from '@/components/AreaBadge';
+import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
+import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
@@ -43,8 +45,9 @@ interface SidebarProps {
 // Swap public/logo.svg (or point this at another file in public/) to change the logo.
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
 
-// The newest reports; the rest are still kept.
-const REPORTS_SHOWN = 8;
+// Days of hunts listed before "Show older".
+const DAYS_SHOWN = 7;
+const REPORTS_OPEN_KEY = 'hunting-hub-reports-open';
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
@@ -216,7 +219,7 @@ export function Sidebar(props: SidebarProps) {
             </h2>
             {props.camp ? (
               <p className="camp-live">
-                🏕️ <strong>{props.camp.name}</strong>: hunts and pins arrive by themselves.
+                <Icon name="camp" size={15} /> <strong>{props.camp.name}</strong>: hunts and pins arrive by themselves.
                 {props.campError && <span className="error-text"> Can't reach camp right now ({props.campError}).</span>}
               </p>
             ) : (
@@ -272,31 +275,13 @@ export function Sidebar(props: SidebarProps) {
         )}
 
         {needle === '' && (
-          <section className="sidebar-section">
-            <h2>
-              Hunt Reports <span className="count">{props.reports.length}</span>
-            </h2>
-            <button className="log-hunt" onClick={props.onLogHunt}>
-              + Log a hunt
-            </button>
-            {props.reports.length > 0 && (
-              <ul>
-                {[...props.reports]
-                  .sort((a, b) => b.start.localeCompare(a.start))
-                  .slice(0, REPORTS_SHOWN)
-                  .map((r) => (
-                    <Row
-                      key={r.id}
-                      selected={isSelected('report', r.id)}
-                      onClick={() => onPick({ kind: 'report', id: r.id })}
-                      swatch={<span className="swatch report">🦌</span>}
-                      title={`${markers.find((m) => m.id === r.standId)?.name ?? 'No stand'} · ${new Date(r.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                      detail={r.loggedBy ? `${r.loggedBy} · ${sightingSummary(r)}` : sightingSummary(r)}
-                    />
-                  ))}
-              </ul>
-            )}
-          </section>
+          <HuntReports
+            reports={props.reports}
+            markers={markers}
+            isSelected={(id) => isSelected('report', id)}
+            onPick={(id) => onPick({ kind: 'report', id })}
+            onLogHunt={props.onLogHunt}
+          />
         )}
 
         <Section title="Stands & Blinds" count={stands.length} searching={needle !== ''} empty="Add a stand pin from the toolbar.">
@@ -385,5 +370,113 @@ function Row(props: { selected: boolean; onClick(): void; swatch: ReactNode; tit
         <span className="row-detail">{props.detail}</span>
       </button>
     </li>
+  );
+}
+
+function clock(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+// Hunt Reports: folded into a dropdown, except for anyone in the stand right now.
+function HuntReports(props: {
+  reports: HuntReport[];
+  markers: MapMarker[];
+  isSelected(id: string): boolean;
+  onPick(id: string): void;
+  onLogHunt(): void;
+}) {
+  const { reports, markers } = props;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(REPORTS_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [showAll, setShowAll] = useState(false);
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      localStorage.setItem(REPORTS_OPEN_KEY, open ? '0' : '1');
+    } catch {
+      // Only a convenience; the list still works.
+    }
+  };
+
+  const standName = (r: HuntReport) => markers.find((m) => m.id === r.standId)?.name ?? 'No stand';
+  const live = reports.filter((r) => isLive(r)).sort((a, b) => a.start.localeCompare(b.start));
+  const days = huntsByDay(reports.filter((r) => !isLive(r)));
+  const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
+
+  return (
+    <section className="sidebar-section hunt-reports">
+      <button className="section-toggle" onClick={toggle} aria-expanded={open}>
+        <h2>
+          Hunt Reports <span className="count">{reports.length}</span>
+        </h2>
+        <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
+          ▾
+        </span>
+      </button>
+
+      {live.length > 0 && (
+        <ul className="live-hunts">
+          {live.map((r) => (
+            <Row
+              key={r.id}
+              selected={props.isSelected(r.id)}
+              onClick={() => props.onPick(r.id)}
+              swatch={<span className="live-dot" title="In the stand now" />}
+              title={`${r.loggedBy ? `${r.loggedBy} · ` : ''}${standName(r)}`}
+              detail={`In since ${clock(r.start)} · ${sightingSummary(r)}`}
+            />
+          ))}
+        </ul>
+      )}
+
+      {!open && days.length > 0 && (
+        <button className="reports-teaser" onClick={toggle}>
+          <span>{days[0].label}</span>
+          <span className="muted">{daySummary(days[0])}</span>
+        </button>
+      )}
+
+      {open && (
+        <>
+          <button className="log-hunt" onClick={props.onLogHunt}>
+            + Log a hunt
+          </button>
+          {shownDays.map((day) => (
+            <div key={day.key} className="hunt-day">
+              <div className="hunt-day-head">
+                <span>{day.label}</span>
+                <span className="muted">{daySummary(day)}</span>
+              </div>
+              <ul>
+                {day.reports.map((r) => (
+                  <Row
+                    key={r.id}
+                    selected={props.isSelected(r.id)}
+                    onClick={() => props.onPick(r.id)}
+                    swatch={
+                      <span className="swatch report">
+                        <Icon name="track" size={16} />
+                      </span>
+                    }
+                    title={standName(r)}
+                    detail={`${clock(r.start)}${r.loggedBy ? ` · ${r.loggedBy}` : ''} · ${sightingSummary(r)}`}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+          {days.length > DAYS_SHOWN && (
+            <button className="link-button show-older" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show fewer days' : `Show ${days.length - DAYS_SHOWN} older days`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }

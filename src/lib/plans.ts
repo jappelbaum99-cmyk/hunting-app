@@ -1,13 +1,14 @@
 // Plan types, starter checklists, and the burn-day finder.
+import type { IconName } from '@/lib/icons';
 import { compassPointOf } from '@/lib/standRating';
 import type { Forecast, ForecastHour } from '@/lib/weather';
 import type { BurnDetails, Plan, PlanKind, PlanStatus, TimberPractice } from '@/types/models';
 
-export const PLAN_KINDS: Record<PlanKind, { label: string; icon: string }> = {
-  burn: { label: 'Burn plan', icon: '🔥' },
-  timber: { label: 'Timber plan', icon: '🌲' },
-  habitat: { label: 'Habitat plan', icon: '🌾' },
-  other: { label: 'Other plan', icon: '📋' },
+export const PLAN_KINDS: Record<PlanKind, { label: string; icon: IconName }> = {
+  burn: { label: 'Burn plan', icon: 'fire' },
+  timber: { label: 'Timber plan', icon: 'pine' },
+  habitat: { label: 'Habitat plan', icon: 'wheat' },
+  other: { label: 'Other plan', icon: 'clipboard' },
 };
 
 export const PLAN_STATUSES: Record<PlanStatus, string> = {

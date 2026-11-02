@@ -13,6 +13,7 @@ import { base64ToBytes, bytesToBase64, MAP_FILE_KIND, mapFileName, parseMapFile,
 import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { StandHistory } from '@/components/StandHistory';
 import { Sidebar } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { useHubCamp } from '@/data/useHubCamp';
@@ -974,6 +975,11 @@ export function App() {
         kind="marker"
         record={record}
         onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
+        history={
+          isStandMarker(record) ? (
+            <StandHistory reports={hub.reports.filter((r) => r.standId === record.id)} onPickReport={(id) => setSelection({ kind: 'report', id })} />
+          ) : undefined
+        }
         propertyName={propertyName(record.propertyId)}
         defaultColor={categoryStyle(record.type, hub.settings).color}
         onChange={hub.saveMarker}

@@ -18,7 +18,7 @@
       </header>
 
       <section class="card">
-        <h2><span aria-hidden="true">🖥️</span> On your PC</h2>
+        <h2><span class="card-icon" data-icon="monitor"></span> On your PC</h2>
         <p>The hub, where the mapping and planning happens. Windows 10 or 11.</p>
         <a class="button primary" id="download" href="#">Download for Windows</a>
         <p class="muted" id="download-note">About 120 MB.</p>
@@ -32,7 +32,7 @@
       </section>
 
       <section class="card">
-        <h2><span aria-hidden="true">📱</span> On your phone</h2>
+        <h2><span class="card-icon" data-icon="phone"></span> On your phone</h2>
         <p>Drop GPS pins, log hunts from the stand, and open stands in Apple Maps. Works with no signal.</p>
         <a class="button primary" href="./field.html">Open the field page</a>
         <ol>
@@ -44,13 +44,12 @@
       </section>
 
       <section class="card">
-        <h2><span aria-hidden="true">🤝</span> Sharing with family</h2>
+        <h2><span class="card-icon" data-icon="family"></span> Sharing with family</h2>
         <ul>
           <li><b>Property maps:</b> open a property in the hub and press <b>Share</b>, or use <b>Export whole map</b>. Send the file; they use <b>Import a map file</b>.</li>
-          <li><b>Stands to a phone:</b> <b>Send stands to phone</b> in the hub, then load that file on the phone's Send tab.</li>
-          <li><b>Pins and hunts from a phone:</b> the phone's Send tab saves a file; <b>Import from phone</b> brings it into the hub.</li>
+          <li><b>Hunts and GPS pins:</b> in the hub, open Settings › Camp sync and start a camp. Everyone types the camp code on the phone page's Camp tab, and their hunts and pins reach the hub by themselves. Stands go to their phones the same way.</li>
         </ul>
-        <p class="muted">Your maps, stands and hunts stay on your own PC and phone. This website only hands out the app.</p>
+        <p class="muted">Maps stay on your own PC. Camp hunts and pins are kept in a free Firebase database that only people with your camp code can open.</p>
       </section>
     </main>
     <script type="module" src="/src/home/home.ts"></script>

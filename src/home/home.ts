@@ -1,5 +1,9 @@
 import './home.css';
 
+import { iconSvg, type IconName } from '@/lib/icons';
+
+for (const el of document.querySelectorAll<HTMLElement>('[data-icon]')) el.innerHTML = iconSvg(el.dataset.icon as IconName, 22);
+
 // The installer is attached to the newest GitHub release under this name
 // (see the release workflow). On GitHub Pages the site lives at
 // <owner>.github.io/<repo>/, so the release link is worked out from the address.

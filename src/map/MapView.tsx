@@ -1,4 +1,5 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { iconSvg, type IconName } from '@/lib/icons';
 
 import type { FeatureCollection, Polygon, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
@@ -564,20 +565,21 @@ export function MapView(props: MapViewProps) {
     });
 
     // Names for shapes, drawn as HTML so no font server is needed.
-    const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string }>();
+    const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string; icon?: IconName }>();
     for (const p of properties) {
       wanted.set(p.id, { text: p.name, at: topCenterOf(p.boundary), kind: 'property', color: propertyColor(p, settings) });
     }
     // Section names sit at the top of the section so they don't cover areas in the middle.
     for (const s of sections) wanted.set(s.id, { text: s.name, at: topCenterOf(s.geometry), kind: 'section' });
     for (const a of areas) {
-      wanted.set(a.id, { text: `${areaTypeInfo(a.type, settings).icon} ${a.name}`, at: centerOf(a.geometry), kind: 'area' });
+      wanted.set(a.id, { text: a.name, icon: areaTypeInfo(a.type, settings).icon, at: centerOf(a.geometry), kind: 'area' });
     }
     syncHtmlMarkers(map, labelElements.current, wanted, (item, existing) => {
       const el = existing ?? document.createElement('div');
       // classList, not className: maplibre adds its own positioning class to this element.
       el.classList.add('map-label', `map-label-${item.kind}`);
       el.textContent = item.text;
+      if (item.icon) el.insertAdjacentHTML('afterbegin', iconSvg(item.icon, 15));
       el.style.color = item.color ?? '';
       return el;
     }, { anchor: 'center' });

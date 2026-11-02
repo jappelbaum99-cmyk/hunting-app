@@ -11,9 +11,11 @@ import {
   type PhoneFile,
   type StandsFile,
 } from '@/field/fieldData';
+import { Icon } from '@/components/Icon';
 import { useCampSync, type CampStatus } from '@/field/useCampSync';
 import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { MARKER_TYPES } from '@/lib/featureTypes';
+import type { IconName } from '@/lib/icons';
 import { DEER_KINDS, HEADINGS, newSighting, sightingSummary } from '@/lib/reports';
 import type { DeerKind, FieldPin, HuntReport, MarkerType, Sighting } from '@/types/models';
 
@@ -132,14 +134,14 @@ export function FieldApp() {
       <nav className="field-tabs">
         {(
           [
-            ['pin', '📍', 'Pin'],
-            ['hunt', '🦌', active ? 'Hunting' : 'Hunt'],
-            ['stands', '🪜', 'Stands'],
-            ['send', data.camp ? '🏕️' : '📤', `${data.camp ? 'Camp' : 'Send'}${unsent ? ` (${unsent})` : ''}`],
-          ] as const
+            ['pin', 'pin', 'Pin'],
+            ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
+            ['stands', 'stand', 'Stands'],
+            ['send', data.camp ? 'camp' : 'send', `${data.camp ? 'Camp' : 'Send'}${unsent ? ` (${unsent})` : ''}`],
+          ] as const satisfies readonly (readonly [Tab, IconName, string])[]
         ).map(([id, icon, label]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-            <span aria-hidden>{icon}</span>
+            <Icon name={icon} size={24} />
             {label}
           </button>
         ))}
@@ -496,7 +498,9 @@ function CampCard(props: { data: FieldData; sync: CampStatus; onData(update: (d:
     const camp = data.camp;
     return (
       <section className="field-card">
-        <h2>🏕️ {camp.name}</h2>
+        <h2 className="camp-heading">
+          <Icon name="camp" size={22} /> {camp.name}
+        </h2>
         <p className="field-hint">
           You're <strong>{camp.hunter}</strong>. Your pins and hunts go to camp on their own whenever you have signal.
         </p>

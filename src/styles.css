@@ -2321,3 +2321,326 @@ button.mini {
 .link-button:hover {
   text-decoration: underline;
 }
+
+/* The app's own icons (src/lib/icons.ts) */
+.icon-wrap {
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.icon-wrap svg,
+.map-label svg {
+  display: block;
+}
+
+.area-badge {
+  color: #1c130d;
+}
+
+.swatch.report {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.map-label-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-grid button {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.plan-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.camp-live .icon-wrap {
+  color: var(--accent);
+  margin-top: -2px;
+}
+
+/* Hunt Reports dropdown */
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.section-toggle h2 {
+  flex: 1;
+}
+
+.section-toggle .chevron {
+  margin: 0 10px 0 2px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+
+.section-toggle .chevron.open {
+  transform: none;
+}
+
+.reports-teaser {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reports-teaser:hover {
+  background: var(--fill-hover);
+}
+
+.reports-teaser .muted,
+.hunt-day-head .muted {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hunt-day {
+  margin-top: 8px;
+}
+
+.hunt-day-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 8px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.hunt-day-head .muted {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.show-older {
+  margin: 8px;
+  font-size: 13px;
+}
+
+.live-hunts {
+  margin-bottom: 6px;
+}
+
+.live-hunts .row {
+  background: rgba(240, 138, 36, 0.14);
+}
+
+.live-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin: 0 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(240, 138, 36, 0.6);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  70% {
+    box-shadow: 0 0 0 8px rgba(240, 138, 36, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(240, 138, 36, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* Stand card: hunt history */
+
+.stand-history {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.stand-history h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.stand-history h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.stand-history h4 .muted,
+.stand-history .muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.stat-tile {
+  display: grid;
+  padding: 8px 6px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+  text-align: center;
+}
+
+.stat-tile strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.kind-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.kind-totals li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stand-history .type-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.heading-bars {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heading-bars li {
+  display: grid;
+  grid-template-columns: 46px 1fr 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  cursor: default;
+}
+
+.heading-bars li:hover .heading-track {
+  background: var(--fill-hover);
+}
+
+.heading-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.heading-arrow {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--text);
+}
+
+.heading-track {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.heading-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+.heading-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.stand-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.stand-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 3px 8px 3px 0;
+  white-space: nowrap;
+}
+
+.stand-table td {
+  padding: 3px 0;
+}
+
+.stand-table td.muted {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.recent-hunts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-hunts .row-title {
+  display: flex;
+  align-items: center;
+}

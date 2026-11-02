@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Icon } from '@/components/Icon';
 
 import { acresOf, formatAcres } from '@/lib/geo';
 import { burnProblem, burnWindows, PLAN_KINDS, PLAN_STATUSES, TIMBER_PRACTICES } from '@/lib/plans';
@@ -74,7 +75,7 @@ export function SectionPanel(props: SectionPanelProps) {
                   <li key={p.id}>
                     <button className="plan-card" onClick={() => props.onOpenPlan(p.id)}>
                       <span className="plan-icon" aria-hidden>
-                        {PLAN_KINDS[p.kind].icon}
+                        <Icon name={PLAN_KINDS[p.kind].icon} size={22} />
                       </span>
                       <span className="plan-text">
                         <span className="row-title">{p.title}</span>
@@ -138,7 +139,7 @@ function PlanEditor(props: SectionPanelProps & { plan: Plan }) {
       <div className="detail-body">
         <div className="plan-title">
           <span className="plan-icon" aria-hidden>
-            {PLAN_KINDS[plan.kind].icon}
+            <Icon name={PLAN_KINDS[plan.kind].icon} size={22} />
           </span>
           <input
             type="text"

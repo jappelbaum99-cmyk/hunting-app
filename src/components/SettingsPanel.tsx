@@ -2,7 +2,9 @@ import { useEffect, useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
-import { AREA_ICONS, MARKER_TYPES } from '@/lib/featureTypes';
+import { Icon } from '@/components/Icon';
+import { MARKER_TYPES } from '@/lib/featureTypes';
+import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
   areaTypeList,
   categoryStyle,
@@ -37,7 +39,7 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
         <AreaBadge type={type} size={30} />
       </summary>
       <div className="icon-grid">
-        {AREA_ICONS.map((icon) => (
+        {AREA_ICON_NAMES.map((icon) => (
           <button
             key={icon}
             className={icon === type.icon ? 'active' : ''}
@@ -45,8 +47,9 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
               e.currentTarget.closest('details')?.removeAttribute('open');
               onPick(icon);
             }}
+            aria-label={icon}
           >
-            {icon}
+            <Icon name={icon} size={22} />
           </button>
         ))}
       </div>
@@ -225,7 +228,7 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
               ...settings,
               customAreaTypes: [
                 ...settings.customAreaTypes,
-                { id: `custom-${crypto.randomUUID()}`, label: 'New area type', color: '#d4b04a', icon: '📍', scentSensitive: false, deletedAt: null },
+                { id: `custom-${crypto.randomUUID()}`, label: 'New area type', color: '#d4b04a', icon: 'pin', scentSensitive: false, deletedAt: null },
               ],
             })
           }

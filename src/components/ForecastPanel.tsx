@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from '@/components/Icon';
 
 import { AreaChart } from '@/components/AreaChart';
 import { compassPointOf, RATING_LABELS, type RatedStand, type Sit, type StandRating } from '@/lib/standRating';
@@ -264,7 +265,7 @@ function SitWeather({
           aria-label={playing ? 'Pause' : 'Play through the sit'}
           title={playing ? 'Pause' : 'Play through the sit'}
         >
-          {playing ? '❚❚' : '▶'}
+          <Icon name={playing ? 'pause' : 'play'} size={16} />
         </button>
         <input
           type="range"

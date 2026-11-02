@@ -330,8 +330,8 @@ textarea {
   font-size: 12px;
 }
 
-.field-tabs button span {
-  font-size: 22px;
+.field-tabs button .icon-wrap {
+  line-height: 0;
 }
 
 .field-tabs button.active {
@@ -360,4 +360,20 @@ textarea {
 
 .field-card details[open] summary {
   margin-bottom: 12px;
+}
+
+.icon-wrap {
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.camp-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.camp-heading .icon-wrap {
+  color: var(--accent);
 }
