@@ -3,7 +3,7 @@ import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import type { Feature, FeatureCollection, Geometry, Polygon, Position } from 'geojson';
 
 import { areaColor, propertyColor } from '@/lib/styles';
-import type { AreaGeometry, HubSettings, MapArea, Property } from '@/types/models';
+import type { AreaGeometry, HubSettings, MapArea, Property, Section } from '@/types/models';
 
 const SQ_METERS_PER_ACRE = 4046.8564224;
 
@@ -42,6 +42,13 @@ export function boundsOf(geometry: AreaGeometry): [number, number, number, numbe
 // Finds which saved property a point falls inside, if any.
 export function propertyContaining(properties: Property[], position: Position): Property | null {
   return properties.find((p) => booleanPointInPolygon(position, p.boundary)) ?? null;
+}
+
+// Where a point is, for showing on the phone: the section it's in, else the
+// property, else null. E.g. "North Ridge".
+export function placeName(properties: Property[], sections: Section[], position: Position): string | null {
+  const section = sections.find((s) => booleanPointInPolygon(position, s.geometry));
+  return section?.name ?? propertyContaining(properties, position)?.name ?? null;
 }
 
 // The point a given distance and compass bearing from another, close enough

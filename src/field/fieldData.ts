@@ -8,6 +8,8 @@ export interface FieldStand {
   lat: number;
   lng: number;
   goodWinds: CompassPoint[];
+  // The section it's in, else the property.
+  place?: string | null;
 }
 
 export interface FieldData {

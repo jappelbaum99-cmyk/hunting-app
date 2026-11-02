@@ -23,7 +23,7 @@ import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { isHuntingSpot, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
-import { acresOf, boundsOf, formatAcres, pointsToPolygon, propertyContaining, offsetPosition } from '@/lib/geo';
+import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { lineBounds, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
@@ -357,6 +357,7 @@ export function App() {
     lat: m.lat,
     lng: m.lng,
     goodWinds: m.goodWinds,
+    place: placeName(hub.properties, hub.sections, [m.lng, m.lat]),
     updatedAt: m.updatedAt,
     deletedAt: m.deletedAt,
   }));
@@ -456,7 +457,14 @@ export function App() {
   };
 
   const sendStandsToPhone = () => {
-    const stands = hub.markers.filter(isStandMarker).map((m) => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, goodWinds: m.goodWinds }));
+    const stands = hub.markers.filter(isStandMarker).map((m) => ({
+      id: m.id,
+      name: m.name,
+      lat: m.lat,
+      lng: m.lng,
+      goodWinds: m.goodWinds,
+      place: placeName(hub.properties, hub.sections, [m.lng, m.lat]),
+    }));
     const file: StandsFile = { kind: STANDS_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), stands };
     void shareJsonFile('hunting-hub-stands.json', file).then(() =>
       setNotice(`Saved hunting-hub-stands.json with ${stands.length} stands. Get it onto the phone (email or iCloud Drive), then load it on the phone's Send tab.`),

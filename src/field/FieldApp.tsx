@@ -372,7 +372,7 @@ function HuntTab(props: {
           <option value="">No stand / walking</option>
           {data.stands.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name}
+              {s.place ? `${s.name} · ${s.place}` : s.name}
             </option>
           ))}
         </select>
@@ -733,6 +733,7 @@ function StandsTab({ data, reports }: { data: FieldData; reports: HuntReport[] }
               <button className="stand-head" onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open}>
                 <span>
                   <strong>{s.name}</strong>
+                  {s.place && <span className="stand-place"> · {s.place}</span>}
                   {s.goodWinds.length > 0 && <span className="muted"> · good on {s.goodWinds.join(' ')}</span>}
                 </span>
                 <span className="muted">

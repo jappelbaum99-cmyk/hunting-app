@@ -871,3 +871,8 @@ textarea {
   color: var(--muted);
   font-style: italic;
 }
+
+.stand-place {
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -42,7 +42,7 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
         const live = stands.filter((s) => !s.deletedAt).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
         setData((d) => ({
           ...d,
-          stands: live.map(({ id, name, lat, lng, goodWinds }) => ({ id, name, lat, lng, goodWinds })),
+          stands: live.map(({ id, name, lat, lng, goodWinds, place }) => ({ id, name, lat, lng, goodWinds, place: place ?? null })),
           standsUpdatedAt: new Date().toISOString(),
         }));
         setError(null);

@@ -36,18 +36,22 @@ export function useHubCamp(
   }, [camp?.code, camp?.isOwner]);
 
   // Publishes stands that are new or changed, and marks removed ones deleted.
-  const key = stands.map((s) => `${s.id}@${s.updatedAt}`).join(',');
+  const key = stands.map((s) => `${s.id}@${s.updatedAt}@${s.place ?? ''}`).join(',');
   useEffect(() => {
     if (!camp?.isOwner || !published) return;
     const timer = setTimeout(() => {
       const now = new Date().toISOString();
       const wanted = new Map(stands.map((s) => [s.id, s]));
       const changes: CampStand[] = [
-        ...stands.filter((s) => published.get(s.id)?.updatedAt !== s.updatedAt || published.get(s.id)?.deletedAt),
+        // Sent again only when something about it changed.
+        ...stands.filter((s) => {
+          const pub = published.get(s.id);
+          return !pub || pub.updatedAt !== s.updatedAt || (pub.place ?? null) !== (s.place ?? null) || (pub.deletedAt ?? null) !== (s.deletedAt ?? null);
+        }),
         ...[...published.values()].filter((s) => !s.deletedAt && !wanted.has(s.id)).map((s) => ({ ...s, deletedAt: now, updatedAt: now })),
       ];
       for (const stand of changes) {
-        const tag = `${stand.id}@${stand.updatedAt}@${stand.deletedAt ?? ''}`;
+        const tag = `${stand.id}@${stand.updatedAt}@${stand.deletedAt ?? ''}@${stand.place ?? ''}`;
         if (inFlight.current.has(tag)) continue;
         inFlight.current.add(tag);
         sendStand(camp, stand)

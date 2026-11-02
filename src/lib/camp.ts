@@ -29,6 +29,8 @@ export interface CampStand {
   lat: number;
   lng: number;
   goodWinds: CompassPoint[];
+  // The section it's in, else the property (worked out by the hub).
+  place?: string | null;
   updatedAt: string;
   deletedAt: string | null;
 }
