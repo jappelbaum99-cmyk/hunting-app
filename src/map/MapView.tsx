@@ -71,6 +71,15 @@ export interface AlignMarker {
   position: [number, number];
 }
 
+export interface HuntSpotView {
+  id: string;
+  at: [number, number];
+  name: string;
+  hunts: number;
+  // The newest hunt there, opened on click.
+  reportId: string;
+}
+
 interface MapViewProps {
   ref?: Ref<MapViewHandle>;
   layers: MapLayersState;
@@ -93,6 +102,8 @@ interface MapViewProps {
   scentCones: { id: string; rating: StandRating; cone: Polygon }[];
   // Deer seen in hunt reports.
   sightings: SightingView[];
+  // New spots hunted from that aren't stands; clicking opens the latest hunt there.
+  huntSpots: HuntSpotView[];
   // Shown as an arrow on the compass when known.
   windFromDeg: number | null;
   selection: Selection | null;
@@ -560,6 +571,7 @@ export function MapView(props: MapViewProps) {
   const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10' });
   const markerElements = useRef(new Map<string, maplibregl.Marker>());
   const labelElements = useRef(new Map<string, maplibregl.Marker>());
+  const spotElements = useRef(new Map<string, maplibregl.Marker>());
   const editHandles = useRef(new Map<string, maplibregl.Marker>());
   const alignElements = useRef(new Map<string, maplibregl.Marker>());
   // Overlay id -> image URL currently loaded into its maplibre source.
@@ -820,6 +832,41 @@ export function MapView(props: MapViewProps) {
       },
     );
   }, [markers, selectedId, standRatings, settings, readyTick]);
+
+  // New spots hunted from: a dashed ring, so they read differently from stands.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const wanted = new Map(props.huntSpots.map((s) => [s.id, s]));
+    syncHtmlMarkers(
+      map,
+      spotElements.current,
+      wanted,
+      (item, existing) => {
+        const el = existing ?? document.createElement('div');
+        el.classList.add('hunt-spot');
+        el.classList.toggle('hunt-spot-selected', item.reportId === selectedId);
+        el.dataset.reportId = item.reportId;
+        el.innerHTML = '';
+        const ring = document.createElement('span');
+        ring.className = 'hunt-spot-ring';
+        const label = document.createElement('span');
+        label.className = 'hunt-spot-label';
+        label.textContent = `${item.name} · ${item.hunts} hunt${item.hunts === 1 ? '' : 's'}`;
+        el.append(ring, label);
+        return el;
+      },
+      { anchor: 'left' },
+      (marker) => {
+        marker.getElement().addEventListener('click', (event) => {
+          if (latest.current.interaction !== 'browse') return;
+          event.stopPropagation();
+          const reportId = (event.currentTarget as HTMLElement).dataset.reportId;
+          if (reportId) latest.current.onSelect({ kind: 'report', id: reportId });
+        });
+      },
+    );
+  }, [props.huntSpots, selectedId, readyTick]);
 
   // Map images, drawn above the base maps and under property lines.
   useEffect(() => {

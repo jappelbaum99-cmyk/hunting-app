@@ -4,6 +4,8 @@ import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { Icon } from '@/components/Icon';
+import { UpdateSettings } from '@/components/UpdateBanner';
+import type { UpdateInfo } from '@/data/storage';
 import { pinTypeList } from '@/lib/featureTypes';
 import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
@@ -24,6 +26,7 @@ interface SettingsPanelProps {
   // Phone files, for phones not in a camp (or with no signal at all).
   onImportPhone(file: File): void;
   onSendStands(): void;
+  update: UpdateInfo | null;
 }
 
 // A pin drawn the same way as on the map, for previews.
@@ -61,7 +64,7 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
   );
 }
 
-export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands }: SettingsPanelProps) {
+export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands, update }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
   const setPinType = (id: string, patch: Partial<CustomPinType>) =>
@@ -310,6 +313,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
       </button>
 
       <SavedMaps />
+      <UpdateSettings info={update} />
     </div>
   );
 }

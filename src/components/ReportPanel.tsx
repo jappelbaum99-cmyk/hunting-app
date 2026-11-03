@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
 import { compassPointOf } from '@/lib/standRating';
 import { DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
-import type { DeerKind, HuntReport, MapMarker, Sighting } from '@/types/models';
+import type { DeerKind, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
   report: HuntReport;
@@ -12,6 +12,9 @@ interface ReportPanelProps {
   weatherStatus: 'idle' | 'loading' | string;
   onChange(report: HuntReport): void;
   onFillWeather(): void;
+  // Types a new spot can become (stand, blind, platform, hunting-location custom pins).
+  spotTypes: { id: MarkerType; label: string }[];
+  onMakeStand(type: MarkerType): void;
   onPlaceSighting(sightingId: string): void;
   onDelete(): void;
   onZoom(): void;
@@ -38,7 +41,7 @@ export function ReportPanel(props: ReportPanelProps) {
       <div className="detail-body">
         <Field label="Stand">
           <select value={report.standId ?? ''} onChange={(e) => set({ standId: e.target.value || null })}>
-            <option value="">No stand (still hunting, walking…)</option>
+            <option value="">{report.spot ? 'New spot (not a stand yet)' : 'No stand (still hunting, walking…)'}</option>
             {stands.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -46,6 +49,8 @@ export function ReportPanel(props: ReportPanelProps) {
             ))}
           </select>
         </Field>
+
+        {report.spot && !report.standId && <NewSpot report={report} spotTypes={props.spotTypes} onName={(name) => set({ spot: { ...report.spot!, name } })} onMakeStand={props.onMakeStand} />}
 
         <div className="range-row">
           <Field label="Date">
@@ -295,5 +300,29 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <div className="field-label">{label}</div>
       {children}
     </div>
+  );
+}
+
+// A spot hunted from that isn't a stand, with a way to make it one.
+function NewSpot(props: { report: HuntReport; spotTypes: { id: MarkerType; label: string }[]; onName(name: string | null): void; onMakeStand(type: MarkerType): void }) {
+  const spot = props.report.spot!;
+  const [type, setType] = useState<MarkerType>(props.spotTypes[0]?.id ?? 'stand');
+  return (
+    <Field label="New spot">
+      <input type="text" placeholder="Name it, e.g. big oak on the bench" value={spot.name ?? ''} onChange={(e) => props.onName(e.target.value || null)} />
+      <p className="hint">
+        Marked by GPS{spot.accuracyM !== null ? ` (±${spot.accuracyM} m)` : ''} on the phone. It's not a hunting location; make it one if you'll keep hunting there.
+      </p>
+      <div className="spot-actions">
+        <select value={type} onChange={(e) => setType(e.target.value)}>
+          {props.spotTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <button onClick={() => props.onMakeStand(type)}>Add to Hunting Locations</button>
+      </div>
+    </Field>
   );
 }

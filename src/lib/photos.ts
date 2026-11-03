@@ -1,9 +1,10 @@
 // Trail camera photos: reading when each was taken, stamping the camera's
 // location into it, and filing it in the photo library as
-// <Camera name>/<YYYY-MM>/<YYYY-MM-DD_HHMMSS>.jpg (empties go in <Camera name>/Empty).
+// <Property>/<Section>/<Area>/<Camera>/<YYYY-MM>/<YYYY-MM-DD_HHMMSS>.jpg
+// (folders from src/lib/photoPlaces.ts; empties go in <...>/<Camera>/Empty).
 import piexif from 'piexifjs';
 
-import type { CameraPhoto, DeerKind, MapMarker, PhotoDetection, PhotoTally } from '@/types/models';
+import type { CameraPhoto, DeerKind, MapMarker, PhotoDetection, PhotoPlace, PhotoTally } from '@/types/models';
 
 function toBinary(bytes: Uint8Array): string {
   let s = '';
@@ -74,17 +75,11 @@ export function cameraFolder(camera: Pick<MapMarker, 'name' | 'id'>): string {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-// <Camera>/<YYYY-MM>/<YYYY-MM-DD_HHMMSS>.jpg, with -2, -3... added when taken the same second.
+// <folder>/<YYYY-MM>/<YYYY-MM-DD_HHMMSS>.jpg, with -2, -3... added when taken the same second.
 export function libraryPath(folder: string, when: Date, n = 1): string {
   const month = `${when.getFullYear()}-${pad(when.getMonth() + 1)}`;
   const stamp = `${month}-${pad(when.getDate())}_${pad(when.getHours())}${pad(when.getMinutes())}${pad(when.getSeconds())}`;
   return `${folder}/${month}/${stamp}${n > 1 ? `-${n}` : ''}.jpg`;
-}
-
-// Where an empty photo goes: <Camera>/Empty/<same file name>.
-export function emptyPath(file: string): string {
-  const parts = file.split('/');
-  return `${parts[0]}/Empty/${parts[parts.length - 1]}`;
 }
 
 export interface ImportFile {
@@ -101,13 +96,16 @@ export interface ImportProgress {
   failed: number;
 }
 
-// Copies photos from a picked folder into the library for one camera. The
+// Copies photos from a picked folder into the library for one camera, filed
+// in `folder` (its place and camera) and marked with `place`. The
 // originals are never changed. A photo already in the library (same camera,
 // same time taken, same size) is skipped. Returns the new photo records.
 export async function importPhotos(options: {
   source: string;
   files: ImportFile[];
   camera: MapMarker;
+  folder: string;
+  place: PhotoPlace;
   existing: CameraPhoto[];
   batchId: string;
   newRecord(): { id: string; createdAt: string; updatedAt: string; deletedAt: null };
@@ -116,8 +114,7 @@ export async function importPhotos(options: {
 }): Promise<CameraPhoto[]> {
   const hub = window.hub;
   if (!hub) throw new Error('Sorting photos works in the desktop app.');
-  const { source, files, camera } = options;
-  const folder = cameraFolder(camera);
+  const { source, files, camera, folder } = options;
   const seen = new Set(options.existing.filter((p) => p.cameraId === camera.id && !p.deletedAt).map((p) => `${p.takenAt}@${p.originalSize}`));
   const progress: ImportProgress = { done: 0, total: files.length, imported: 0, skipped: 0, failed: 0 };
   const records: CameraPhoto[] = [];
@@ -139,6 +136,7 @@ export async function importPhotos(options: {
         records.push({
           ...options.newRecord(),
           cameraId: camera.id,
+          place: options.place,
           file: rel,
           originalName: file.rel.split(/[\\/]/).pop() ?? file.rel,
           originalSize: file.size,

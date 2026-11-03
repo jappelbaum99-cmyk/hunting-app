@@ -1,13 +1,31 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { Icon } from '@/components/Icon';
-import { emptyPath, importPhotos, judge, kindsOf, photoUrl, tallyOf, type ImportFile, type ImportProgress } from '@/lib/photos';
+import {
+  cameraPlace,
+  expectedPath,
+  parsePlaceValue,
+  placeChoices,
+  placeFolder,
+  placeLabel,
+  placeOf,
+  placeValue,
+  propertyKey,
+  propertyName,
+  samePlace,
+  spotKey,
+  spotName,
+  type Places,
+} from '@/lib/photoPlaces';
+import { importPhotos, judge, kindsOf, photoUrl, tallyOf, type ImportFile, type ImportProgress } from '@/lib/photos';
 import { DEER_KINDS } from '@/lib/reports';
-import type { CameraPhoto, DeerKind, MapMarker, PhotoTally } from '@/types/models';
+import type { CameraPhoto, DeerKind, MapMarker, PhotoPlace, PhotoTally } from '@/types/models';
 
 interface CameraViewProps {
   photos: CameraPhoto[];
   cameras: MapMarker[];
+  // Properties, sections and areas, for filing photos by where they were taken.
+  places: Places;
   library: string | null;
   onSetLibrary(dir: string): void;
   onSavePhotos(photos: CameraPhoto[]): void;
@@ -26,6 +44,30 @@ interface CameraViewProps {
 
 type StatusFilter = 'new' | 'animal' | 'empty' | 'all';
 
+// Which photos the grid shows: a property, a section or area in it, a camera there.
+interface PlaceFilter {
+  property?: string;
+  spot?: string;
+  cameraId?: string;
+}
+
+interface Counts {
+  total: number;
+  fresh: number;
+}
+
+interface SpotNode extends Counts {
+  key: string;
+  name: string | null;
+  cameras: Map<string, Counts>;
+}
+
+interface PropertyNode extends Counts {
+  key: string;
+  name: string;
+  spots: Map<string, SpotNode>;
+}
+
 const PAGE = 96;
 const QUICK_KINDS: { key: string; kind: DeerKind }[] = [
   { key: 'b', kind: 'buck' },
@@ -42,39 +84,56 @@ function shortDate(iso: string): string {
 // location stamped in, then review them and set the empty ones aside.
 export function CameraView(props: CameraViewProps) {
   const desktop = !!window.hub;
-  const [cameraFilter, setCameraFilter] = useState<string>(props.initialCamera ?? 'all');
+  const [filter, setFilter] = useState<PlaceFilter>(props.initialCamera ? { cameraId: props.initialCamera } : {});
   const [status, setStatus] = useState<StatusFilter>(props.initialCamera ? 'all' : 'new');
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importing, setImporting] = useState<ImportState | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const byCamera = useMemo(() => {
-    const counts = new Map<string, { total: number; fresh: number; empty: number; last: string | null }>();
-    for (const p of props.photos) {
-      const c = counts.get(p.cameraId) ?? { total: 0, fresh: 0, empty: 0, last: null };
-      c.total += 1;
-      if (p.status === 'new') c.fresh += 1;
-      if (p.status === 'empty') c.empty += 1;
-      if (!c.last || p.takenAt > c.last) c.last = p.takenAt;
-      counts.set(p.cameraId, c);
-    }
-    return counts;
-  }, [props.photos]);
+  // Each photo's place, worked out once.
+  const placeById = useMemo(() => new Map(props.photos.map((p) => [p.id, placeOf(p, props.places, props.cameras)])), [props.photos, props.places, props.cameras]);
+  const placeFor = (photo: CameraPhoto) => placeById.get(photo.id) ?? placeOf(photo, props.places, props.cameras);
+  const matches = (photo: CameraPhoto, f: PlaceFilter) => {
+    const place = placeFor(photo);
+    return (!f.property || propertyKey(place) === f.property) && (!f.spot || spotKey(place) === f.spot) && (!f.cameraId || photo.cameraId === f.cameraId);
+  };
+
+  // Property › section or area › camera, with photo counts. Cameras with no
+  // photos yet show under where they are now.
+  const tree = useMemo(() => {
+    const nodes = new Map<string, PropertyNode>();
+    const add = (place: PhotoPlace, cameraId: string, photo: CameraPhoto | null) => {
+      const pk = propertyKey(place);
+      const property = nodes.get(pk) ?? { key: pk, name: propertyName(props.places, place), total: 0, fresh: 0, spots: new Map() };
+      nodes.set(pk, property);
+      const sk = spotKey(place);
+      const spot = property.spots.get(sk) ?? { key: sk, name: spotName(props.places, place), total: 0, fresh: 0, cameras: new Map() };
+      property.spots.set(sk, spot);
+      const camera = spot.cameras.get(cameraId) ?? { total: 0, fresh: 0 };
+      spot.cameras.set(cameraId, camera);
+      if (!photo) return;
+      for (const c of [property, spot, camera]) {
+        c.total += 1;
+        if (photo.status === 'new') c.fresh += 1;
+      }
+    };
+    for (const p of props.photos) add(placeById.get(p.id)!, p.cameraId, p);
+    for (const c of props.cameras) if (!props.photos.some((p) => p.cameraId === c.id)) add(cameraPlace(props.places, c), c.id, null);
+    return [...nodes.values()].sort((a, b) => (a.key === 'none' ? 1 : b.key === 'none' ? -1 : a.name.localeCompare(b.name)));
+  }, [props.photos, props.cameras, props.places, placeById]);
 
   const shown = useMemo(
-    () =>
-      props.photos
-        .filter((p) => (cameraFilter === 'all' || p.cameraId === cameraFilter) && (status === 'all' || p.status === status))
-        .sort((a, b) => a.takenAt.localeCompare(b.takenAt)),
-    [props.photos, cameraFilter, status],
+    () => props.photos.filter((p) => matches(p, filter) && (status === 'all' || p.status === status)).sort((a, b) => a.takenAt.localeCompare(b.takenAt)),
+    [props.photos, filter, status, placeById],
   );
+  const choices = useMemo(() => placeChoices(props.places), [props.places]);
   const pages = Math.max(1, Math.ceil(shown.length / PAGE));
   const pageItems = shown.slice(page * PAGE, page * PAGE + PAGE);
   const selected = props.photos.find((p) => p.id === selectedId) ?? null;
   const cameraName = (id: string) => props.cameras.find((c) => c.id === id)?.name ?? 'Removed camera';
 
-  useEffect(() => setPage(0), [cameraFilter, status]);
+  useEffect(() => setPage(0), [filter, status]);
 
   // Changing a photo; when reviewing "new" photos, move on to the next one.
   const update = (photo: CameraPhoto, patch: Partial<CameraPhoto>, advance = false) => {
@@ -179,34 +238,32 @@ export function CameraView(props: CameraViewProps) {
     setScan({ ...tally, total: tally.done });
   };
 
-  // Puts empty photos in each camera's Empty folder (and brings back ones no longer marked empty).
+  // Photos not in the folder they belong in: empties go to their camera's Empty
+  // folder, and photos whose place changed (or that came in before places) go
+  // under <Property>/<Section or area>/<Camera>. Each one records where it went.
+  const misplaced = props.photos
+    .map((p) => ({ photo: p, to: expectedPath(p, props.places, props.cameras) }))
+    .filter((m): m is { photo: CameraPhoto; to: string } => !!m.to && m.to !== m.photo.file);
   const organize = async () => {
     const hub = window.hub;
     if (!hub) return;
-    const moves = props.photos.filter((p) => (p.status === 'empty') !== p.file.includes('/Empty/'));
+    const moves = misplaced;
     setBusy(`Moving ${moves.length} photos…`);
     const moved: CameraPhoto[] = [];
-    for (const p of moves) {
+    for (const { photo, to } of moves) {
       try {
-        if (p.status === 'empty') {
-          const to = emptyPath(p.file);
-          await hub.moveLibraryPhoto(p.file, to);
-          moved.push({ ...p, file: to });
-        } else {
-          // Back to its dated folder: <Camera>/<YYYY-MM>/<name>.
-          const name = p.file.split('/').pop()!;
-          const to = `${p.file.split('/')[0]}/${name.slice(0, 7)}/${name}`;
-          await hub.moveLibraryPhoto(p.file, to);
-          moved.push({ ...p, file: to });
-        }
+        await hub.moveLibraryPhoto(photo.file, to);
+        // Pin down its place too, so moving the camera later doesn't move it again.
+        moved.push({ ...photo, file: to, place: placeFor(photo) });
       } catch {
         // Leave it where it is; it'll be tried again next time.
       }
+      if (moved.length % 50 === 0) setBusy(`Moving photos… ${moved.length} of ${moves.length}`);
     }
     props.onSavePhotos(moved);
     setBusy(moved.length === moves.length ? null : `Moved ${moved.length} of ${moves.length}. The rest are open elsewhere or missing.`);
   };
-  const toMove = props.photos.filter((p) => (p.status === 'empty') !== p.file.includes('/Empty/')).length;
+  const emptiesToMove = misplaced.filter((m) => m.photo.status === 'empty' && !m.photo.file.includes('/Empty/')).length;
 
   if (!desktop) {
     return (
@@ -269,27 +326,12 @@ export function CameraView(props: CameraViewProps) {
             {detectError && <span className="error-text">{detectError}</span>}
           </div>
 
-          <h3>Cameras</h3>
+          <h3>Places</h3>
           <ul className="camera-list">
-            <li>
-              <button className={`row${cameraFilter === 'all' ? ' selected' : ''}`} onClick={() => setCameraFilter('all')}>
-                <span className="row-title">All cameras</span>
-                <span className="row-detail">{props.photos.length}</span>
-              </button>
-            </li>
-            {props.cameras.map((c) => {
-              const n = byCamera.get(c.id);
-              return (
-                <li key={c.id}>
-                  <button className={`row${cameraFilter === c.id ? ' selected' : ''}`} onClick={() => setCameraFilter(c.id)}>
-                    <span className="row-title">{c.name}</span>
-                    <span className="row-detail">
-                      {n ? `${n.total}${n.fresh ? ` · ${n.fresh} new` : ''}` : 'no photos'}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
+            <PlaceRow label="All photos" counts={{ total: props.photos.length, fresh: 0 }} depth={0} filter={{}} current={filter} onPick={setFilter} />
+            {tree.map((property) => (
+              <PlaceGroup key={property.key} property={property} cameraName={cameraName} current={filter} onPick={setFilter} />
+            ))}
           </ul>
           {props.cameras.length === 0 && <p className="hint">No trail cameras yet. Import photos and you'll be asked to pin the camera.</p>}
 
@@ -310,10 +352,16 @@ export function CameraView(props: CameraViewProps) {
             </div>
           </div>
 
-          {toMove > 0 && (
-            <button className="camera-organize" onClick={() => void organize()} disabled={!!busy}>
-              Move {toMove} empty photo{toMove === 1 ? '' : 's'} to Empty folders
-            </button>
+          {misplaced.length > 0 && (
+            <>
+              <button className="camera-organize" onClick={() => void organize()} disabled={!!busy}>
+                Move {misplaced.length} photo{misplaced.length === 1 ? '' : 's'} into their folders
+              </button>
+              <p className="hint">
+                {emptiesToMove > 0 && `${emptiesToMove} empty to Empty folders. `}
+                {misplaced.length > emptiesToMove && `${misplaced.length - emptiesToMove} into folders for their property, section or area.`}
+              </p>
+            </>
           )}
           {busy && <p className="hint">{busy}</p>}
         </aside>
@@ -326,11 +374,13 @@ export function CameraView(props: CameraViewProps) {
               cameras={props.cameras}
               photos={props.photos}
               newCameraId={props.newCameraId}
+              places={props.places}
+              choices={choices}
               newRecord={props.newRecord}
               onPinNewCamera={props.onPinNewCamera}
               onImported={(records, cameraId) => {
                 props.onSavePhotos(records);
-                setCameraFilter(cameraId);
+                setFilter({ cameraId });
                 setStatus('new');
               }}
             />
@@ -346,11 +396,11 @@ export function CameraView(props: CameraViewProps) {
                 </div>
                 <span className="muted">
                   {shown.length} photo{shown.length === 1 ? '' : 's'}
-                  {cameraFilter !== 'all' && (
+                  {filter.cameraId && (
                     <>
                       {' '}
                       ·{' '}
-                      <button className="link-button" onClick={() => props.onShowCamera(cameraFilter)}>
+                      <button className="link-button" onClick={() => props.onShowCamera(filter.cameraId!)}>
                         show camera on map
                       </button>
                     </>
@@ -414,7 +464,8 @@ export function CameraView(props: CameraViewProps) {
               ))}
             </div>
             <div className="photo-detail-info">
-              <strong>{cameraName(selected.cameraId)}</strong>
+              <strong>{placeLabel(props.places, placeFor(selected))}</strong>
+              <span className="muted">{cameraName(selected.cameraId)}</span>
               <span className="muted">{new Date(selected.takenAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
             </div>
             <div className="photo-actions">
@@ -426,6 +477,13 @@ export function CameraView(props: CameraViewProps) {
               </button>
             </div>
             <TallyEditor tally={tallyOf(selected)} buckNames={props.buckNames} onChange={(t) => setTally(selected, t)} />
+            <PlacePicker
+              photo={selected}
+              place={placeFor(selected)}
+              choices={choices}
+              others={props.photos.filter((p) => p.batchId === selected.batchId && p.id !== selected.id && !samePlace(placeFor(p), placeFor(selected)))}
+              onChange={(list, place) => props.onSavePhotos(list.map((p) => ({ ...p, place })))}
+            />
             <textarea rows={2} placeholder="Notes (e.g. big 8, same buck as last week)" value={selected.notes ?? ''} onChange={(e) => update(selected, { notes: e.target.value || null })} />
             <p className="hint photo-file" title={selected.file}>
               {selected.file} · from {selected.originalName}
@@ -482,9 +540,12 @@ function LibrarySetup({ onSetLibrary, onClose }: { onSetLibrary(dir: string): vo
         )}
         <button
           onClick={() =>
-            void window.hub?.pickFolder('library').then((dir) => {
-              if (dir) void use(dir);
-            })
+            void window.hub
+              ?.pickFolder('library')
+              .then((dir) => {
+                if (dir) void use(dir);
+              })
+              .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
           }
         >
           Choose another folder…
@@ -497,9 +558,10 @@ function LibrarySetup({ onSetLibrary, onClose }: { onSetLibrary(dir: string): vo
 
 type ImportState =
   | { step: 'pick' }
-  | { step: 'camera'; source: string; files: ImportFile[]; cameraId: string | null; newName: string }
+  // place: where to file them; null means where the camera is.
+  | { step: 'camera'; source: string; files: ImportFile[]; cameraId: string | null; newName: string; place: PhotoPlace | null }
   | { step: 'sorting'; source: string; files: ImportFile[]; cameraId: string; progress: ImportProgress }
-  | { step: 'done'; cameraId: string; progress: ImportProgress };
+  | { step: 'done'; cameraId: string; place: PhotoPlace; progress: ImportProgress };
 
 // Import: pick the card's folder, say which camera, then sort.
 function ImportFlow(props: {
@@ -508,8 +570,8 @@ function ImportFlow(props: {
   cameras: MapMarker[];
   photos: CameraPhoto[];
   newCameraId: string | null;
-  // Open on this camera's photos.
-  initialCamera?: string | null;
+  places: Places;
+  choices: { place: PhotoPlace; label: string }[];
   newRecord(): { id: string; createdAt: string; updatedAt: string; deletedAt: null };
   onPinNewCamera(name: string): void;
   onImported(records: CameraPhoto[], cameraId: string): void;
@@ -521,7 +583,7 @@ function ImportFlow(props: {
   // Coming back from pinning a new camera: pick it.
   useEffect(() => {
     if (props.newCameraId && state.step === 'camera' && state.cameraId !== props.newCameraId && props.cameras.some((c) => c.id === props.newCameraId)) {
-      setState({ ...state, cameraId: props.newCameraId });
+      setState({ ...state, cameraId: props.newCameraId, place: null });
     }
   }, [props.newCameraId, props.cameras]);
 
@@ -535,11 +597,15 @@ function ImportFlow(props: {
             className="primary"
             onClick={async () => {
               setError(null);
-              const dir = await window.hub!.pickFolder('source');
-              if (!dir) return;
-              const files = await window.hub!.listPhotos(dir);
-              if (files.length === 0) return setError('No photos (JPG) found in that folder or its subfolders.');
-              setState({ step: 'camera', source: dir, files, cameraId: null, newName: '' });
+              try {
+                const dir = await window.hub!.pickFolder('source');
+                if (!dir) return;
+                const files = await window.hub!.listPhotos(dir);
+                if (files.length === 0) return setError('No photos (JPG) found in that folder or its subfolders.');
+                setState({ step: 'camera', source: dir, files, cameraId: null, newName: '', place: null });
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              }
             }}
           >
             Choose folder…
@@ -552,8 +618,11 @@ function ImportFlow(props: {
   }
 
   if (state.step === 'camera') {
+    const chosen = props.cameras.find((c) => c.id === state.cameraId) ?? null;
+    const where = state.place ?? (chosen ? cameraPlace(props.places, chosen) : null);
     const startSort = async (cameraId: string) => {
       const camera = props.cameras.find((c) => c.id === cameraId)!;
+      const place = state.place ?? cameraPlace(props.places, camera);
       cancel.current = false;
       const batchId = crypto.randomUUID();
       let progress: ImportProgress = { done: 0, total: state.files.length, imported: 0, skipped: 0, failed: 0 };
@@ -562,6 +631,8 @@ function ImportFlow(props: {
         source: state.source,
         files: state.files,
         camera,
+        folder: placeFolder(props.places, place, camera),
+        place,
         existing: props.photos,
         batchId,
         newRecord: props.newRecord,
@@ -572,7 +643,7 @@ function ImportFlow(props: {
         },
       });
       props.onImported(records, cameraId);
-      setState({ step: 'done', cameraId, progress });
+      setState({ step: 'done', cameraId, place, progress });
     };
     return (
       <div className="import-step">
@@ -584,7 +655,7 @@ function ImportFlow(props: {
           {props.cameras.map((c) => (
             <li key={c.id}>
               <label className="check">
-                <input type="radio" name="camera" checked={state.cameraId === c.id} onChange={() => setState({ ...state, cameraId: c.id })} />
+                <input type="radio" name="camera" checked={state.cameraId === c.id} onChange={() => setState({ ...state, cameraId: c.id, place: null })} />
                 <span>{c.name}</span>
               </label>
             </li>
@@ -597,6 +668,13 @@ function ImportFlow(props: {
             Pin it on the map
           </button>
         </div>
+        {where && (
+          <div className="import-place">
+            <h3>Where were they taken?</h3>
+            <p className="hint">Photos are filed by place first, then camera. This is where the camera is on the map; change it if these came from somewhere else.</p>
+            <PlaceSelect place={where} choices={props.choices} onChange={(place) => setState({ ...state, place })} />
+          </div>
+        )}
         <div className="import-actions">
           <button className="primary" disabled={!state.cameraId} onClick={() => state.cameraId && void startSort(state.cameraId)}>
             3. Start sort
@@ -631,7 +709,7 @@ function ImportFlow(props: {
         <Icon name="check" size={20} /> Done
       </h3>
       <p>
-        Filed <strong>{p.imported}</strong> photo{p.imported === 1 ? '' : 's'} under {name}, each stamped with the camera's location.
+        Filed <strong>{p.imported}</strong> photo{p.imported === 1 ? '' : 's'} under {placeLabel(props.places, state.place)} › {name}, each stamped with the camera's location.
         {p.skipped ? ` Skipped ${p.skipped} already in the library.` : ''}
         {p.failed ? ` ${p.failed} couldn't be read.` : ''}
       </p>
@@ -641,6 +719,88 @@ function ImportFlow(props: {
         </button>
         <button onClick={() => setState({ step: 'pick' })}>Import another card</button>
       </div>
+    </div>
+  );
+}
+
+function countText(c: Counts): string {
+  return c.total ? `${c.total}${c.fresh ? ` · ${c.fresh} new` : ''}` : 'no photos';
+}
+
+function PlaceRow(props: { label: string; counts: Counts; depth: number; filter: PlaceFilter; current: PlaceFilter; onPick(filter: PlaceFilter): void }) {
+  const f = props.filter;
+  const c = props.current;
+  const selected = f.property === c.property && f.spot === c.spot && f.cameraId === c.cameraId;
+  return (
+    <li className={`depth-${props.depth}`}>
+      <button className={`row${selected ? ' selected' : ''}`} onClick={() => props.onPick(f)}>
+        <span className="row-title">{props.label}</span>
+        <span className="row-detail">{countText(props.counts)}</span>
+      </button>
+    </li>
+  );
+}
+
+// One property, its sections and areas, and the cameras in each.
+function PlaceGroup(props: { property: PropertyNode; cameraName(id: string): string; current: PlaceFilter; onPick(filter: PlaceFilter): void }) {
+  const { property } = props;
+  const spots = [...property.spots.values()].sort((a, b) => (a.name === null ? 1 : b.name === null ? -1 : a.name.localeCompare(b.name)));
+  return (
+    <>
+      <PlaceRow label={property.name} counts={property} depth={0} filter={{ property: property.key }} current={props.current} onPick={props.onPick} />
+      {spots.map((spot) => {
+        const at = { property: property.key, spot: spot.key };
+        return [
+          <PlaceRow
+            key={spot.key}
+            label={spot.name ?? (property.key === 'none' ? 'Anywhere' : 'Rest of the property')}
+            counts={spot}
+            depth={1}
+            filter={at}
+            current={props.current}
+            onPick={props.onPick}
+          />,
+          ...[...spot.cameras.entries()].map(([id, counts]) => (
+            <PlaceRow key={spot.key + ':' + id} label={props.cameraName(id)} counts={counts} depth={2} filter={{ ...at, cameraId: id }} current={props.current} onPick={props.onPick} />
+          )),
+        ];
+      })}
+    </>
+  );
+}
+
+function PlaceSelect({ place, choices, onChange }: { place: PhotoPlace; choices: { place: PhotoPlace; label: string }[]; onChange(place: PhotoPlace): void }) {
+  const value = placeValue(place);
+  const known = choices.some((c) => placeValue(c.place) === value);
+  return (
+    <select className="place-select" value={value} onChange={(e) => onChange(parsePlaceValue(e.target.value))}>
+      {!known && <option value={value}>(a place that was removed)</option>}
+      {choices.map((c) => (
+        <option key={placeValue(c.place)} value={placeValue(c.place)}>
+          {c.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// Where a photo was taken, with a way to set the same for the rest of its import.
+function PlacePicker(props: {
+  photo: CameraPhoto;
+  place: PhotoPlace;
+  choices: { place: PhotoPlace; label: string }[];
+  others: CameraPhoto[];
+  onChange(photos: CameraPhoto[], place: PhotoPlace): void;
+}) {
+  return (
+    <div className="photo-place">
+      <span className="hint">Where it was taken</span>
+      <PlaceSelect place={props.place} choices={props.choices} onChange={(place) => props.onChange([props.photo], place)} />
+      {props.others.length > 0 && (
+        <button className="link-button" onClick={() => props.onChange(props.others, props.place)}>
+          Same for the other {props.others.length} from this import
+        </button>
+      )}
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
+import { placeLabel, placeOf, type Places } from '@/lib/photoPlaces';
 import { isPlotType, pinTypeInfo, isHuntingSpot } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/huntStats';
-import { sightingSummary } from '@/lib/reports';
+import { huntPlaceName, sightingSummary } from '@/lib/reports';
 import { areaTypeInfo } from '@/lib/styles';
 import { formatDistance, lineLengthM, TRAIL_KINDS } from '@/lib/trails';
 import type { CameraPhoto, HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
@@ -105,7 +106,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
     .filter((d) => d.deer > 0)
     .sort((a, b) => b.deer - a.deer || b.bucks - a.bucks)[0];
   const bestDayStands = bestDay
-    ? [...new Set(bestDay.list.map((r) => props.markers.find((m) => m.id === r.standId)?.name ?? 'No stand'))].join(', ')
+    ? [...new Set(bestDay.list.map((r) => huntPlaceName(r, props.markers)))].join(', ')
     : '';
   const half = (morning: boolean) => {
     const list = seasonReports.filter((r) => new Date(r.start).getHours() < 12 === morning);
@@ -224,7 +225,11 @@ export function SummaryPanel(props: SummaryPanelProps) {
         </section>
       )}
 
-      <CameraStats photos={props.photos.filter((p) => markers.some((m) => m.id === p.cameraId))} cameras={markers.filter((m) => m.type === 'camera')} />
+      <CameraStats
+        photos={props.photos.filter((p) => markers.some((m) => m.id === p.cameraId))}
+        cameras={markers.filter((m) => m.type === 'camera')}
+        places={{ properties: props.properties, sections: props.sections, areas: props.areas }}
+      />
 
       <section className="sidebar-section">
         <h2 className="group-head">
@@ -347,7 +352,7 @@ function RecentHunts({ reports, markers }: { reports: HuntReport[]; markers: Map
   const weekStart = todayStart - 6 * DAY_MS;
   const today = reports.filter((r) => Date.parse(r.start) >= todayStart).sort((a, b) => a.start.localeCompare(b.start));
   const week = reports.filter((r) => Date.parse(r.start) >= weekStart);
-  const standName = (r: HuntReport) => markers.find((m) => m.id === r.standId)?.name ?? 'No stand';
+  const standName = (r: HuntReport) => huntPlaceName(r, markers);
   const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const totals = (list: HuntReport[]) => {
     const deer = deerCount(list);
@@ -404,7 +409,7 @@ function RecentHunts({ reports, markers }: { reports: HuntReport[]; markers: Map
 }
 
 // Trail camera photos: how many, from where, and what's in them.
-function CameraStats({ photos, cameras }: { photos: CameraPhoto[]; cameras: MapMarker[] }) {
+function CameraStats({ photos, cameras, places }: { photos: CameraPhoto[]; cameras: MapMarker[]; places: Places }) {
   if (cameras.length === 0 && photos.length === 0) return null;
   const count = (list: CameraPhoto[], test: (p: CameraPhoto) => boolean) => list.filter(test).length;
   const animals = count(photos, (p) => p.status === 'animal');
@@ -418,6 +423,13 @@ function CameraStats({ photos, cameras }: { photos: CameraPhoto[]; cameras: MapM
     months.set(key, (months.get(key) ?? 0) + 1);
   }
   const recentMonths = [...months.entries()].sort().slice(-6);
+  // Photos by where they were taken, most first.
+  const byPlace = new Map<string, CameraPhoto[]>();
+  for (const p of photos) {
+    const label = placeLabel(places, placeOf(p, places, cameras));
+    byPlace.set(label, [...(byPlace.get(label) ?? []), p]);
+  }
+  const placeRows = [...byPlace.entries()].sort((a, b) => b[1].length - a[1].length);
   const most = Math.max(1, ...recentMonths.map(([, n]) => n));
   return (
     <section className="sidebar-section">
@@ -428,6 +440,25 @@ function CameraStats({ photos, cameras }: { photos: CameraPhoto[]; cameras: MapM
         <Tile value={bucks.toLocaleString()} label="buck photos" />
         <Tile value={empty.toLocaleString()} label="empty" />
       </div>
+      {placeRows.length > 0 && (
+        <>
+          <h3 className="summary-subhead">By place</h3>
+          <ul className="summary-list">
+            {placeRows.map(([label, list]) => (
+              <li key={label}>
+                <span>{label}</span>
+                <strong>
+                  {list.length.toLocaleString()}{' '}
+                  <span className="muted">
+                    · {count(list, (p) => p.status === 'animal')} with animals · {count(list, (p) => p.kinds.includes('buck'))} bucks
+                  </span>
+                </strong>
+              </li>
+            ))}
+          </ul>
+          <h3 className="summary-subhead">By camera</h3>
+        </>
+      )}
       <ul className="summary-list">
         {cameras.map((c) => {
           const list = photos.filter((p) => p.cameraId === c.id);

@@ -71,6 +71,21 @@ export function reportWeather(hour: ForecastHour, pressure?: Pressure): ReportWe
 }
 
 // "2 bucks, 3 does, 1 turkey" or "Nothing seen".
+// Where a hunt was: its stand, else the new spot marked on the phone.
+export function huntPosition(report: Pick<HuntReport, 'standId' | 'spot'>, stands: { id: string; lat: number; lng: number }[]): [number, number] | null {
+  const stand = stands.find((s) => s.id === report.standId);
+  if (stand) return [stand.lng, stand.lat];
+  return report.spot ? [report.spot.lng, report.spot.lat] : null;
+}
+
+// What to call where a hunt was: "Ridge Stand", "Big oak (new spot)", "New spot" or "No stand".
+export function huntPlaceName(report: Pick<HuntReport, 'standId' | 'spot'>, stands: { id: string; name: string }[]): string {
+  const stand = stands.find((s) => s.id === report.standId);
+  if (stand) return stand.name;
+  if (report.spot) return report.spot.name ? `${report.spot.name} (new spot)` : 'New spot';
+  return 'No stand';
+}
+
 export function sightingSummary(report: Pick<HuntReport, 'sightings'>): string {
   // Totals per kind, except "other" animals, which are listed by what they were.
   const totals = new Map<string, { kind: DeerKind; count: number; notes: string | null }>();

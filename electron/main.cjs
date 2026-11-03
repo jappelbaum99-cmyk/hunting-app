@@ -255,6 +255,41 @@ async function servePhoto(request) {
   }
 }
 
+// Updates: asks GitHub (free, no account) whether a newer installer was published.
+// Installing stays a normal download, since an unsigned app can't update itself quietly.
+const RELEASES = 'https://github.com/jappelbaum99-cmyk/hunting-app/releases';
+const LATEST_RELEASE_API = 'https://api.github.com/repos/jappelbaum99-cmyk/hunting-app/releases/latest';
+
+function versionParts(version) {
+  return String(version).replace(/^v/, '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+}
+
+function isNewer(latest, current) {
+  const a = versionParts(latest);
+  const b = versionParts(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
+
+async function checkForUpdate() {
+  const current = app.getVersion();
+  const response = await net.fetch(LATEST_RELEASE_API, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Hunting-Hub/${current}` },
+  });
+  if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+  const release = await response.json();
+  const latest = String(release.tag_name ?? '').replace(/^v/, '');
+  return {
+    current,
+    latest,
+    available: latest !== '' && isNewer(latest, current),
+    publishedAt: release.published_at ?? null,
+    notes: typeof release.body === 'string' ? release.body.slice(0, 2000) : '',
+  };
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -312,6 +347,10 @@ app.whenReady().then(() => {
     }),
   );
   ipcMain.handle('hub:detectPhoto', (_event, rel) => detector.detect(inside(libraryRoot, rel)));
+  ipcMain.handle('hub:checkForUpdate', checkForUpdate);
+  // Opens the newest installer download in the browser; the person runs it over the old version.
+  ipcMain.handle('hub:downloadUpdate', () => shell.openExternal(`${RELEASES}/latest/download/Hunting-Hub-Setup.exe`));
+  ipcMain.handle('hub:openReleaseNotes', () => shell.openExternal(`${RELEASES}/latest`));
   ipcMain.handle('hub:openLibraryFolder', (_event, rel) => shell.openPath(rel ? inside(libraryRoot, rel) : libraryRoot));
   createWindow();
 });

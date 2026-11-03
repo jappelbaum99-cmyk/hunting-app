@@ -7,7 +7,8 @@ import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { FIELD_PAGE_URL } from '@/lib/site';
-import { formatDistance, lineLengthM, trailKindInfo } from '@/lib/trails';
+import { huntPlaceName } from '@/lib/reports';
+import { formatDistance, lineLengthM, metersBetween, trailKindInfo } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
@@ -224,24 +225,44 @@ export function Sidebar(props: SidebarProps) {
             )}
             {props.newFieldPins.length > 0 && (
               <ul>
-                {props.newFieldPins.map((p) => (
-                  <li key={p.id} className="field-pin-row">
-                    <button className="row" onClick={() => props.onFieldPin(p.id, 'show')}>
-                      <span className="swatch" style={{ background: pinTypeInfo(p.type, props.settings.customPinTypes).color }} />
-                      <span className="row-title">
-                        {pinTypeInfo(p.type, props.settings.customPinTypes).label}
-                        {p.note ? ` · ${p.note}` : ''}
-                      </span>
-                      <span className="row-detail">{p.accuracyM !== null ? `±${p.accuracyM} m` : ''}</span>
-                    </button>
-                    <button className="mini primary" onClick={() => props.onFieldPin(p.id, 'add')} title="Add to the map">
-                      Add
-                    </button>
-                    <button className="mini" onClick={() => props.onFieldPin(p.id, 'dismiss')} title="Dismiss">
-                      <Icon name="close" size={16} />
-                    </button>
-                  </li>
-                ))}
+                {props.newFieldPins.map((p) => {
+                  const stand = p.moveStandId ? markers.find((m) => m.id === p.moveStandId) : undefined;
+                  return (
+                    <li key={p.id} className="field-pin-row">
+                      <button className="row" onClick={() => props.onFieldPin(p.id, 'show')}>
+                        <span className="swatch" style={{ background: pinTypeInfo(stand?.type ?? p.type, props.settings.customPinTypes).color }} />
+                        {stand ? (
+                          <span className="row-title">
+                            New spot for {stand.name}
+                            {p.loggedBy ? ` · ${p.loggedBy}` : ''}
+                          </span>
+                        ) : (
+                          <span className="row-title">
+                            {pinTypeInfo(p.type, props.settings.customPinTypes).label}
+                            {p.note ? ` · ${p.note}` : ''}
+                          </span>
+                        )}
+                        <span className="row-detail">
+                          {stand
+                            ? `${Math.round(metersBetween([stand.lng, stand.lat], [p.lng, p.lat]) * 1.09361)} yd away`
+                            : p.accuracyM !== null
+                              ? `±${p.accuracyM} m`
+                              : ''}
+                        </span>
+                      </button>
+                      <button
+                        className="mini primary"
+                        onClick={() => props.onFieldPin(p.id, 'add')}
+                        title={stand ? `Move ${stand.name} to this spot` : 'Add to the map'}
+                      >
+                        {stand ? 'Move' : 'Add'}
+                      </button>
+                      <button className="mini" onClick={() => props.onFieldPin(p.id, 'dismiss')} title="Dismiss">
+                        <Icon name="close" size={16} />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </PhoneDrop>
@@ -441,7 +462,7 @@ function HuntReports(props: {
     }
   };
 
-  const standName = (r: HuntReport) => markers.find((m) => m.id === r.standId)?.name ?? 'No stand';
+  const standName = (r: HuntReport) => huntPlaceName(r, markers);
   const live = reports.filter((r) => isLive(r)).sort((a, b) => a.start.localeCompare(b.start));
   const days = huntsByDay(reports.filter((r) => !isLive(r)));
   const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);

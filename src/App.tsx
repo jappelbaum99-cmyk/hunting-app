@@ -1,5 +1,5 @@
 import type { Position } from 'geojson';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
@@ -26,17 +26,18 @@ import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { isHuntingSpot, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
-import { lineBounds, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
+import { lineBounds, metersBetween, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
-import { kindInfo, reportWeather } from '@/lib/reports';
+import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
+import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
-import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type OverlayView, type SightingView } from '@/map/MapView';
+import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
 import type { AreaGeometry, AreaType, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type EditTarget = 'property' | 'section' | 'area' | 'trail';
@@ -114,6 +115,9 @@ function forecastLocation(property: Property | null, properties: Property[], mar
 
 export function App() {
   const hub = useHubData();
+  const update = useUpdateCheck();
+  // Properties, sections and areas, for filing trail camera photos by place.
+  const photoPlaces = useMemo(() => ({ properties: hub.properties, sections: hub.sections, areas: hub.areas }), [hub.properties, hub.sections, hub.areas]);
   // Stands, blinds, platforms, and custom pin types marked as hunting locations.
   const isStandMarker = (m: MapMarker) => isHuntingSpot(m.type, hub.settings.customPinTypes);
   const mapRef = useRef<MapViewHandle>(null);
@@ -373,11 +377,8 @@ export function App() {
     }
   };
 
-  // Where a report's weather is looked up: its stand, else the first property.
-  const reportLocation = (report: HuntReport): [number, number] => {
-    const stand = hub.markers.find((m) => m.id === report.standId);
-    return stand ? [stand.lng, stand.lat] : forecastLocation(null, hub.properties, hub.markers);
-  };
+  // Where a report's weather is looked up: its stand or new spot, else the first property.
+  const reportLocation = (report: HuntReport): [number, number] => huntPosition(report, hub.markers) ?? forecastLocation(null, hub.properties, hub.markers);
 
   const fillWeather = async (report: HuntReport) => {
     setWeatherStatus((s) => ({ ...s, [report.id]: 'loading' }));
@@ -581,10 +582,23 @@ export function App() {
   const handleFieldPin = (id: string, action: 'show' | 'add' | 'dismiss') => {
     const pin = hub.fieldPins.find((p) => p.id === id);
     if (!pin) return;
+    const moving = pin.moveStandId ? (hub.markers.find((m) => m.id === pin.moveStandId) ?? null) : null;
     if (action === 'show') {
       mapRef.current?.flyTo(pin.lng, pin.lat);
     } else if (action === 'dismiss') {
       hub.saveFieldPin({ ...pin, status: 'dismissed' });
+    } else if (moving) {
+      // A stand moved in the field: same stand and history, new spot.
+      hub.saveMarker({
+        ...moving,
+        lng: pin.lng,
+        lat: pin.lat,
+        propertyId: propertyContaining(hub.properties, [pin.lng, pin.lat])?.id ?? moving.propertyId,
+        updatedAt: new Date().toISOString(),
+      });
+      hub.saveFieldPin({ ...pin, status: 'added', markerId: moving.id });
+      setSelection({ kind: 'marker', id: moving.id });
+      zoomTo({ kind: 'marker', id: moving.id });
     } else {
       const marker: MapMarker = {
         ...newRecordFields(),
@@ -932,7 +946,8 @@ export function App() {
   const sightingViews: SightingView[] = [];
   if (layers.sightings) {
     for (const report of hub.reports) {
-      const stand = hub.markers.find((m) => m.id === report.standId);
+      const position = huntPosition(report, hub.markers);
+      const stand = position ? { lng: position[0], lat: position[1] } : null;
       const unplaced = report.sightings.filter((s) => s.lat === null && !s.fromStand);
       for (const s of report.sightings) {
         let at: [number, number] | null = s.lat !== null && s.lng !== null ? [s.lng, s.lat] : null;
@@ -947,6 +962,49 @@ export function App() {
       }
     }
   }
+
+  // New spots hunted from (no stand), with hunts within 20 m of each other counted as one spot.
+  const SAME_SPOT_M = 20;
+  const spotGroups: { at: [number, number]; reports: HuntReport[] }[] = [];
+  for (const report of hub.reports) {
+    if (!report.spot || report.standId) continue;
+    const at: [number, number] = [report.spot.lng, report.spot.lat];
+    const group = spotGroups.find((g) => metersBetween(g.at, at) < SAME_SPOT_M);
+    if (group) group.reports.push(report);
+    else spotGroups.push({ at, reports: [report] });
+  }
+  const huntSpotViews: HuntSpotView[] = layers.huntSpots
+    ? spotGroups.map((g) => {
+        const newest = [...g.reports].sort((a, b) => b.start.localeCompare(a.start))[0];
+        const named = g.reports.find((r) => r.spot?.name)?.spot?.name;
+        return { id: g.reports[0].id, at: g.at, name: named ?? 'New spot', hunts: g.reports.length, reportId: newest.id };
+      })
+    : [];
+
+  // A new spot kept for good: a hunting location there, with every hunt from that spot moved onto it.
+  const makeStandFromSpot = (report: HuntReport, type: MarkerType) => {
+    if (!report.spot) return;
+    const at: [number, number] = [report.spot.lng, report.spot.lat];
+    const info = pinTypeInfo(type, hub.settings.customPinTypes);
+    const atSpot = hub.reports.filter((r) => r.spot && !r.standId && metersBetween([r.spot.lng, r.spot.lat], at) < SAME_SPOT_M);
+    const named = report.spot.name ?? atSpot.find((r) => r.spot?.name)?.spot?.name ?? null;
+    const marker: MapMarker = {
+      ...newRecordFields(),
+      propertyId: propertyContaining(hub.properties, at)?.id ?? null,
+      type,
+      name: named ?? nextName(info.label, hub.markers),
+      lng: at[0],
+      lat: at[1],
+      notes: null,
+      goodWinds: [],
+    };
+    hub.saveMarker(marker);
+    for (const r of atSpot) {
+      hub.saveReport({ ...r, standId: marker.id, propertyId: r.propertyId ?? marker.propertyId, updatedAt: new Date().toISOString() });
+    }
+    setSelection({ kind: 'marker', id: marker.id });
+    setNotice(`${marker.name} added to Hunting Locations.`);
+  };
 
   // Lines a new shape can snap onto: property lines always, plus section and
   // area edges when drawing a section, area or trail, so neighbors share an edge.
@@ -1019,6 +1077,7 @@ export function App() {
               onClose={() => setSettingsOpen(false)}
               onImportPhone={(file) => void importPhone(file)}
               onSendStands={sendStandsToPhone}
+              update={update}
             />
           ) : summaryOpen ? (
             <SummaryPanel
@@ -1093,6 +1152,7 @@ export function App() {
           standRatings={standRatings}
           scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
           sightings={sightingViews}
+          huntSpots={huntSpotViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
           interaction={mode.kind === 'placeSighting' ? 'place' : mode.kind}
@@ -1129,6 +1189,7 @@ export function App() {
               key={cameraFocus ?? 'all'}
               photos={hub.photos}
               cameras={hub.markers.filter((m) => m.type === 'camera')}
+              places={photoPlaces}
               library={hub.settings.photoLibrary ?? null}
               onSetLibrary={(dir) => hub.saveSettings({ ...hub.settings, photoLibrary: dir })}
               onSavePhotos={hub.savePhotos}
@@ -1179,6 +1240,7 @@ export function App() {
             minPoints={mode.kind === 'draw' && mode.target === 'trail' ? 2 : 3}
           />
         )}
+        <UpdateBanner info={update} />
         {(notice || hub.saveError) && (
           <div className={`toast${hub.saveError ? ' error' : ''}`}>{hub.saveError ? `Save failed: ${hub.saveError}` : notice}</div>
         )}
@@ -1215,6 +1277,8 @@ export function App() {
           weatherStatus={weatherStatus[record.id] ?? 'idle'}
           onChange={hub.saveReport}
           onFillWeather={() => void fillWeather(record)}
+          spotTypes={pinTypeList(hub.settings.customPinTypes).filter((t) => t.huntingSpot)}
+          onMakeStand={(type) => makeStandFromSpot(record, type)}
           onPlaceSighting={(sightingId) => setMode({ kind: 'placeSighting', reportId: record.id, sightingId })}
           onDelete={() => {
             hub.deleteReport(record.id);

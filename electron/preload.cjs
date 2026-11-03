@@ -28,4 +28,7 @@ contextBridge.exposeInMainWorld('hub', {
     return () => ipcRenderer.removeListener('hub:detectorProgress', listener);
   },
   detectPhoto: (rel) => ipcRenderer.invoke('hub:detectPhoto', rel),
+  checkForUpdate: () => ipcRenderer.invoke('hub:checkForUpdate'),
+  downloadUpdate: () => ipcRenderer.invoke('hub:downloadUpdate'),
+  openReleaseNotes: () => ipcRenderer.invoke('hub:openReleaseNotes'),
 });

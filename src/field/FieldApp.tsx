@@ -24,8 +24,8 @@ import { WherePicker } from '@/field/WherePicker';
 import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
-import { DEER_KINDS, HEADINGS, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
-import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, MarkerType, Sighting } from '@/types/models';
+import { DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
+import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'send';
 
@@ -81,6 +81,8 @@ function clock(iso: string): string {
 export function FieldApp() {
   const [data, setData] = useState<FieldData>(loadFieldData);
   const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : 'pin');
+  // Moving stands is off each time the page opens, so a stand can't be moved by a stray tap.
+  const [movingStands, setMovingStands] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => saveFieldData(data), [data]);
@@ -90,8 +92,8 @@ export function FieldApp() {
     return () => clearTimeout(t);
   }, [message]);
 
-  // GPS runs on the Pin and Hunt tabs, and the whole time a walk is recorded.
-  const gps = useGps(tab === 'pin' || tab === 'hunt' || data.activeWalk !== null);
+  // GPS runs on the Pin and Hunt tabs, while moving stands, and the whole time a walk is recorded.
+  const gps = useGps(tab === 'pin' || tab === 'hunt' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
   const sync = useCampSync(data, setData);
 
   // While walking, add a point every ~8 m, skipping fixes rougher than 30 m.
@@ -127,7 +129,7 @@ export function FieldApp() {
   const campHunts = data.camp ? data.campHunts.filter((r) => !mine.has(r.id)) : [];
   // Weather for the stand being hunted, else the first stand, else where the phone is.
   const activeStand = data.stands.find((s) => s.id === active?.standId);
-  const weather = useFieldWeather(activeStand ?? data.stands[0] ?? gps.fix);
+  const weather = useFieldWeather(activeStand ?? active?.spot ?? data.stands[0] ?? gps.fix);
 
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
@@ -187,9 +189,10 @@ export function FieldApp() {
             data={data}
             active={active}
             fix={gps.fix}
-            onStart={(standId) => {
+            onStart={(standId, spot) => {
               const report: HuntReport = record({
                 standId,
+                spot,
                 propertyId: null,
                 start: new Date().toISOString(),
                 end: null,
@@ -210,7 +213,18 @@ export function FieldApp() {
             }}
           />
         )}
-        {tab === 'stands' && <StandsTab data={data} reports={[...data.reports, ...campHunts]} />}
+        {tab === 'stands' && (
+          <StandsTab
+            data={data}
+            reports={[...data.reports, ...campHunts]}
+            moving={movingStands}
+            onMoving={setMovingStands}
+            fix={gps.fix}
+            gpsError={gps.error}
+            onMove={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))}
+            onMessage={setMessage}
+          />
+        )}
         {tab === 'send' && <SendTab data={data} sync={sync} onData={setData} onMessage={setMessage} />}
       </main>
 
@@ -351,21 +365,27 @@ function WeatherNow({ forecast, offline }: { forecast: Forecast | null; offline:
   );
 }
 
+// The hunt picker's choice for a spot that isn't a stand.
+const NEW_SPOT = 'new-spot';
+
 function HuntTab(props: {
   data: FieldData;
   active: HuntReport | null;
   fix: Fix | null;
   // Hunts from the rest of the camp (not this phone's own).
   campHunts: HuntReport[];
-  onStart(standId: string | null): void;
+  onStart(standId: string | null, spot: HuntSpot | null): void;
   onChange(report: HuntReport): void;
   onEnd(report: HuntReport): void;
 }) {
   const { data, active, campHunts } = props;
   const [standId, setStandId] = useState<string>('');
+  const [spotName, setSpotName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const standName = (id: string | null) => data.stands.find((s) => s.id === id)?.name ?? 'No stand';
+  const placeName = (r: HuntReport) => huntPlaceName(r, data.stands);
+  const newSpot = standId === NEW_SPOT;
+  const fresh = props.fix && Date.now() - props.fix.at < 60_000 ? props.fix : null;
 
   // Suggest the closest stand from GPS.
   useEffect(() => {
@@ -380,7 +400,7 @@ function HuntTab(props: {
       <QuickLog
         key={active.id}
         report={active}
-        standName={standName(active.standId)}
+        standName={placeName(active)}
         onChange={props.onChange}
         doneLabel="Done hunting"
         onDone={() => props.onEnd(active)}
@@ -394,7 +414,7 @@ function HuntTab(props: {
       <QuickLog
         key={editing.id}
         report={editing}
-        standName={standName(editing.standId)}
+        standName={placeName(editing)}
         past
         onChange={props.onChange}
         doneLabel="Done editing"
@@ -414,19 +434,40 @@ function HuntTab(props: {
         <h2>Start a hunt</h2>
         <select value={standId} onChange={(e) => setStandId(e.target.value)}>
           <option value="">No stand / walking</option>
+          <option value={NEW_SPOT}>New spot (a tree, a climber…)</option>
           {data.stands.map((s) => (
             <option key={s.id} value={s.id}>
               {s.place ? `${s.name} · ${s.place}` : s.name}
             </option>
           ))}
         </select>
+        {newSpot && (
+          <>
+            <input type="text" placeholder="Name it (optional), e.g. big oak on the bench" value={spotName} onChange={(e) => setSpotName(e.target.value)} />
+            <p className="field-hint">
+              {fresh
+                ? `Uses where you are now (GPS ±${Math.round(fresh.accuracyM)} m). The hunt is kept like any other; the hub can make the spot a stand later.`
+                : 'Finding your location…'}
+            </p>
+          </>
+        )}
         {data.stands.length === 0 && (
           <p className="field-hint">
             {data.camp ? 'Stands show up here once the hub turns on camp sync.' : 'Join your camp (Camp tab) to pick a stand here.'}
           </p>
         )}
-        <button className="big-button" onClick={() => props.onStart(standId || null)}>
-          I'm in the stand
+        <button
+          className="big-button"
+          disabled={newSpot && !fresh}
+          onClick={() => {
+            if (!newSpot) return props.onStart(standId || null, null);
+            if (!fresh) return;
+            props.onStart(null, { lat: fresh.lat, lng: fresh.lng, accuracyM: Math.round(fresh.accuracyM), name: spotName.trim() || null });
+            setSpotName('');
+            setStandId('');
+          }}
+        >
+          {newSpot ? "I'm hunting here" : "I'm in the stand"}
         </button>
       </section>
 
@@ -438,7 +479,7 @@ function HuntTab(props: {
               <li key={r.id}>
                 <span className="live-dot" />
                 <span>
-                  {r.loggedBy ?? 'Someone'} · {standName(r.standId)}
+                  {r.loggedBy ?? 'Someone'} · {placeName(r)}
                 </span>
                 <span className="muted">since {clock(r.start)}</span>
               </li>
@@ -462,7 +503,7 @@ function HuntTab(props: {
                     <li key={r.id}>
                       <button className="hunt-row" onClick={() => setEditingId(r.id)}>
                         <span className="hunt-row-text">
-                          <strong>{standName(r.standId)}</strong>
+                          <strong>{placeName(r)}</strong>
                           <span className="muted">
                             {clock(r.start)} · {sightingSummary(r)}
                           </span>
@@ -475,7 +516,7 @@ function HuntTab(props: {
                   ) : (
                     <li key={r.id}>
                       <span className="hunt-row-text">
-                        <strong>{standName(r.standId)}</strong>
+                        <strong>{placeName(r)}</strong>
                         <span className="muted">
                           {clock(r.start)} · {r.loggedBy ?? 'Camp'} · {sightingSummary(r)}
                         </span>
@@ -751,8 +792,47 @@ function QuickLog(props: {
 }
 
 // Each stand with its Apple Maps button, plus what hunting it has produced.
-function StandsTab({ data, reports }: { data: FieldData; reports: HuntReport[] }) {
+function StandsTab({
+  data,
+  reports,
+  moving,
+  onMoving,
+  fix,
+  gpsError,
+  onMove,
+  onMessage,
+}: {
+  data: FieldData;
+  reports: HuntReport[];
+  moving: boolean;
+  onMoving(on: boolean): void;
+  fix: Fix | null;
+  gpsError: string | null;
+  onMove(pin: FieldPin): void;
+  onMessage(m: string): void;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const fresh = fix && Date.now() - fix.at < 60_000 ? fix : null;
+  // A new spot sent for a stand that the hub hasn't moved or turned down yet.
+  const pendingMove = (standId: string) => data.pins.find((p) => p.moveStandId === standId && !p.deletedAt && !data.handled[p.id]) ?? null;
+  const moveHere = (s: FieldData['stands'][number]) => {
+    if (!fresh) return;
+    const yards = Math.round(metersBetween([s.lng, s.lat], [fresh.lng, fresh.lat]) * 1.09361);
+    if (!window.confirm(`Send your spot as the new location for ${s.name}? That's ${yards} yd from where it is now. The hub moves it once someone there says OK.`)) return;
+    onMove(
+      record({
+        lat: fresh.lat,
+        lng: fresh.lng,
+        accuracyM: Math.round(fresh.accuracyM),
+        type: 'stand',
+        note: `New spot for ${s.name}`,
+        status: 'new' as const,
+        markerId: null,
+        moveStandId: s.id,
+      }),
+    );
+    onMessage(`New spot for ${s.name} saved (±${Math.round(fresh.accuracyM)} m).${data.camp ? ' It goes to the hub as soon as you have signal.' : ''}`);
+  };
   if (data.stands.length === 0) {
     return (
       <section className="field-card">
@@ -766,7 +846,20 @@ function StandsTab({ data, reports }: { data: FieldData; reports: HuntReport[] }
   return (
     <section className="field-card">
       <h2>Your stands</h2>
-      <p className="field-hint">Apple Maps uses your downloaded offline maps to guide you in with no signal. Tap a stand for its hunt history.</p>
+      <p className="field-hint">Apple Maps uses your downloaded offline maps to guide you in with no signal.</p>
+      <label className={`move-toggle${moving ? ' on' : ''}`}>
+        <input type="checkbox" checked={moving} onChange={(e) => onMoving(e.target.checked)} />
+        <span>
+          <strong>Move stands</strong>
+          <span className="field-hint">
+            {moving
+              ? fresh
+                ? `Stand at the stand's new spot, then tap its button. GPS ±${Math.round(fresh.accuracyM)} m.`
+                : (gpsError ?? 'Finding your location…')
+              : 'Turn on to send a new location for a stand you moved.'}
+          </span>
+        </span>
+      </label>
       <ul className="field-list stands">
         {data.stands.map((s) => {
           const standReports = reports.filter((r) => r.standId === s.id);
@@ -790,6 +883,12 @@ function StandsTab({ data, reports }: { data: FieldData; reports: HuntReport[] }
               <a className="maps-button" href={appleMapsUrl(s)}>
                 Open in Apple Maps
               </a>
+              {pendingMove(s.id) && <p className="field-hint move-pending">New spot saved. The hub moves the stand once someone there says OK.</p>}
+              {moving && (
+                <button className="move-button" disabled={!fresh} onClick={() => moveHere(s)}>
+                  Stand moved? Use my spot as its new location
+                </button>
+              )}
             </li>
           );
         })}

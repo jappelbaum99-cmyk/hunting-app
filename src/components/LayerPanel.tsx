@@ -119,6 +119,10 @@ export function LayerPanel({ layers, onChange }: LayerPanelProps) {
             <input type="checkbox" checked={layers.sightings} onChange={(e) => set({ sightings: e.target.checked })} />
             <span>Deer sightings from hunt reports</span>
           </label>
+          <label className="check">
+            <input type="checkbox" checked={layers.huntSpots} onChange={(e) => set({ huntSpots: e.target.checked })} />
+            <span>New spots hunted (not stands)</span>
+          </label>
         </div>
       )}
     </div>

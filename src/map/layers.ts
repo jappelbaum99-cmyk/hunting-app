@@ -17,6 +17,8 @@ export interface MapLayersState {
   contours: ContourInterval;
   // Deer sighting arrows from hunt reports.
   sightings: boolean;
+  // New spots hunted from (trees, climbers) that aren't stands.
+  huntSpots: boolean;
 }
 
 export const DEFAULT_LAYERS: MapLayersState = {
@@ -24,7 +26,8 @@ export const DEFAULT_LAYERS: MapLayersState = {
   lidarStyle: 'stretch',
   lidarBlend: 0,
   contours: 'off',
-  sightings: true,
+  sightings: false,
+  huntSpots: false,
 };
 
 export const BASE_MAPS: { id: BaseMapId; label: string }[] = [

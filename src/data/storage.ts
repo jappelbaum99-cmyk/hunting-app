@@ -29,6 +29,18 @@ interface HubBridge {
   downloadDetector(): Promise<{ name: string; ready: boolean; bytes: number }>;
   onDetectorProgress(callback: (received: number, total: number) => void): () => void;
   detectPhoto(rel: string): Promise<{ detections: PhotoDetection[]; ms: number; model: string }>;
+  // Updates: the newest published version on GitHub, and opening its download.
+  checkForUpdate(): Promise<UpdateInfo>;
+  downloadUpdate(): Promise<void>;
+  openReleaseNotes(): Promise<void>;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  publishedAt: string | null;
+  notes: string;
 }
 
 declare global {

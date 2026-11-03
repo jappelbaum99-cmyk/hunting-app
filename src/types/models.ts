@@ -249,8 +249,19 @@ export interface ReportWeather {
 }
 
 // One sit: where, when, the weather, and what was seen.
+// A spot hunted that isn't a stand (a tree to sit under, a climber): where
+// the phone was when the hunt started.
+export interface HuntSpot {
+  lat: number;
+  lng: number;
+  accuracyM: number | null;
+  name: string | null;
+}
+
 export interface HuntReport extends Syncable {
   standId: string | null;
+  // A new spot instead of a stand. Once a stand is made from it, standId wins.
+  spot?: HuntSpot | null;
   propertyId: string | null;
   start: string;
   end: string | null;
@@ -276,6 +287,9 @@ export interface FieldPin extends Syncable {
   markerId: string | null;
   // Who dropped it, from the phone's camp name.
   loggedBy?: string | null;
+  // Set when this is a new spot for a stand that was moved (the stand's id),
+  // rather than a new pin. The hub asks before moving the stand.
+  moveStandId?: string | null;
 }
 
 export type TrailKind = 'deer' | 'path' | 'road' | 'fence' | 'other';
@@ -320,11 +334,21 @@ export interface PhotoDetection {
   box: [number, number, number, number];
 }
 
+// Where a trail camera photo was taken (see src/lib/photoPlaces.ts). Any of these can be unknown.
+export interface PhotoPlace {
+  propertyId: string | null;
+  sectionId: string | null;
+  areaId: string | null;
+}
+
 // A trail camera photo, filed in the photo library (see src/lib/photos.ts).
 export interface CameraPhoto extends Syncable {
   // The camera's map pin.
   cameraId: string;
-  // Path inside the photo library, e.g. "Creek Cam/2026-11/2026-11-01_064512.jpg".
+  // The area or section it's filed under: set at import from where the camera
+  // was, and can be changed. Older photos have none and go by the camera.
+  place?: PhotoPlace;
+  // Path inside the photo library, e.g. "Smith Farm/North Ridge/Creek Cam/2026-11/2026-11-01_064512.jpg".
   file: string;
   originalName: string;
   originalSize: number;
