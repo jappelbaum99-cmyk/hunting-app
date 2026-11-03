@@ -64,7 +64,7 @@ async function loadImage(_event, name) {
 // fetch them again, and so a downloaded property works with no internet.
 // They live in the app's local folder, not Documents: Documents is synced to
 // OneDrive here, and tiles add up.
-const TILE_HOSTS = new Set(['basemap.nationalmap.gov', 'elevation.nationalmap.gov']);
+const TILE_HOSTS = new Set(['basemap.nationalmap.gov', 'elevation.nationalmap.gov', 'imagery.nationalmap.gov']);
 
 function tileDir() {
   return path.join(app.getPath('userData'), 'tile-cache');
@@ -86,7 +86,8 @@ async function getTile(_event, url, { cacheOnly = false } = {}) {
     if (error.code !== 'ENOENT') throw error;
   }
   if (cacheOnly) return null;
-  const response = await net.fetch(url);
+  // The close-up aerial server can hang on a busy day; give up after a minute so it can be retried.
+  const response = await net.fetch(url, { signal: AbortSignal.timeout(60_000) });
   const type = response.headers.get('content-type') ?? '';
   if (!response.ok || !type.startsWith('image/')) throw new Error(`USGS answered ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());

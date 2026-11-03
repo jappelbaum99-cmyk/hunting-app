@@ -2,8 +2,8 @@ Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapp
 
 ## Rules
 
-- Everything must be free: no paid APIs, no services that need a card. Map data comes from public USGS services (basemap.nationalmap.gov and elevation.nationalmap.gov).
-- The USGS elevation (lidar) server often answers 502/504. All USGS tiles go through the `retry://` protocol in `src/map/layers.ts`; keep it that way.
+- Everything must be free: no paid APIs, no services that need a card. Map data comes from public USGS services (basemap.nationalmap.gov, elevation.nationalmap.gov, and imagery.nationalmap.gov for close-up NAIP aerials past zoom 15).
+- The USGS elevation (lidar) server often answers 502/504. All USGS tiles go through the `retry://` protocol in `src/map/layers.ts` (3D terrain uses `retry-dem://`, the same retries plus re-coding the float elevation TIFF in `src/map/terrain.ts`); keep it that way.
 - Data lives in `Documents\Hunting Hub\hub-data.json`, written by `electron/main.cjs` (temp file + rename, previous copy kept as `.bak`). In a plain browser it falls back to localStorage, which is for development only.
 - Records use UUID ids, `createdAt`/`updatedAt`, and soft deletes (`deletedAt`) so they can sync with the phone site later. Never hard-delete records.
 - Map images (overlays) are files in `Documents\Hunting Hub\images`, written and read through the `hub:saveImage`/`hub:loadImage` IPC handlers, which only accept plain file names. In a plain browser they go to IndexedDB. Their placement is computed from control points in `src/lib/georef.ts`.

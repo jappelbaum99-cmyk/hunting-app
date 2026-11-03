@@ -3,10 +3,13 @@
 // Only property-sized areas: there's a hard cap, and no free-form boxes.
 import { boundsOf } from '@/lib/geo';
 import {
+  AERIAL_MIN_ZOOM,
+  AERIAL_TILE_URL,
   contourTiles,
   lidarStyleTiles,
   normalizeTileUrl,
   SATELLITE_TILE_URL,
+  TERRAIN_TILE_URL,
   TOPO_TILE_URL,
   type MapLayersState,
 } from '@/map/layers';
@@ -29,14 +32,16 @@ interface LayerPlan {
 }
 
 // Zooms match what the map asks for: 256 px imagery up to 16 (the USGS
-// limit), 512 px lidar tiles one level lower than the map zoom, up to 17.
+// limit), 512 px close-up aerial and lidar tiles one level lower than the map zoom, up to 17.
 function layerPlans(layers: MapLayersState): LayerPlan[] {
   const strip = (url: string) => url.replace(/^retry:\/\//, '');
   const plans: LayerPlan[] = [
     { label: 'Satellite', template: SATELLITE_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 30 },
+    { label: 'Satellite close-up', template: AERIAL_TILE_URL, minZoom: AERIAL_MIN_ZOOM - 1, maxZoom: 17, kbPerTile: 70 },
     { label: 'Topo', template: TOPO_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 25 },
     { label: 'Lidar', template: strip(lidarStyleTiles(layers.lidarStyle)[0]), minZoom: 10, maxZoom: 17, kbPerTile: 120 },
   ];
+  if (layers.terrain) plans.push({ label: '3D terrain', template: TERRAIN_TILE_URL, minZoom: 10, maxZoom: 15, kbPerTile: 260 });
   const contours = contourTiles(layers.contours);
   if (contours) plans.push({ label: 'Contours', template: strip(contours[0]), minZoom: 12, maxZoom: 17, kbPerTile: 15 });
   return plans;

@@ -609,6 +609,7 @@ export function MapView(props: MapViewProps) {
       center: camera.center,
       zoom: camera.zoom,
       maxZoom: 19,
+      maxPitch: 75,
       doubleClickZoom: false,
       attributionControl: { compact: true },
     });
@@ -709,6 +710,7 @@ export function MapView(props: MapViewProps) {
     if (!map || !readyRef.current) return;
     const show = (id: string, visible: boolean) => map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     show(LAYER_IDS.satellite, layers.base === 'satellite');
+    show(LAYER_IDS.aerial, layers.base === 'satellite');
     show(LAYER_IDS.topo, layers.base === 'topo');
     show(LAYER_IDS.lidar, layers.base === 'lidar');
     show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0);
@@ -724,6 +726,16 @@ export function MapView(props: MapViewProps) {
     if (contours && loadedTiles.current.contours !== layers.contours) {
       loadedTiles.current.contours = layers.contours;
       map.getSource<RasterTileSource>('contours')?.setTiles(contours);
+    }
+    // 3D: tilt in when turned on, back to flat when off.
+    if (map.getSource('terrain')) {
+      const current = map.getTerrain();
+      if (layers.terrain !== (current !== null)) map.easeTo({ pitch: layers.terrain ? 60 : 0, duration: 800 });
+      if (!layers.terrain) {
+        if (current) map.setTerrain(null);
+      } else if (current?.exaggeration !== layers.terrainHeight) {
+        map.setTerrain({ source: 'terrain', exaggeration: layers.terrainHeight });
+      }
     }
     // Contours come back as black lines; lighten them over satellite imagery.
     map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', layers.base === 'satellite' ? 0.85 : 0);

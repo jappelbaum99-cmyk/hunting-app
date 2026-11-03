@@ -116,6 +116,25 @@ export function LayerPanel({ layers, onChange }: LayerPanelProps) {
           {layers.contours !== 'off' && <p className="hint">Contours show when zoomed in close.</p>}
 
           <label className="check">
+            <input type="checkbox" checked={layers.terrain} onChange={(e) => set({ terrain: e.target.checked })} />
+            <span>3D terrain</span>
+          </label>
+          {layers.terrain && (
+            <label className="layer-row">
+              <span>Hill height {layers.terrainHeight}×</span>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.5}
+                value={layers.terrainHeight}
+                onChange={(e) => set({ terrainHeight: Number(e.target.value) })}
+              />
+            </label>
+          )}
+          {layers.terrain && <p className="hint">Tilt and turn with the right mouse button (or Ctrl + drag). Turn it off to go back to flat.</p>}
+
+          <label className="check">
             <input type="checkbox" checked={layers.sightings} onChange={(e) => set({ sightings: e.target.checked })} />
             <span>Deer sightings from hunt reports</span>
           </label>
