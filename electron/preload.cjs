@@ -30,5 +30,12 @@ contextBridge.exposeInMainWorld('hub', {
   detectPhoto: (rel) => ipcRenderer.invoke('hub:detectPhoto', rel),
   checkForUpdate: () => ipcRenderer.invoke('hub:checkForUpdate'),
   downloadUpdate: () => ipcRenderer.invoke('hub:downloadUpdate'),
+  downloadUpdateInBrowser: () => ipcRenderer.invoke('hub:downloadUpdateInBrowser'),
+  installUpdate: () => ipcRenderer.invoke('hub:installUpdate'),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('hub:updateStatus', listener);
+    return () => ipcRenderer.removeListener('hub:updateStatus', listener);
+  },
   openReleaseNotes: () => ipcRenderer.invoke('hub:openReleaseNotes'),
 });

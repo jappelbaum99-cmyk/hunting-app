@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { autoUpdater } = require('electron-updater');
 const detector = require('./detector.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -257,7 +258,8 @@ async function servePhoto(request) {
 }
 
 // Updates: asks GitHub (free, no account) whether a newer installer was published.
-// Installing stays a normal download, since an unsigned app can't update itself quietly.
+// The hub then downloads and installs it itself with electron-updater, which reads
+// latest.yml from the same release and checks the download against its fingerprint.
 const RELEASES = 'https://github.com/jappelbaum99-cmyk/hunting-app/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/jappelbaum99-cmyk/hunting-app/releases/latest';
 
@@ -289,6 +291,27 @@ async function checkForUpdate() {
     publishedAt: release.published_at ?? null,
     notes: typeof release.body === 'string' ? release.body.slice(0, 2000) : '',
   };
+}
+
+function sendUpdateStatus(status) {
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('hub:updateStatus', status);
+}
+
+function downloadInBrowser() {
+  return shell.openExternal(`${RELEASES}/latest/download/Hunting-Hub-Setup.exe`);
+}
+
+async function downloadUpdate() {
+  // A dev window has no installed copy to replace.
+  if (!app.isPackaged) return downloadInBrowser();
+  sendUpdateStatus({ state: 'downloading', percent: 0 });
+  try {
+    await autoUpdater.checkForUpdates();
+    await autoUpdater.downloadUpdate();
+  } catch (err) {
+    console.error('Update download failed', err);
+    sendUpdateStatus({ state: 'error' });
+  }
 }
 
 function createWindow() {
@@ -349,8 +372,13 @@ app.whenReady().then(() => {
   );
   ipcMain.handle('hub:detectPhoto', (_event, rel) => detector.detect(inside(libraryRoot, rel)));
   ipcMain.handle('hub:checkForUpdate', checkForUpdate);
-  // Opens the newest installer download in the browser; the person runs it over the old version.
-  ipcMain.handle('hub:downloadUpdate', () => shell.openExternal(`${RELEASES}/latest/download/Hunting-Hub-Setup.exe`));
+  autoUpdater.autoDownload = false;
+  autoUpdater.on('download-progress', (progress) => sendUpdateStatus({ state: 'downloading', percent: Math.round(progress.percent) }));
+  autoUpdater.on('update-downloaded', () => sendUpdateStatus({ state: 'ready' }));
+  ipcMain.handle('hub:downloadUpdate', downloadUpdate);
+  ipcMain.handle('hub:downloadUpdateInBrowser', downloadInBrowser);
+  // Installs without the setup screens, then reopens the hub.
+  ipcMain.handle('hub:installUpdate', () => autoUpdater.quitAndInstall(true, true));
   ipcMain.handle('hub:openReleaseNotes', () => shell.openExternal(`${RELEASES}/latest`));
   ipcMain.handle('hub:openLibraryFolder', (_event, rel) => shell.openPath(rel ? inside(libraryRoot, rel) : libraryRoot));
   createWindow();

@@ -1240,7 +1240,7 @@ export function App() {
             minPoints={mode.kind === 'draw' && mode.target === 'trail' ? 2 : 3}
           />
         )}
-        <UpdateBanner info={update} />
+        <UpdateBanner updater={update} />
         {(notice || hub.saveError) && (
           <div className={`toast${hub.saveError ? ' error' : ''}`}>{hub.saveError ? `Save failed: ${hub.saveError}` : notice}</div>
         )}

@@ -4,8 +4,7 @@ import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { Icon } from '@/components/Icon';
-import { UpdateSettings } from '@/components/UpdateBanner';
-import type { UpdateInfo } from '@/data/storage';
+import { UpdateSettings, type Updater } from '@/components/UpdateBanner';
 import { pinTypeList } from '@/lib/featureTypes';
 import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
@@ -26,7 +25,7 @@ interface SettingsPanelProps {
   // Phone files, for phones not in a camp (or with no signal at all).
   onImportPhone(file: File): void;
   onSendStands(): void;
-  update: UpdateInfo | null;
+  update: Updater;
 }
 
 // A pin drawn the same way as on the map, for previews.
@@ -313,7 +312,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
       </button>
 
       <SavedMaps />
-      <UpdateSettings info={update} />
+      <UpdateSettings updater={update} />
     </div>
   );
 }

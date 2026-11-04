@@ -29,11 +29,16 @@ interface HubBridge {
   downloadDetector(): Promise<{ name: string; ready: boolean; bytes: number }>;
   onDetectorProgress(callback: (received: number, total: number) => void): () => void;
   detectPhoto(rel: string): Promise<{ detections: PhotoDetection[]; ms: number; model: string }>;
-  // Updates: the newest published version on GitHub, and opening its download.
+  // Updates: the newest published version on GitHub, downloading and installing it.
   checkForUpdate(): Promise<UpdateInfo>;
   downloadUpdate(): Promise<void>;
+  downloadUpdateInBrowser(): Promise<void>;
+  installUpdate(): Promise<void>;
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void;
   openReleaseNotes(): Promise<void>;
 }
+
+export type UpdateStatus = { state: 'idle' | 'ready' | 'error' } | { state: 'downloading'; percent: number };
 
 export interface UpdateInfo {
   current: string;

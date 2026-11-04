@@ -11,7 +11,7 @@
     "build": "vite build",
     "start": "vite build && electron .",
     "typecheck": "tsc --noEmit",
-    "dist": "vite build && electron-builder --win",
+    "dist": "vite build && electron-builder --win --publish never",
     "icon": "electron scripts/make-icon.cjs",
     "build:site": "node scripts/build-site.mjs"
   },
@@ -63,12 +63,17 @@
       "shortcutName": "Hunting Hub",
       "artifactName": "Hunting-Hub-Setup.${ext}"
     },
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "jappelbaum99-cmyk",
+      "repo": "hunting-app"
+    },
     "asarUnpack": [
       "node_modules/onnxruntime-node/**"
     ]
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "onnxruntime-node": "^1.31.1"
   }
 }
