@@ -1,12 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Placeholder logo: a deer track on an orange-to-brown tile. Replace with your own. -->
+  <!-- A 10-point whitetail's head and rack over an Ozark ridgeline. The tile stays the first rect: make-icon.cjs squares it for the iPhone icon. -->
+  <rect width="64" height="64" rx="15" fill="#1c130d" />
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f08a24" />
-      <stop offset="1" stop-color="#8b5a2f" />
-    </linearGradient>
+    <clipPath id="tile"><path d="M15 0H49A15 15 0 0 1 64 15V49A15 15 0 0 1 49 64H15A15 15 0 0 1 0 49V15A15 15 0 0 1 15 0Z" /></clipPath>
+    <!-- One whitetail antler from the side: a beam curving forward and four tines, five points a side. -->
+    <g id="antler">
+      <path d="M151 60C164 52 170 40 159 32 149 26 137 27 127 35 137 31 149 31 156 36 164 42 160 52 150 56Z" />
+      <path d="M155 54Q147 51 144 43 150 47 157 50Z" />
+      <path d="M160 35Q163 28 162 21 166 29 164 39Z" />
+      <path d="M148 30Q150 23 148 16 153 23 153 31Z" />
+      <path d="M136 31Q138 25 136 18 141 25 141 30Z" />
+    </g>
   </defs>
-  <rect width="64" height="64" rx="15" fill="url(#bg)" />
-  <path d="M30 14c-6 1-11 12-11 23 0 7 3 11 7 11 3 0 4-3 4-7V14Z" fill="#1c130d" />
-  <path d="M34 14c6 1 11 12 11 23 0 7-3 11-7 11-3 0-4-3-4-7V14Z" fill="#1c130d" />
+  <g clip-path="url(#tile)">
+    <path d="M0 55 10 48 22 52M44 50 54 44 64 49" fill="none" stroke="#f08a24" stroke-width="2.2" stroke-linejoin="round" />
+    <g transform="translate(5 5) scale(.7) translate(-118 -14)">
+      <use href="#antler" transform="translate(-7 -2)" fill="#b5681c" stroke="#b5681c" stroke-width="1.2" stroke-linejoin="round" />
+      <path d="M126 75C125 72 127 70 130 69 136 67 143 62 149 58 153 56 157 57 159 60 164 70 172 84 186 92L202 130H158C154 116 148 98 146 88 141 84 136 82 131 82 128 81 126 78 126 75Z" fill="#f08a24" stroke="#1c130d" stroke-width="3" paint-order="stroke" />
+      <path d="M158 62C164 56 172 54 179 55 176 62 170 67 163 68Z" fill="#f08a24" stroke="#1c130d" stroke-width="2" paint-order="stroke" />
+      <use href="#antler" fill="#f08a24" stroke="#f08a24" stroke-width="1.2" stroke-linejoin="round" />
+      <circle cx="137" cy="68" r="1.8" fill="#1c130d" />
+    </g>
+  </g>
 </svg>

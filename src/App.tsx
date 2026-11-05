@@ -13,6 +13,7 @@ import { base64ToBytes, bytesToBase64, MAP_FILE_KIND, mapFileName, parseMapFile,
 import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { ActionBoardPanel } from '@/components/ActionBoardPanel';
 import { SummaryPanel } from '@/components/SummaryPanel';
 import { CameraPhotosInfo } from '@/components/CameraPhotosInfo';
 import { CameraView } from '@/components/CameraView';
@@ -24,7 +25,10 @@ import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { isHuntingSpot, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
+import { boardCards, placeNotes } from '@/lib/actionBoard';
+import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
+import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
+import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { lineBounds, metersBetween, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
@@ -32,13 +36,13 @@ import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
 import { newPlan } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
-import { ringsOf as ringsOfShapes } from '@/lib/snap';
+import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
-import type { AreaGeometry, AreaType, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type EditTarget = 'property' | 'section' | 'area' | 'trail';
 
@@ -143,6 +147,7 @@ export function App() {
   // Settings shows in the sidebar over the lists (and over the forecast, if open).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   // Trail Cameras: open, hidden while a new camera is pinned, and that camera once pinned.
   const [camerasOpen, setCamerasOpen] = useState(false);
   const [cameraPinName, setCameraPinName] = useState<string | null>(null);
@@ -263,15 +268,18 @@ export function App() {
       hub.saveProperty(record);
       setSelection({ kind: 'property', id: record.id });
     } else if (mode.target === 'section') {
+      const drawn = geometry.coordinates[0];
+      const ring = hub.settings.snapping.enabled ? followNearbyLines(drawn, ringsOfShapes(hub.properties.map((p) => p.boundary))) : drawn;
       const record = {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, draftPoints[0])?.id ?? null,
         name: nextName('Section', hub.sections),
-        geometry,
+        geometry: { ...geometry, coordinates: [ring] },
         notes: null,
       };
       hub.saveSection(record);
       setSelection({ kind: 'section', id: record.id });
+      if (ring !== drawn) setNotice(`${record.name} now follows the property line where you drew close to it.`);
     } else {
       const label = areaTypeInfo(mode.areaType, hub.settings).label;
       const record = {
@@ -398,8 +406,12 @@ export function App() {
 
   // Brings in hunts and pins from phones, by file or from camp. What the hub
   // added to them (weather, and whether a pin was added to the map) is kept.
-  const bringInFromPhones = (incomingReports: HuntReport[], incomingPins: FieldPin[], incomingTracks: FieldTrack[] = []) => {
+  const bringInFromPhones = (incomingReports: HuntReport[], incomingPins: FieldPin[], incomingTracks: FieldTrack[] = [], incomingNotes: FieldNote[] = []) => {
     const all = hub.allData;
+    // Notes become board cards, or entries in a food plot's log.
+    const placed = placeNotes(incomingNotes, all?.actionItems ?? [], all?.areas ?? [], (lng, lat) => propertyContaining(hub.properties, [lng, lat])?.id ?? null);
+    for (const area of placed.areas) hub.saveArea(area);
+    if (placed.items.length) hub.mergeRecords({ actionItems: placed.items });
     const reports = incomingReports.map((r) => {
       const have = all?.reports.find((h) => h.id === r.id);
       return {
@@ -417,7 +429,8 @@ export function App() {
       const have = all?.fieldTracks.find((h) => h.id === t.id);
       return have ? { ...t, status: have.status, trailId: have.trailId } : t;
     });
-    const result = hub.mergeFromPhone({ reports, fieldPins: pins, fieldTracks: tracks });
+    const merged = hub.mergeFromPhone({ reports, fieldPins: pins, fieldTracks: tracks });
+    const result = { ...merged, added: merged.added + placed.items.length + placed.areas.length };
     // The phone has no internet in the stand, so look up weather for its hunts now.
     for (const r of reports) {
       const have = all?.reports.find((h) => h.id === r.id);
@@ -430,6 +443,13 @@ export function App() {
   const campHandled: Record<string, 'added' | 'dismissed'> = {};
   for (const p of hub.allData?.fieldPins ?? []) if (p.status !== 'new') campHandled[p.id] = p.status;
   for (const t of hub.allData?.fieldTracks ?? []) if (t.status !== 'new') campHandled[t.id] = t.status;
+  // Phone notes the hub has taken in, onto the board or into a food plot's log.
+  for (const i of hub.allData?.actionItems ?? []) if (i.source === 'phone') campHandled[i.id] = i.deletedAt ? 'dismissed' : 'added';
+  for (const a of hub.allData?.areas ?? []) for (const e of a.log ?? []) if (e.fromPhone) campHandled[e.id] = 'added';
+  const campBoard = boardCards(hub.allData?.actionItems ?? []);
+  const campPlots = hub.areas
+    .filter((a) => isPlotType(a.type, areaTypeInfo(a.type, hub.settings).label))
+    .map((a) => ({ id: a.id, name: a.name, planted: a.planted ?? null }));
 
   // Camp sync: hunts and pins arrive from phones, and stands go out to them.
   const campStands = (hub.allData?.markers ?? []).filter(isStandMarker).map((m) => ({
@@ -442,32 +462,47 @@ export function App() {
     updatedAt: m.updatedAt,
     deletedAt: m.deletedAt,
   }));
-  const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins, tracks }) => {
-    const before = new Set([...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? []), ...(hub.allData?.fieldTracks ?? [])].map((r) => r.id));
+  const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins, tracks, notes }) => {
+    const before = new Set(
+      [...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? []), ...(hub.allData?.fieldTracks ?? []), ...(hub.allData?.actionItems ?? []), ...(hub.allData?.areas ?? []).flatMap((a) => a.log ?? [])].map((r) => r.id),
+    );
     const freshHunts = reports.filter((r) => !before.has(r.id));
     const freshPins = pins.filter((p) => !before.has(p.id));
     const freshWalks = tracks.filter((t) => !before.has(t.id));
-    bringInFromPhones(reports, pins, tracks);
-    if (freshHunts.length + freshPins.length + freshWalks.length === 0) return;
-    const who = [...new Set([...freshHunts, ...freshPins, ...freshWalks].map((r) => r.loggedBy).filter(Boolean))].join(', ');
+    const freshNotes = notes.filter((n) => !before.has(n.id) && !n.deletedAt);
+    bringInFromPhones(reports, pins, tracks, notes);
+    if (freshHunts.length + freshPins.length + freshWalks.length + freshNotes.length === 0) return;
+    const who = [...new Set([...freshHunts, ...freshPins, ...freshWalks, ...freshNotes].map((r) => r.loggedBy).filter(Boolean))].join(', ');
     const parts = [
       freshHunts.length ? `${freshHunts.length} hunt${freshHunts.length === 1 ? '' : 's'}` : '',
       freshPins.length ? `${freshPins.length} pin${freshPins.length === 1 ? '' : 's'}` : '',
       freshWalks.length ? `${freshWalks.length} walk${freshWalks.length === 1 ? '' : 's'}` : '',
+      freshNotes.length ? `${freshNotes.length} note${freshNotes.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
-  }, hub.settings.customPinTypes, campHandled);
+  }, hub.settings.customPinTypes, campHandled, campBoard, campPlots);
+
+  // Schedules coming due put a To do card on the Action Board.
+  useEffect(() => {
+    if (!hub.allData) return;
+    const places: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
+    const cards = dueCards(places, hub.allData.actionItems, hub.settings.scheduleLeadDays, todayDate());
+    if (cards.length === 0) return;
+    hub.mergeRecords({ actionItems: cards });
+    setNotice(`${cards.length} scheduled job${cards.length === 1 ? '' : 's'} added to To do on the Action Board.`);
+  }, [hub.allData]);
 
   // Brings in a file saved by the phone's Send tab.
   const importPhone = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as PhoneFile;
       if (parsed.kind !== PHONE_FILE_KIND) throw new Error("That isn't a file from the phone's Send tab.");
-      const { added, updated } = bringInFromPhones(parsed.reports, parsed.pins, parsed.tracks ?? []);
+      const notes = parsed.notes ?? [];
+      const { added, updated } = bringInFromPhones(parsed.reports, parsed.pins, parsed.tracks ?? [], notes);
       setNotice(
         added + updated === 0
           ? 'Nothing new in that file.'
-          : `Brought in ${parsed.pins.length} pin${parsed.pins.length === 1 ? '' : 's'} and ${parsed.reports.length} hunt${parsed.reports.length === 1 ? '' : 's'} (${added} new, ${updated} updated).`,
+          : `Brought in ${parsed.pins.length} pin${parsed.pins.length === 1 ? '' : 's'}, ${parsed.reports.length} hunt${parsed.reports.length === 1 ? '' : 's'} and ${notes.length} note${notes.length === 1 ? '' : 's'} (${added} new, ${updated} updated).`,
       );
     } catch (error) {
       setNotice(`Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -547,8 +582,8 @@ export function App() {
       place: placeName(hub.properties, hub.sections, [m.lng, m.lat]),
     }));
     const file: StandsFile = { kind: STANDS_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), stands };
-    void shareJsonFile('hunting-hub-stands.json', file).then(() =>
-      setNotice(`Saved hunting-hub-stands.json with ${stands.length} stands. Get it onto the phone (email or iCloud Drive), then load it on the phone's Send tab.`),
+    void shareJsonFile('fenceline-stands.json', file).then(() =>
+      setNotice(`Saved fenceline-stands.json with ${stands.length} stands. Get it onto the phone (email or iCloud Drive), then load it on the phone's Send tab.`),
     );
   };
 
@@ -905,6 +940,69 @@ export function App() {
     .filter(Boolean)
     .join(' · ');
 
+  // The Action Board card's one-liner.
+  const boardCount = (status: ActionItem['status']) => hub.actionItems.filter((i) => i.status === status).length;
+  const boardTeaser = hub.actionItems.length === boardCount('done') ? 'Ideas and work to do' : `${boardCount('planned')} to do · ${boardCount('idea')} idea${boardCount('idea') === 1 ? '' : 's'}`;
+
+  // Marking a scheduled card done starts the schedule's next cycle and, on a
+  // food plot, logs the work. Taking it back out of Done undoes both.
+  const changeCard = (next: ActionItem) => {
+    const before = hub.actionItems.find((i) => i.id === next.id);
+    const link = next.schedule;
+    if (!link || !before || (before.status === 'done') === (next.status === 'done')) return hub.saveActionItem(next);
+    const area = link.placeKind === 'area' ? hub.areas.find((a) => a.id === link.placeId) : undefined;
+    const section = link.placeKind === 'section' ? hub.sections.find((s) => s.id === link.placeId) : undefined;
+    const schedule = (area ?? section)?.schedules?.find((s) => s.id === link.id);
+    if (!schedule) return hub.saveActionItem(next);
+    const today = todayDate();
+    const onPlot = area !== undefined && isPlotType(area.type, areaTypeInfo(area.type, hub.settings).label);
+    if (next.status === 'done') {
+      hub.saveActionItem({ ...next, schedule: { ...link, lastDoneBefore: schedule.lastDone, handledBefore: schedule.handledSeason ?? null } });
+      if (area) hub.saveArea(onPlot ? saveEntry(markDone(area, link.id, today, link.season), logEntryFor(next, schedule, today)) : markDone(area, link.id, today, link.season));
+      if (section) hub.saveSection(markDone(section, link.id, today, link.season));
+    } else {
+      hub.saveActionItem(next);
+      if (area) {
+        const undone = undoDone(area, link.id, link.lastDoneBefore, link.handledBefore);
+        hub.saveArea(onPlot && area.log?.some((e) => e.id === next.id) ? removeEntry(undone, next.id) : undone);
+      }
+      if (section) hub.saveSection(undoDone(section, link.id, link.lastDoneBefore, link.handledBefore));
+    }
+  };
+
+  // Removing a scheduled card that isn't done skips that cycle of the schedule.
+  const deleteCard = (id: string) => {
+    const link = hub.actionItems.find((i) => i.id === id && i.status !== 'done')?.schedule;
+    if (link?.placeKind === 'area') {
+      const area = hub.areas.find((a) => a.id === link.placeId);
+      if (area) hub.saveArea(skipSeason(area, link.id, link.season));
+    }
+    if (link?.placeKind === 'section') {
+      const section = hub.sections.find((s) => s.id === link.placeId);
+      if (section) hub.saveSection(skipSeason(section, link.id, link.season));
+    }
+    hub.deleteActionItem(id);
+  };
+
+  // Adds a stand at a card's spot and moves the card to done.
+  const makeStandFromCard = (item: ActionItem) => {
+    if (item.lng === null || item.lat === null) return;
+    const marker: MapMarker = {
+      ...newRecordFields(),
+      propertyId: propertyContaining(hub.properties, [item.lng, item.lat])?.id ?? item.propertyId,
+      type: 'stand',
+      name: nextName(pinTypeInfo('stand', hub.settings.customPinTypes).label, hub.markers),
+      lng: item.lng,
+      lat: item.lat,
+      notes: item.text,
+      goodWinds: [],
+    };
+    hub.saveMarker(marker);
+    hub.saveActionItem({ ...item, status: 'done', markerId: marker.id });
+    setSelection({ kind: 'marker', id: marker.id });
+    zoomTo({ kind: 'marker', id: marker.id });
+  };
+
   const forecastView = forecastOpen ? (
     <ForecastPanel
       state={forecastState}
@@ -1093,7 +1191,39 @@ export function App() {
                 setSelection({ kind: 'marker', id });
                 zoomTo({ kind: 'marker', id });
               }}
+              onPickSection={(id) => {
+                setSelection({ kind: 'section', id });
+                zoomTo({ kind: 'section', id });
+              }}
+              onPickArea={(id) => {
+                setSelection({ kind: 'area', id });
+                zoomTo({ kind: 'area', id });
+              }}
               onClose={() => setSummaryOpen(false)}
+            />
+          ) : boardOpen ? (
+            <ActionBoardPanel
+              items={hub.actionItems}
+              onAdd={(kind, text) =>
+                hub.saveActionItem({ ...newRecordFields(), kind, text, status: 'idea', lat: null, lng: null, loggedBy: hub.settings.camp?.hunter ?? null, propertyId: null, source: 'hub', markerId: null })
+              }
+              onChange={changeCard}
+              onDelete={deleteCard}
+              onOpenPlace={(item) => {
+                if (!item.schedule) return;
+                const next: Selection = { kind: item.schedule.placeKind, id: item.schedule.placeId };
+                setSelection(next);
+                zoomTo(next);
+              }}
+              onShow={(item) => {
+                if (item.lng !== null && item.lat !== null) mapRef.current?.flyTo(item.lng, item.lat);
+              }}
+              onMakeStand={makeStandFromCard}
+              onOpenStand={(id) => {
+                setSelection({ kind: 'marker', id });
+                zoomTo({ kind: 'marker', id });
+              }}
+              onClose={() => setBoardOpen(false)}
             />
           ) : (
             forecastView
@@ -1111,13 +1241,22 @@ export function App() {
         onOpenSummary={() => {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
+          setBoardOpen(false);
           setSummaryOpen(true);
+        }}
+        boardTeaser={boardTeaser}
+        onOpenBoard={() => {
+          if (mode.kind === 'align') return;
+          setForecastOpen(false);
+          setSummaryOpen(false);
+          setBoardOpen(true);
         }}
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
           setForecastTime(null);
           setForecastSitId('now');
           setSummaryOpen(false);
+          setBoardOpen(false);
           setForecastOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(!settingsOpen)}

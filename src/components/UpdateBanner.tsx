@@ -75,7 +75,7 @@ export function UpdateBanner({ updater }: { updater: Updater }) {
   return (
     <div className="update-banner" role="status">
       <div className="update-text">
-        <strong>Hunting Hub {info.latest} is ready</strong>
+        <strong>Fenceline {info.latest} is ready</strong>
         <span>{statusText(status) ?? `You have ${info.current}. Your maps and photos stay put.`}</span>
         {status.state === 'downloading' && <progress value={status.percent} max={100} />}
       </div>

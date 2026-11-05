@@ -11,7 +11,7 @@ import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
 import { findSnap, type Snap } from '@/lib/snap';
-import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
+import { areaTypeInfo, LABEL_KINDS, markerStyle, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
   contourTiles,
@@ -831,7 +831,6 @@ export function MapView(props: MapViewProps) {
       // centres it on the location so the label hangs off to the right.
       { anchor: 'left' },
       (marker, id) => {
-        marker.setDraggable(true);
         marker.getElement().addEventListener('click', (event) => {
           if (latest.current.interaction !== 'browse') return;
           event.stopPropagation();
@@ -843,6 +842,9 @@ export function MapView(props: MapViewProps) {
         });
       },
     );
+    for (const marker of markerElements.current.values()) marker.setDraggable(!settings.pinsLocked);
+    const container = map.getContainer();
+    for (const { id } of LABEL_KINDS) container.classList.toggle(`hide-label-${id}`, settings.hiddenLabels.includes(id));
   }, [markers, selectedId, standRatings, settings, readyTick]);
 
   // New spots hunted from: a dashed ring, so they read differently from stands.

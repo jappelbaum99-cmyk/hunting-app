@@ -26,4 +26,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/Hunting-Hub-Setup.exe release/Hunting-Hub-Setup.exe.blockmap release/latest.yml --title "Hunting Hub $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" release/Hunting-Hub-Setup.exe release/Hunting-Hub-Setup.exe.blockmap release/latest.yml --title "Fenceline $GITHUB_REF_NAME" --generate-notes

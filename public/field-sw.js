@@ -3,7 +3,7 @@
 const CACHE = 'hunting-hub-field-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./field.html', './logo.svg', './apple-touch-icon.png', './field.webmanifest'])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./field.html', './logo.svg', './apple-touch-icon.png', './fonts/josefin-slab.woff2', './field.webmanifest'])));
   self.skipWaiting();
 });
 

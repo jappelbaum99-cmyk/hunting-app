@@ -320,7 +320,7 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: 'Hunting Hub',
+    title: 'Fenceline',
     backgroundColor: '#1c130d',
     autoHideMenuBar: true,
     webPreferences: {

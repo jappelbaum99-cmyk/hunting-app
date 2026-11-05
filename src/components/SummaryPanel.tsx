@@ -5,7 +5,9 @@ import { placeLabel, placeOf, type Places } from '@/lib/photoPlaces';
 import { isPlotType, pinTypeInfo, isHuntingSpot } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/huntStats';
+import { entryTitle, formatPlotDate, plotEntries, todayDate } from '@/lib/plotLog';
 import { huntPlaceName, sightingSummary } from '@/lib/reports';
+import { cadenceLabel, comingUp, isOverdue, scheduleTitle } from '@/lib/schedules';
 import { areaTypeInfo } from '@/lib/styles';
 import { formatDistance, lineLengthM, TRAIL_KINDS } from '@/lib/trails';
 import type { CameraPhoto, HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
@@ -20,6 +22,8 @@ interface SummaryPanelProps {
   photos: CameraPhoto[];
   settings: HubSettings;
   onPickStand(id: string): void;
+  onPickArea(id: string): void;
+  onPickSection(id: string): void;
   onClose(): void;
 }
 
@@ -60,6 +64,13 @@ export function SummaryPanel(props: SummaryPanelProps) {
     entry.count += 1;
     byAreaType.set(a.type, entry);
   }
+
+  // Scheduled work over the next couple of years.
+  const today = todayDate();
+  const upcoming = comingUp(
+    [...areas.map((a) => ({ ...a, kind: 'area' as const })), ...sections.map((s) => ({ ...s, kind: 'section' as const }))],
+    today,
+  );
 
   // Hunting locations and pins
   const custom = props.settings.customPinTypes;
@@ -184,6 +195,57 @@ export function SummaryPanel(props: SummaryPanelProps) {
           </p>
         )}
       </section>
+
+      {plots.length > 0 && (
+        <section className="sidebar-section">
+          <h2>Food plots</h2>
+          <ul className="summary-list plot-summary">
+            {[...plots]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((plot) => {
+                const latest = plotEntries(plot)[0];
+                return (
+                  <li key={plot.id}>
+                    <div className="plot-summary-text">
+                      <button className="link-button" onClick={() => props.onPickArea(plot.id)}>
+                        {plot.name}
+                      </button>
+                      <span>
+                        {plot.planted || <span className="muted">Nothing planted yet</span>}
+                        {plot.planted && plot.plantedOn && <span className="muted"> · {formatPlotDate(plot.plantedOn)}</span>}
+                      </span>
+                      {latest && latest.action !== 'planted' && (
+                        <span className="muted">
+                          Last work: {entryTitle(latest)}, {formatPlotDate(latest.date)}
+                        </span>
+                      )}
+                    </div>
+                    <strong>{formatAcres(acresOf(plot.geometry))}</strong>
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      )}
+
+      {upcoming.length > 0 && (
+        <section className="sidebar-section">
+          <h2>Coming up</h2>
+          <ul className="summary-list plot-summary">
+            {upcoming.map(({ place, schedule, due }) => (
+              <li key={schedule.id}>
+                <div className="plot-summary-text">
+                  <button className="link-button" onClick={() => (place.kind === 'area' ? props.onPickArea(place.id) : props.onPickSection(place.id))}>
+                    {scheduleTitle(schedule)}: {place.name}
+                  </button>
+                  <span className="muted">{cadenceLabel(schedule)}</span>
+                </div>
+                <strong className={isOverdue(due.end, today) ? 'schedule-overdue' : undefined}>{isOverdue(due.end, today) ? `Overdue: ${due.label}` : due.label}</strong>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="sidebar-section">
         <h2>Hunting locations and pins</h2>

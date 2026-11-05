@@ -1,3 +1,4 @@
+import '../wordmark.css';
 import './home.css';
 
 import { iconSvg, type IconName } from '@/lib/icons';

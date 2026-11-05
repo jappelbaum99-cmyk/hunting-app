@@ -2,6 +2,7 @@
 // send to someone else's hub, with its stands, areas, sections, plans, hunts
 // and map images. Deleted records ride along so a delete reaches the other hub.
 import type {
+  ActionItem,
   CustomAreaType,
   CustomPinType,
   HubData,
@@ -27,6 +28,7 @@ export interface MapFileRecords {
   plans: Plan[];
   reports: HuntReport[];
   trails: MapTrail[];
+  actionItems: ActionItem[];
 }
 
 export interface MapFile {
@@ -61,6 +63,7 @@ export function pickRecords(data: HubData, propertyId: string | null): MapFileRe
       plans: data.plans,
       reports: data.reports,
       trails: data.trails,
+      actionItems: data.actionItems,
     };
   }
   const property = properties.find((p) => p.id === propertyId);
@@ -86,6 +89,7 @@ export function pickRecords(data: HubData, propertyId: string | null): MapFileRe
     // Hunts at its stands count too, even when the hunt itself wasn't linked.
     reports: data.reports.filter((r) => onProperty(r) || (r.standId !== null && markerIds.has(r.standId))),
     trails: data.trails.filter(onProperty),
+    actionItems: data.actionItems.filter(onProperty),
   };
 }
 
@@ -111,10 +115,10 @@ export function parseMapFile(text: string): MapFile {
   try {
     parsed = JSON.parse(text) as MapFile;
   } catch {
-    throw new Error("That isn't a Hunting Hub map file.");
+    throw new Error("That isn't a Fenceline map file.");
   }
-  if (parsed?.kind !== MAP_FILE_KIND) throw new Error("That isn't a Hunting Hub map file.");
-  if (parsed.version !== 1) throw new Error('That map file is from a newer Hunting Hub. Update this one first.');
+  if (parsed?.kind !== MAP_FILE_KIND) throw new Error("That isn't a Fenceline map file.");
+  if (parsed.version !== 1) throw new Error('That map file is from a newer Fenceline. Update this one first.');
   const r = parsed.records ?? ({} as Partial<MapFileRecords>);
   for (const name of Object.keys(parsed.images ?? {})) {
     if (!SAFE_IMAGE_NAME.test(name)) throw new Error(`That map file has a bad image name (${name}).`);
@@ -130,6 +134,7 @@ export function parseMapFile(text: string): MapFile {
       plans: r.plans ?? [],
       reports: r.reports ?? [],
       trails: r.trails ?? [],
+      actionItems: r.actionItems ?? [],
     },
     customAreaTypes: parsed.customAreaTypes ?? [],
     customPinTypes: parsed.customPinTypes ?? [],
@@ -139,5 +144,5 @@ export function parseMapFile(text: string): MapFile {
 
 export function mapFileName(title: string): string {
   const safe = title.replace(/[^\w\- ]+/g, '').trim() || 'map';
-  return `Hunting Hub - ${safe}.json`;
+  return `Fenceline - ${safe}.json`;
 }

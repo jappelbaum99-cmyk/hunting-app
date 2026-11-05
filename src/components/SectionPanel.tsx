@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
+import { SchedulesField } from '@/components/SchedulesField';
 
 import { acresOf, formatAcres } from '@/lib/geo';
 import { burnProblem, burnWindows, PLAN_KINDS, PLAN_STATUSES, TIMBER_PRACTICES } from '@/lib/plans';
@@ -101,6 +102,8 @@ export function SectionPanel(props: SectionPanelProps) {
             ))}
           </div>
         </Field>
+
+        <SchedulesField key={section.id} schedules={section.schedules} onChange={(schedules) => onChange({ ...section, schedules })} />
 
         <Field label="Notes">
           <textarea rows={4} value={section.notes ?? ''} onChange={(e) => onChange({ ...section, notes: e.target.value || null })} />

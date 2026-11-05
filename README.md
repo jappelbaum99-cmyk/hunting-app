@@ -1,4 +1,4 @@
-# Hunting Hub
+# Fenceline
 
 A desktop app for planning hunts on your property: draw property lines, food plots and bedding areas, place stands, and study the ground with satellite, topo and lidar maps. All map data is free public data from the USGS.
 
@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-`npm start` builds the app and opens the Hunting Hub window. While making changes, use `npm run dev` instead. It reloads the window when files change.
+`npm start` builds the app and opens the Fenceline window. While making changes, use `npm run dev` instead. It reloads the window when files change.
 
 ## Installer for family PCs
 
@@ -48,6 +48,7 @@ That builds it into `site-dist`. To put it online, one time:
   2. Click **Add map image** and pick the file.
   3. Click a spot on the image (a road intersection, section corner or pond corner), then click the same spot on the map. Do this 2–4 times, with the spots spread out. With 3 or more points the panel shows how many feet off each one is.
   4. Save, then use **Draw property** to click along the lines in the image. Use **See-through** to fade the image in and out.
+- **Action Board** (sidebar): ideas and work to do, moved from Idea to To do to Done. Finished cards go in a Done dropdown at the bottom. Add a **Schedule** to any area or section (a burn every 3 years in Feb–Mar, say) and a To do card appears 60 days ahead (change that in Settings); marking it done starts the next cycle, and upcoming work shows under **Coming up** in the Summary. Notes saved on the phone's Notes tab land here, and a stand idea with a GPS spot can become a real stand. Work logged on a food plot from the phone goes into that plot's log instead.
 - **Draw section**: split a property into named units (e.g. "North Ridge"). Click a section to add plans:
   - **Burn plans:** safe wind directions plus wind and humidity limits. The plan lists the hours in the forecast that meet them.
   - **Timber plans:** the practice, contractor, and cost and income estimates.

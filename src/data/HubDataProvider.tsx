@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
 import type {
+  ActionItem,
   CustomAreaType,
   CameraPhoto,
   CustomPinType,
@@ -21,7 +22,7 @@ import type {
 
 const SAVE_DELAY_MS = 400;
 
-type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins' | 'trails' | 'fieldTracks' | 'photos';
+type Collection = 'properties' | 'markers' | 'areas' | 'overlays' | 'sections' | 'plans' | 'reports' | 'fieldPins' | 'trails' | 'fieldTracks' | 'photos' | 'actionItems';
 
 interface HubDataValue {
   loaded: boolean;
@@ -38,8 +39,11 @@ interface HubDataValue {
   trails: MapTrail[];
   fieldTracks: FieldTrack[];
   photos: CameraPhoto[];
+  actionItems: ActionItem[];
   settings: HubSettings;
   saveSettings(settings: HubSettings): void;
+  saveActionItem(item: ActionItem): void;
+  deleteActionItem(id: string): void;
   saveProperty(property: Property): void;
   // Changes some fields of the stored property, whatever its latest version is.
   patchProperty(id: string, patch: Partial<Property>): void;
@@ -235,8 +239,11 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       trails: live(data?.trails),
       fieldTracks: live(data?.fieldTracks),
       photos: live(data?.photos),
+      actionItems: live(data?.actionItems),
       settings: data?.settings ?? emptyHubData().settings,
       saveSettings: (settings) => update((current) => ({ ...current, settings })),
+      saveActionItem: (i) => save('actionItems', i),
+      deleteActionItem: (id) => remove('actionItems', id),
       saveProperty: (p) => save('properties', p),
       patchProperty: (id, patch) =>
         update((current) => ({

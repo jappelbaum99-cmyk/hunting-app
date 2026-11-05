@@ -2,11 +2,20 @@
 // from Settings, else the built-in default.
 import { AREA_TYPES, pinTypeInfo, PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
 import { iconName, type IconName } from '@/lib/icons';
-import type { AreaType, BuiltInAreaType, HubSettings, MapMarker, MarkerShape, MarkerStyle, MarkerType, Property } from '@/types/models';
+import type { AreaType, BuiltInAreaType, HubSettings, LabelKind, MapMarker, MarkerShape, MarkerStyle, MarkerType, Property } from '@/types/models';
 
 export const DEFAULT_MARKER_SIZE = 16;
-export const MIN_MARKER_SIZE = 10;
+export const MIN_MARKER_SIZE = 4;
 export const MAX_MARKER_SIZE = 32;
+
+export const LABEL_KINDS: { id: LabelKind; label: string }[] = [
+  { id: 'pin', label: 'Stands and pins' },
+  { id: 'property', label: 'Properties' },
+  { id: 'section', label: 'Sections' },
+  { id: 'area', label: 'Areas' },
+  { id: 'trail', label: 'Trails' },
+  { id: 'hunt', label: 'New hunt spots' },
+];
 
 export const MARKER_SHAPES: { id: MarkerShape; label: string }[] = [
   { id: 'circle', label: 'Circle' },

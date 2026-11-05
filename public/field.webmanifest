@@ -1,6 +1,6 @@
 {
-  "name": "Hunting Hub Field",
-  "short_name": "Hunting Hub",
+  "name": "Fenceline Field",
+  "short_name": "Fenceline",
   "start_url": "./field.html",
   "display": "standalone",
   "background_color": "#1c130d",

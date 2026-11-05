@@ -94,7 +94,11 @@ textarea {
 
 .field-header h1 {
   margin: 0;
+  font-family: var(--font-wordmark);
   font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   flex: 1;
 }
 
@@ -314,7 +318,7 @@ textarea {
   bottom: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   background: rgba(28, 19, 13, 0.95);
   backdrop-filter: blur(16px);
@@ -339,6 +343,116 @@ textarea {
 .field-tabs button.active {
   background: none;
   color: var(--accent);
+}
+
+/* Notes tab */
+.note-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.note-kinds button {
+  padding: 12px 8px;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.note-kinds button.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.note-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+  /* 16px keeps iPhone Safari from zooming in on focus. */
+  font: inherit;
+  font-size: 16px;
+}
+
+.note-input option {
+  color: #000;
+}
+
+.note-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.note-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.note-check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.note-section {
+  margin-top: 20px;
+}
+
+.note-group {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.note-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+.note-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.note-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.note-remove {
+  flex: none;
+  padding: 4px;
+  background: none;
+  color: var(--muted);
 }
 
 /* Camp sync status */

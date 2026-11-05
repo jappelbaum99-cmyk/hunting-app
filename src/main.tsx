@@ -1,3 +1,4 @@
+import './wordmark.css';
 import './styles.css';
 
 import { StrictMode } from 'react';

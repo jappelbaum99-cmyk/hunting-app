@@ -17,6 +17,7 @@ import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
+import { NotesTab } from '@/field/NotesTab';
 import { useFieldWeather } from '@/field/useFieldWeather';
 import { SentBadge, SentTools, type SentStatus } from '@/field/SentTools';
 import { WalkCard } from '@/field/WalkCard';
@@ -27,7 +28,7 @@ import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weat
 import { DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
-type Tab = 'pin' | 'hunt' | 'stands' | 'send';
+type Tab = 'pin' | 'hunt' | 'stands' | 'notes' | 'send';
 
 const PIN_TYPES: MarkerType[] = ['stand', 'blind', 'platform', 'camera', 'scrape', 'rub', 'trail', 'water', 'parking', 'other'];
 
@@ -92,8 +93,8 @@ export function FieldApp() {
     return () => clearTimeout(t);
   }, [message]);
 
-  // GPS runs on the Pin and Hunt tabs, while moving stands, and the whole time a walk is recorded.
-  const gps = useGps(tab === 'pin' || tab === 'hunt' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
+  // GPS runs on the Pin, Hunt and Notes tabs, while moving stands, and the whole time a walk is recorded.
+  const gps = useGps(tab === 'pin' || tab === 'hunt' || tab === 'notes' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
   const sync = useCampSync(data, setData);
 
   // While walking, add a point every ~8 m, skipping fixes rougher than 30 m.
@@ -110,7 +111,7 @@ export function FieldApp() {
   }, [fix, data.activeWalk !== null]);
   const active = data.reports.find((r) => r.id === data.activeReportId) ?? null;
   // With a camp, what's still waiting for signal; without one, everything on the phone.
-  const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length + data.tracks.length;
+  const unsent = data.camp ? sync.waiting : data.pins.length + data.reports.length + data.tracks.length + data.notes.length;
   const loggedBy = data.camp?.hunter ?? null;
   // Where a pin or walk stands: waiting for signal, at camp, or handled on the hub.
   const statusOf = (item: { id: string; updatedAt: string }): SentStatus => {
@@ -138,9 +139,9 @@ export function FieldApp() {
     <div className="field-app">
       <header className="field-header">
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
-        <h1>Hunting Hub</h1>
+        <h1>Fenceline</h1>
         <span className={`gps-badge${gps.fix ? ' ok' : ''}`}>
-          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'pin' || tab === 'hunt' ? 'Finding GPS…' : 'GPS off'}
+          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'pin' || tab === 'hunt' || tab === 'notes' ? 'Finding GPS…' : 'GPS off'}
         </span>
       </header>
 
@@ -225,6 +226,17 @@ export function FieldApp() {
             onMessage={setMessage}
           />
         )}
+        {tab === 'notes' && (
+          <NotesTab
+            data={data}
+            fix={gps.fix}
+            gpsError={gps.error}
+            status={statusOf}
+            onAdd={(note) => setData((d) => ({ ...d, notes: [note, ...d.notes] }))}
+            onRemove={(id) => setData((d) => ({ ...d, notes: d.notes.filter((n) => n.id !== id) }))}
+            onMessage={setMessage}
+          />
+        )}
         {tab === 'send' && <SendTab data={data} sync={sync} onData={setData} onMessage={setMessage} />}
       </main>
 
@@ -236,6 +248,7 @@ export function FieldApp() {
             ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : 'Pin'],
             ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
             ['stands', 'stand', 'Stands'],
+            ['notes', 'clipboard', 'Notes'],
             ['send', data.camp ? 'camp' : 'send', `${data.camp ? 'Camp' : 'Send'}${unsent ? ` (${unsent})` : ''}`],
           ] as const satisfies readonly (readonly [Tab, IconName, string])[]
         ).map(([id, icon, label]) => (
@@ -967,28 +980,28 @@ function SendTab(props: {
     <>
       <h2>Send to the hub</h2>
       <p className="field-hint">
-        {data.pins.length} pin{data.pins.length === 1 ? '' : 's'} and {data.reports.length} hunt{data.reports.length === 1 ? '' : 's'} on this phone.
+        {data.pins.length} pin{data.pins.length === 1 ? '' : 's'}, {data.reports.length} hunt{data.reports.length === 1 ? '' : 's'} and {data.notes.length} note{data.notes.length === 1 ? '' : 's'} on this phone.
         Send the file to your PC (email it to yourself, or save it to iCloud Drive), then use “Import from phone” in the hub.
       </p>
       <button
         className="big-button"
-        disabled={data.pins.length + data.reports.length === 0}
+        disabled={data.pins.length + data.reports.length + data.notes.length === 0}
         onClick={() => {
-          const file: PhoneFile = { kind: PHONE_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), pins: data.pins, reports: data.reports, tracks: data.tracks };
+          const file: PhoneFile = { kind: PHONE_FILE_KIND, version: 1, exportedAt: new Date().toISOString(), pins: data.pins, reports: data.reports, tracks: data.tracks, notes: data.notes };
           const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-          shareJsonFile(`hunting-hub-phone-${stamp}.json`, file)
+          shareJsonFile(`fenceline-phone-${stamp}.json`, file)
             .then(() => props.onMessage('File ready. Bring it into the hub with “Import from phone”.'))
             .catch(() => undefined);
         }}
       >
-        Send pins and hunts
+        Send pins, hunts and notes
       </button>
       <button
         className="end-button"
-        disabled={data.pins.length + data.reports.length === 0 || data.activeReportId !== null}
+        disabled={data.pins.length + data.reports.length + data.notes.length === 0 || data.activeReportId !== null}
         onClick={() => {
-          if (window.confirm('Clear the pins and hunts from this phone? Only do this after the hub has them.')) {
-            props.onData((d) => ({ ...d, pins: [], reports: [] }));
+          if (window.confirm('Clear the pins, hunts and notes from this phone? Only do this after the hub has them.')) {
+            props.onData((d) => ({ ...d, pins: [], reports: [], notes: [] }));
           }
         }}
       >

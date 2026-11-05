@@ -47,6 +47,9 @@ interface SidebarProps {
   // One-line summary for the Summary card, e.g. "241 ac · 3 stands · 12 hunts".
   summaryTeaser: string;
   onOpenSummary(): void;
+  // One-line summary for the Action Board card, e.g. "2 to do · 3 ideas".
+  boardTeaser: string;
+  onOpenBoard(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -101,7 +104,7 @@ export function Sidebar(props: SidebarProps) {
       <header className="sidebar-header">
         <div className="brand">
           <img src={LOGO_URL} alt="" />
-          <h1>Hunting Hub</h1>
+          <h1>Fenceline</h1>
           <button className="icon settings-button" onClick={props.onOpenSettings} title="Settings" aria-label="Settings">
             {/* Gear: a toothed wheel with a hole in the middle. */}
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden>
@@ -190,6 +193,21 @@ export function Sidebar(props: SidebarProps) {
             <span className="forecast-card-text">
               <span className="row-title">Summary</span>
               <span className="row-detail">{props.summaryTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
+        {needle === '' && (
+          <button className="forecast-card summary-card" onClick={props.onOpenBoard}>
+            <span className="forecast-card-icon" aria-hidden>
+              <Icon name="clipboard" size={20} />
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Action Board</span>
+              <span className="row-detail">{props.boardTeaser}</span>
             </span>
             <span className="chevron" aria-hidden>
               ›

@@ -260,9 +260,11 @@ input[type='checkbox'] {
 
 .brand h1 {
   margin: 0;
+  font-family: var(--font-wordmark);
   font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .search {
@@ -1775,8 +1777,28 @@ input[type='number'] {
    earlier fixed-size pin rules. --pin-size and --pin-color are set per pin. */
 
 .map-pin-dot {
+  position: relative;
   width: var(--pin-size, 16px);
   height: var(--pin-size, 16px);
+  /* The border shrinks with the pin so a tiny dot isn't all border. */
+  border-width: clamp(1px, calc(var(--pin-size, 16px) * 0.16), 2.5px);
+}
+
+/* A tiny dot keeps a comfortable area to click and drag. */
+.map-pin .map-pin-dot::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+/* Name kinds turned off in Settings. A selected pin still shows its name. */
+.hide-label-pin .map-pin:not(.map-pin-selected) .map-pin-label,
+.hide-label-hunt .hunt-spot:not(.hunt-spot-selected) .hunt-spot-label,
+.hide-label-property .map-label-property,
+.hide-label-section .map-label-section,
+.hide-label-area .map-label-area,
+.hide-label-trail .map-label-trail {
+  display: none;
 }
 
 /* Pins are anchored on their left edge; pull the dot back by half its size
@@ -2658,8 +2680,199 @@ button.mini {
   min-width: 0;
 }
 
-.plot-fields input {
+.plot-fields input,
+.plot-fields select {
   width: 100%;
+  min-width: 0;
+}
+
+.plot-form {
+  display: grid;
+  gap: 8px;
+}
+
+.plot-form > input,
+.plot-form > textarea {
+  width: 100%;
+}
+
+.plot-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.plot-log {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: var(--fill);
+  display: grid;
+}
+
+.plot-log li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.plot-log li + li {
+  border-top: 1px solid var(--fill);
+}
+
+.plot-log-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.plot-log-notes {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.board-form,
+.board-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.board-form {
+  padding: 0 8px;
+}
+
+.board-empty {
+  padding: 0 8px;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.board-done summary {
+  padding: 0 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.board-done[open] summary {
+  margin-bottom: 8px;
+}
+
+.board-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-size: 13px;
+}
+
+.board-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.board-card-head .muted {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-kind {
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.board-due {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board-due.overdue,
+.schedule-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.schedule-list {
+  margin-bottom: 8px;
+}
+
+.schedule-add {
+  width: 100%;
+  font-size: 13px;
+}
+
+.schedule-form {
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+.schedule-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.schedule-inline select,
+.schedule-inline input {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-last {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.board-text {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.board-actions button,
+.board-status button {
+  font-size: 12px;
+}
+
+.plot-summary li {
+  align-items: flex-start;
+}
+
+.plot-summary-text {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  overflow-wrap: anywhere;
 }
 
 /* Hunt Forecast: per-group scent cone switch */

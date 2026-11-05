@@ -1,0 +1,12 @@
+/* The app name's own font, shared by the hub, phone page and website. It ships
+   with the app so it works offline; the license is public/fonts/OFL.txt. */
+@font-face {
+  font-family: 'Josefin Slab';
+  src: url('/fonts/josefin-slab.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  --font-wordmark: 'Josefin Slab', Georgia, serif;
+}

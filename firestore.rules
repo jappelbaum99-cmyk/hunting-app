@@ -3,7 +3,7 @@ rules_version = '2';
 // Camp sync rules. Paste these into Firebase console > Firestore > Rules.
 // A camp's document id is its code; knowing the code lets someone join.
 // Members can read everything in their camp. Each person can only change
-// their own hunts and pins; only the hub that started the camp writes stands.
+// their own hunts, pins and notes; only the hub that started the camp writes stands.
 // Nothing can be deleted (records use soft deletes).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -38,7 +38,7 @@ service cloud.firestore {
       match /{kind}/{id} {
         allow read: if isMember(code);
         allow create: if isMember(code)
-          && kind in ['hunts', 'pins', 'stands', 'tracks']
+          && kind in ['hunts', 'pins', 'stands', 'tracks', 'notes']
           && (kind != 'stands' || camp(code).ownerUid == request.auth.uid)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.id == id;

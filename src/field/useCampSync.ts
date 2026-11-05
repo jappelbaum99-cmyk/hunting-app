@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { FieldData } from '@/field/fieldData';
-import { sendHunt, sendPin, sendTrack, watchHunts, watchCampInfo, watchStands } from '@/lib/camp';
+import { sendHunt, sendNote, sendPin, sendTrack, watchHunts, watchCampInfo, watchStands } from '@/lib/camp';
 
 const RETRY_MS = 30_000;
 
@@ -51,10 +51,15 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
     );
   }, [camp?.code]);
 
-  // Pin types added in the hub's Settings, and which pins and walks the hub has handled.
+  // Pin types added in the hub's Settings, which pins, walks and notes the hub has
+  // handled, and the board. A note the hub has is done with on this phone.
   useEffect(() => {
     if (!camp) return;
-    return watchCampInfo(camp, ({ pinTypes, handled }) => setData((d) => ({ ...d, pinTypes, handled })), setError);
+    return watchCampInfo(
+      camp,
+      ({ pinTypes, handled, board, plots }) => setData((d) => ({ ...d, pinTypes, handled, board, plots, notes: d.notes.filter((n) => !handled[n.id]) })),
+      setError,
+    );
   }, [camp?.code]);
 
   // Everyone's hunts, for the day summaries, who's in the stand, and stand history.
@@ -75,6 +80,7 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
         ...data.pins.map((p) => ({ id: p.id, version: p.updatedAt, send: () => sendPin(camp, p) })),
         ...data.tracks.map((t) => ({ id: t.id, version: t.updatedAt, send: () => sendTrack(camp, t) })),
         ...data.reports.map((r) => ({ id: r.id, version: r.updatedAt, send: () => sendHunt(camp, r) })),
+        ...data.notes.map((n) => ({ id: n.id, version: n.updatedAt, send: () => sendNote(camp, n) })),
       ].filter((item) => data.sent[item.id] !== item.version)
     : [];
 

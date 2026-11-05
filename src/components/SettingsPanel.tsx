@@ -10,6 +10,7 @@ import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
   areaTypeList,
   categoryStyle,
+  LABEL_KINDS,
   MARKER_SHAPES,
   MAX_MARKER_SIZE,
   MIN_MARKER_SIZE,
@@ -119,8 +120,57 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
       </section>
 
       <section className="sidebar-section">
+        <h2>Schedules</h2>
+        <ul className="settings-list">
+          <li className="setting-row">
+            <span className="row-title">Add to To do</span>
+            <input
+              type="range"
+              min={7}
+              max={180}
+              step={1}
+              value={settings.scheduleLeadDays}
+              onChange={(e) => onChange({ ...settings, scheduleLeadDays: Number(e.target.value) })}
+              aria-label="Days ahead a scheduled card appears"
+            />
+            <span className="muted">{settings.scheduleLeadDays} days ahead</span>
+          </li>
+        </ul>
+        <p className="hint">How long before a schedule's months a card appears on the Action Board. Set schedules on an area or section.</p>
+      </section>
+
+      <section className="sidebar-section">
+        <h2>Map labels</h2>
+        <ul className="settings-list">
+          {LABEL_KINDS.map(({ id, label }) => (
+            <li key={id} className="setting-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!settings.hiddenLabels.includes(id)}
+                  onChange={(e) =>
+                    onChange({ ...settings, hiddenLabels: e.target.checked ? settings.hiddenLabels.filter((k) => k !== id) : [...settings.hiddenLabels, id] })
+                  }
+                />
+                <span>{label}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p className="hint">Unchecked names stay off the map. A selected stand, pin or hunt spot still shows its name.</p>
+      </section>
+
+      <section className="sidebar-section">
         <h2>Pins</h2>
-        <p className="hint">Each type's color, shape and size, or add your own types. A single stand or pin can still get its own color.</p>
+        <ul className="settings-list">
+          <li className="setting-row">
+            <label className="check">
+              <input type="checkbox" checked={settings.pinsLocked} onChange={(e) => onChange({ ...settings, pinsLocked: e.target.checked })} />
+              <span>Lock pins so they can't be moved by accident</span>
+            </label>
+          </li>
+        </ul>
+        <p className="hint">Each type's color, shape and size, or add your own types. Slide size all the way down for a tiny dot. A single stand or pin can still get its own color.</p>
         <ul className="settings-list">
           {pinTypeList(settings.customPinTypes).map(({ id: type, label, custom }) => {
             const style = categoryStyle(type, settings);

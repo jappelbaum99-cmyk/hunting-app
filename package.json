@@ -60,7 +60,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Hunting Hub",
+      "shortcutName": "Fenceline",
       "artifactName": "Hunting-Hub-Setup.${ext}"
     },
     "publish": {

@@ -57,7 +57,7 @@ export function stampLocation(binary: string, camera: Pick<MapMarker, 'lat' | 'l
       [piexif.GPSIFD.GPSLongitudeRef]: camera.lng >= 0 ? 'E' : 'W',
       [piexif.GPSIFD.GPSLongitude]: piexif.GPSHelper.degToDmsRational(Math.abs(camera.lng)),
     };
-    exif['0th'] = { ...(exif['0th'] ?? {}), [piexif.ImageIFD.ImageDescription]: `${camera.name} (Hunting Hub)` };
+    exif['0th'] = { ...(exif['0th'] ?? {}), [piexif.ImageIFD.ImageDescription]: `${camera.name} (Fenceline)` };
     // Big embedded thumbnails sometimes won't write back; drop them rather than fail.
     exif.thumbnail = null;
     delete exif['1st'];

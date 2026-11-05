@@ -76,6 +76,8 @@ export interface MarkerStyle {
   size: number;
 }
 
+export type LabelKind = 'pin' | 'property' | 'section' | 'area' | 'trail' | 'hunt';
+
 // App-wide look, set in Settings. Anything left out uses the built-in default.
 export interface HubSettings {
   markerStyles: Partial<Record<MarkerType, Partial<MarkerStyle>>>;
@@ -87,6 +89,12 @@ export interface HubSettings {
   propertyLineColor: string | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
+  // Pins can't be dragged on the map while this is on.
+  pinsLocked: boolean;
+  // The kinds of names left off the map.
+  hiddenLabels: LabelKind[];
+  // How many days ahead of a schedule's window its To do card appears.
+  scheduleLeadDays: number;
   // The camp this hub gets phone hunts and pins from, if any.
   camp?: CampLink | null;
   // Folder where trail camera photos are kept (desktop app).
@@ -125,9 +133,94 @@ export interface MapArea extends Syncable {
   name: string;
   geometry: AreaGeometry;
   notes: string | null;
-  // Food plots: what's planted, and when (YYYY-MM-DD).
+  // Food plots: what's planted, and when (YYYY-MM-DD). Follows the newest planting in the log.
   planted?: string | null;
   plantedOn?: string | null;
+  log?: PlotEntry[];
+  schedules?: WorkSchedule[];
+}
+
+export type ScheduleWork = 'burn' | 'plant' | 'lime' | 'fertilize' | 'mow' | 'spray' | 'timber' | 'other';
+
+// Work that repeats on an area or section (see src/lib/schedules.ts).
+export interface WorkSchedule {
+  id: string;
+  work: ScheduleWork;
+  // What to plant, or the name of the work for 'other'.
+  detail: string | null;
+  everyYears: number;
+  // The months it's done in, 1-12. An end before the start runs over New Year.
+  startMonth: number;
+  endMonth: number;
+  // yyyy-mm-dd.
+  lastDone: string | null;
+  // The latest cycle dealt with through its card, done or skipped. Needed as well
+  // as lastDone because a card can be finished ahead of its window.
+  handledSeason?: number | null;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+// Ties a board card to the schedule and cycle that made it.
+export interface CardSchedule {
+  id: string;
+  placeKind: 'area' | 'section';
+  placeId: string;
+  season: number;
+  dueLabel: string;
+  // yyyy-mm-dd, the last day of the window.
+  dueEnd: string;
+  // To put back if the card is taken out of Done.
+  lastDoneBefore: string | null;
+  handledBefore: number | null;
+}
+
+export type PlotAction = 'planted' | 'fertilized' | 'limed' | 'sprayed' | 'mowed' | 'disked' | 'soil_test' | 'other';
+
+// One saved piece of work on a food plot (see src/lib/plotLog.ts).
+export interface PlotEntry {
+  id: string;
+  action: PlotAction;
+  // The planting, for 'planted'.
+  what: string | null;
+  // yyyy-mm-dd.
+  date: string;
+  notes: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+  // Set when it was logged from a phone.
+  fromPhone?: boolean;
+  loggedBy?: string | null;
+}
+
+export type NoteKind = 'stand' | 'work' | 'thought';
+export type BoardStatus = 'idea' | 'planned' | 'done';
+
+// A note written on the phone. It lands on the Action Board, or in a food plot's
+// log when `plot` is set (see src/lib/actionBoard.ts).
+export interface FieldNote extends Syncable {
+  kind: NoteKind;
+  text: string;
+  lat: number | null;
+  lng: number | null;
+  loggedBy: string | null;
+  plot?: { areaId: string; action: PlotAction; what: string | null; date: string } | null;
+}
+
+// A card on the hub's Action Board.
+export interface ActionItem extends Syncable {
+  kind: NoteKind;
+  text: string;
+  status: BoardStatus;
+  lat: number | null;
+  lng: number | null;
+  loggedBy: string | null;
+  propertyId: string | null;
+  source: 'phone' | 'hub';
+  // The stand made from this card, if any.
+  markerId: string | null;
+  // Set when a schedule made this card.
+  schedule?: CardSchedule | null;
 }
 
 // A point on an image (pixels from its top-left corner) matched to the same
@@ -157,6 +250,7 @@ export interface Section extends Syncable {
   name: string;
   geometry: AreaGeometry;
   notes: string | null;
+  schedules?: WorkSchedule[];
 }
 
 export type PlanKind = 'burn' | 'timber' | 'habitat' | 'other';
@@ -381,6 +475,7 @@ export interface HubData {
   trails: MapTrail[];
   fieldTracks: FieldTrack[];
   photos: CameraPhoto[];
+  actionItems: ActionItem[];
   settings: HubSettings;
 }
 

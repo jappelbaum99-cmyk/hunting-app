@@ -17,8 +17,9 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 
+import type { BoardCard, CampPlot } from '@/lib/actionBoard';
 import { CAMP_SYNC_AVAILABLE, FIREBASE_CONFIG } from '@/lib/firebaseConfig';
-import type { CampLink, CompassPoint, CustomPinType, FieldPin, FieldTrack, HuntReport } from '@/types/models';
+import type { CampLink, CompassPoint, CustomPinType, FieldNote, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export { CAMP_SYNC_AVAILABLE };
 export type { CampLink };
@@ -35,7 +36,7 @@ export interface CampStand {
   deletedAt: string | null;
 }
 
-type Kind = 'hunts' | 'pins' | 'stands' | 'tracks';
+type Kind = 'hunts' | 'pins' | 'stands' | 'tracks' | 'notes';
 
 let services: { app: FirebaseApp; auth: Auth; db: Firestore } | null = null;
 
@@ -116,10 +117,16 @@ export async function publishHandled(camp: CampLink, handled: Handled): Promise<
   await updateDoc(doc(firebase().db, 'camps', camp.code), { handled });
 }
 
-// The camp's shared pin types and what the hub has handled, now and whenever they change.
+// The Action Board and the list of food plots, for phones to show.
+export async function publishBoard(camp: CampLink, board: BoardCard[], plots: CampPlot[]): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { board: JSON.parse(JSON.stringify(board)), plots });
+}
+
+// The camp's shared pin types, board and plots, and what the hub has handled, now and whenever they change.
 export function watchCampInfo(
   camp: CampLink,
-  onInfo: (info: { pinTypes: CustomPinType[]; handled: Handled }) => void,
+  onInfo: (info: { pinTypes: CustomPinType[]; handled: Handled; board: BoardCard[]; plots: CampPlot[] }) => void,
   onError: (message: string) => void,
 ): () => void {
   let stop: (() => void) | null = null;
@@ -133,6 +140,8 @@ export function watchCampInfo(
           onInfo({
             pinTypes: ((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt),
             handled: (snap.get('handled') as Handled | undefined) ?? {},
+            board: (snap.get('board') as BoardCard[] | undefined) ?? [],
+            plots: (snap.get('plots') as CampPlot[] | undefined) ?? [],
           }),
         (error) => onError(error.message),
       );
@@ -148,6 +157,7 @@ export const sendHunt = (camp: CampLink, report: HuntReport) => put(camp, 'hunts
 export const sendPin = (camp: CampLink, pin: FieldPin) => put(camp, 'pins', pin.id, pin);
 export const sendTrack = (camp: CampLink, track: FieldTrack) => put(camp, 'tracks', track.id, track);
 export const sendStand = (camp: CampLink, stand: CampStand) => put(camp, 'stands', stand.id, stand);
+export const sendNote = (camp: CampLink, note: FieldNote) => put(camp, 'notes', note.id, note);
 
 // Calls back with every record of a kind now, and again whenever one changes.
 function watch<T>(camp: CampLink, kind: Kind, onRecords: (records: T[]) => void, onError: (message: string) => void): () => void {
@@ -180,3 +190,4 @@ export const watchHunts = (camp: CampLink, on: (r: HuntReport[]) => void, onErro
 export const watchPins = (camp: CampLink, on: (p: FieldPin[]) => void, onError: (m: string) => void) => watch(camp, 'pins', on, onError);
 export const watchTracks = (camp: CampLink, on: (t: FieldTrack[]) => void, onError: (m: string) => void) => watch(camp, 'tracks', on, onError);
 export const watchStands = (camp: CampLink, on: (s: CampStand[]) => void, onError: (m: string) => void) => watch(camp, 'stands', on, onError);
+export const watchNotes = (camp: CampLink, on: (n: FieldNote[]) => void, onError: (m: string) => void) => watch(camp, 'notes', on, onError);

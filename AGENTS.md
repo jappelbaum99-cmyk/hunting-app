@@ -1,4 +1,4 @@
-Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapping hunting property. The phone field page (`field.html`, `src/field`) shares `src/types` and `src/lib`. The website (`home.html` + the field page) is published to GitHub Pages by `.github/workflows/pages.yml`; tagged releases build the installer (`release.yml`).
+Fenceline (formerly Hunting Hub): a Windows desktop app (Electron + React + Vite + MapLibre) for mapping hunting property. The phone field page (`field.html`, `src/field`) shares `src/types` and `src/lib`. The website (`home.html` + the field page) is published to GitHub Pages by `.github/workflows/pages.yml`; tagged releases build the installer (`release.yml`).
 
 ## Rules
 
@@ -7,10 +7,21 @@ Hunting Hub: a Windows desktop app (Electron + React + Vite + MapLibre) for mapp
 - Data lives in `Documents\Hunting Hub\hub-data.json`, written by `electron/main.cjs` (temp file + rename, previous copy kept as `.bak`). In a plain browser it falls back to localStorage, which is for development only.
 - Records use UUID ids, `createdAt`/`updatedAt`, and soft deletes (`deletedAt`) so they can sync with the phone site later. Never hard-delete records.
 - Map images (overlays) are files in `Documents\Hunting Hub\images`, written and read through the `hub:saveImage`/`hub:loadImage` IPC handlers, which only accept plain file names. In a plain browser they go to IndexedDB. Their placement is computed from control points in `src/lib/georef.ts`.
-- Camp sync (phone hunts and GPS pins to the hub, stands to the phones) runs on Firebase's free Spark plan with anonymous sign-in: `src/lib/camp.ts`, config in `src/lib/firebaseConfig.ts`, access rules in `firestore.rules` (pasted into the Firebase console). Only hunts, pins and stands go there; maps are shared by file.
+- Camp sync (phone hunts and GPS pins to the hub, stands to the phones) runs on Firebase's free Spark plan with anonymous sign-in: `src/lib/camp.ts`, config in `src/lib/firebaseConfig.ts`, access rules in `firestore.rules` (pasted into the Firebase console). Only hunts, pins, stands, walks and notes go there, plus the Action Board cards and food plot names (no shapes) on the camp document for phones to show; maps are shared by file.
 - Updates: on startup the hub asks the GitHub releases API for the newest version (`hub:checkForUpdate` in `electron/main.cjs`) and shows a banner. Download and install run inside the hub through `electron-updater`, which reads `latest.yml` from the release (`release.yml` attaches it with the installer and blockmap) and verifies the download. The app is unsigned, so GitHub account access controls what the family installs. A dev window opens the browser instead.
 - The renderer has no Node access. Add new desktop abilities as small IPC handlers in `electron/main.cjs` exposed through `electron/preload.cjs`.
 - Map labels and pins are HTML markers (no glyph/font server needed). Update their classes with `classList`, never `className`, because maplibre adds its own positioning classes.
+- The old name stays in places existing data and updates depend on: `productName` and `appId` in `package.json` (`productName` sets the userData folder holding the detector model and tile cache), the `Documents\Hunting Hub` and `Hunting Hub Photos` folders, file `kind` values, storage keys, the Firebase project and the installer file name. Don't rename these without a migration.
+- Don't scrape the county GIS or onX.
+- Offline map downloads stay property-sized.
+- Don't default the photo library to OneDrive.
+- Never bundle or commit the MegaDetector `.onnx` model (AGPL). Each PC downloads it once.
+- In-app updates passed a local test, but the GitHub download route stays untested until the first release after 0.7.0.
+
+## Working with the owner
+
+- Ask before installing or downloading anything. The owner makes system, driver and registry changes themselves.
+- Commit only when asked, with the email `291184756+jappelbaum99-cmyk@users.noreply.github.com`.
 
 ## Commands
 

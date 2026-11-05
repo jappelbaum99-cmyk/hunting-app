@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
+import { SchedulesField } from '@/components/SchedulesField';
 
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
+import { entryTitle, formatPlotDate, PLOT_ACTIONS, plotEntries, removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
 import { formatDistance, lineLengthM, TRAIL_KINDS, trailKindInfo } from '@/lib/trails';
 import {
@@ -16,6 +18,8 @@ import {
   type MapMarker,
   type MapTrail,
   type MarkerType,
+  type PlotAction,
+  type PlotEntry,
   type Property,
   type TrailKind,
 } from '@/types/models';
@@ -216,27 +220,136 @@ function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange
         <span>{formatAcres(acresOf(record.geometry))}</span>
       </Field>
       {isPlotType(record.type, options.find((t) => t.id === record.type)?.label ?? '') && (
-        <div className="plot-fields">
-          <Field label="What's planted">
-            <input
-              type="text"
-              list="food-plot-crops"
-              placeholder="e.g. Clover and chicory"
-              value={record.planted ?? ''}
-              onChange={(e) => onChange({ ...record, planted: e.target.value || null })}
-            />
-            <datalist id="food-plot-crops">
-              {FOOD_PLOT_CROPS.map((crop) => (
-                <option key={crop} value={crop} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Planted on">
-            <input type="date" value={record.plantedOn ?? ''} onChange={(e) => onChange({ ...record, plantedOn: e.target.value || null })} />
-          </Field>
-        </div>
+        <PlotLog key={record.id} record={record} onChange={onChange} />
       )}
+      <SchedulesField key={`schedules-${record.id}`} schedules={record.schedules} onChange={(schedules) => onChange({ ...record, schedules })} />
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
+    </>
+  );
+}
+
+// What's planted now, a form to save what was done, and everything saved so far.
+function PlotLog({ record, onChange }: { record: MapArea; onChange(a: MapArea): void }) {
+  const blank = { id: null as string | null, action: 'planted' as PlotAction, what: '', date: todayDate(), notes: '' };
+  const [draft, setDraft] = useState(blank);
+  const [saved, setSaved] = useState(false);
+  const entries = plotEntries(record);
+  const set = (patch: Partial<typeof blank>) => {
+    setDraft({ ...draft, ...patch });
+    setSaved(false);
+  };
+  const missing = !draft.date || (draft.action === 'planted' && !draft.what.trim());
+
+  const save = () => {
+    if (missing) return;
+    const existing = entries.find((e) => e.id === draft.id);
+    const entry: PlotEntry = {
+      id: existing?.id ?? crypto.randomUUID(),
+      action: draft.action,
+      what: draft.action === 'planted' ? draft.what.trim() : null,
+      date: draft.date,
+      notes: draft.notes.trim() || null,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      deletedAt: null,
+      fromPhone: existing?.fromPhone,
+      loggedBy: existing?.loggedBy,
+    };
+    onChange(saveEntry(record, entry));
+    setDraft(blank);
+    setSaved(true);
+  };
+
+  return (
+    <>
+      <Field label="Planted now">
+        <span>{record.planted || 'Nothing saved yet'}</span>
+        {record.planted && record.plantedOn && <span className="muted"> · {formatPlotDate(record.plantedOn)}</span>}
+      </Field>
+
+      <Field label={draft.id ? 'Edit entry' : 'Add to the plot log'}>
+        <div className="plot-form">
+          <div className="plot-fields">
+            <select value={draft.action} onChange={(e) => set({ action: e.target.value as PlotAction })} aria-label="What was done">
+              {(Object.keys(PLOT_ACTIONS) as PlotAction[]).map((action) => (
+                <option key={action} value={action}>
+                  {PLOT_ACTIONS[action]}
+                </option>
+              ))}
+            </select>
+            <input type="date" value={draft.date} onChange={(e) => set({ date: e.target.value })} aria-label="Date" />
+          </div>
+          {draft.action === 'planted' && (
+            <>
+              <input
+                type="text"
+                list="food-plot-crops"
+                placeholder="What you planted, e.g. Clover and chicory"
+                value={draft.what}
+                onChange={(e) => set({ what: e.target.value })}
+                aria-label="What you planted"
+              />
+              <datalist id="food-plot-crops">
+                {FOOD_PLOT_CROPS.map((crop) => (
+                  <option key={crop} value={crop} />
+                ))}
+              </datalist>
+            </>
+          )}
+          <textarea rows={2} placeholder="Notes, like seed rate or how it went" value={draft.notes} onChange={(e) => set({ notes: e.target.value })} aria-label="Entry notes" />
+          <div className="plot-form-actions">
+            <button className="primary" disabled={missing} onClick={save}>
+              Save
+            </button>
+            {draft.id && (
+              <button
+                onClick={() => {
+                  setDraft(blank);
+                  setSaved(false);
+                }}
+              >
+                Cancel
+              </button>
+            )}
+            {saved && <span className="muted">Saved</span>}
+          </div>
+        </div>
+      </Field>
+
+      {entries.length > 0 && (
+        <Field label="Plot log">
+          <ul className="plot-log">
+            {entries.map((entry) => (
+              <li key={entry.id}>
+                <div className="plot-log-text">
+                  <span className="row-title">{entryTitle(entry)}</span>
+                  <span className="row-detail">{[formatPlotDate(entry.date), entry.loggedBy].filter(Boolean).join(' · ')}</span>
+                  {entry.notes && <span className="plot-log-notes">{entry.notes}</span>}
+                </div>
+                <button
+                  className="link"
+                  onClick={() => {
+                    setDraft({ id: entry.id, action: entry.action, what: entry.what ?? '', date: entry.date, notes: entry.notes ?? '' });
+                    setSaved(false);
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  className="icon"
+                  title="Remove"
+                  aria-label={`Remove ${entryTitle(entry)}`}
+                  onClick={() => {
+                    if (draft.id === entry.id) setDraft(blank);
+                    onChange(removeEntry(record, entry.id));
+                  }}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Field>
+      )}
     </>
   );
 }

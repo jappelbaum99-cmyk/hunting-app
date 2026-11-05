@@ -1,3 +1,4 @@
+import { DEFAULT_LEAD_DAYS } from '@/lib/schedules';
 import type { HubData, PhotoDetection } from '@/types/models';
 
 // Provided by electron/preload.cjs when running as the desktop app.
@@ -74,6 +75,7 @@ export function emptyHubData(): HubData {
     trails: [],
     fieldTracks: [],
     photos: [],
+    actionItems: [],
     settings: {
       markerStyles: {},
       areaColors: {},
@@ -82,6 +84,9 @@ export function emptyHubData(): HubData {
       customPinTypes: [],
       propertyLineColor: null,
       snapping: DEFAULT_SNAPPING,
+      pinsLocked: false,
+      hiddenLabels: [],
+      scheduleLeadDays: DEFAULT_LEAD_DAYS,
     },
   };
 }
