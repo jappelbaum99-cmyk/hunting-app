@@ -93,6 +93,10 @@ export interface HubSettings {
   pinsLocked: boolean;
   // The kinds of names left off the map.
   hiddenLabels: LabelKind[];
+  // The pin and area types left off the map, like "pin:camera" or "area:timber".
+  hiddenTypeLabels: string[];
+  // The look of each trail type. Anything left out uses the built-in default.
+  trailStyles: Partial<Record<TrailKind, { color?: string; pattern?: LinePattern; thickness?: LineThickness }>>;
   // How many days ahead of a schedule's window its To do card appears.
   scheduleLeadDays: number;
   // The camp this hub gets phone hunts and pins from, if any.
@@ -399,7 +403,7 @@ export interface MapTrail extends Syncable {
   notes: string | null;
   // Overrides the trail type's color.
   color?: string | null;
-  // Override the trail type's line style.
+  // Override the line style set for its type.
   pattern?: LinePattern | null;
   thickness?: LineThickness | null;
   // Drawn in the hub, or walked with a phone's GPS.

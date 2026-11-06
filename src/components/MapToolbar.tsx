@@ -5,8 +5,8 @@ import { AreaBadge } from '@/components/AreaBadge';
 import type { PinTypeView } from '@/lib/featureTypes';
 import { IMPORT_ACCEPT } from '@/lib/importGeo';
 import type { AreaTypeView } from '@/lib/styles';
-import { TRAIL_KINDS } from '@/lib/trails';
-import type { AreaType, MarkerType, TrailKind } from '@/types/models';
+import { TRAIL_KINDS, trailTypeStyle } from '@/lib/trails';
+import type { AreaType, HubSettings, MarkerType, TrailKind } from '@/types/models';
 
 interface MapToolbarProps {
   disabled: boolean;
@@ -17,6 +17,7 @@ interface MapToolbarProps {
   onDrawArea(type: AreaType): void;
   onPlaceMarker(type: MarkerType): void;
   onDrawTrail(kind: TrailKind): void;
+  trailStyles: HubSettings['trailStyles'];
   pinTypes: PinTypeView[];
   onImport(file: File): void;
   onAddImage(file: File): void;
@@ -35,8 +36,9 @@ export function MapToolbar(props: MapToolbarProps) {
 
   return (
     <div className="map-toolbar">
-      {/* Everything for getting a property line onto the map. */}
-      <details className="dropdown">
+      {/* Everything for getting a property line onto the map. Sharing a name
+          means only one of these menus is open at a time. */}
+      <details className="dropdown" name="map-menu">
         <summary className={disabled ? 'disabled' : ''}>Property ▾</summary>
         <div className="dropdown-menu wide">
           <button onClick={(e) => pick(e, onDrawProperty)}>
@@ -68,7 +70,7 @@ export function MapToolbar(props: MapToolbarProps) {
         Draw section
       </button>
 
-      <details className="dropdown">
+      <details className="dropdown" name="map-menu">
         <summary className={disabled ? 'disabled' : ''}>Draw area ▾</summary>
         <div className="dropdown-menu">
           {props.areaTypes.map((type) => (
@@ -80,19 +82,22 @@ export function MapToolbar(props: MapToolbarProps) {
         </div>
       </details>
 
-      <details className="dropdown">
+      <details className="dropdown" name="map-menu">
         <summary className={disabled ? 'disabled' : ''}>Draw trail ▾</summary>
         <div className="dropdown-menu">
-          {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => (
-            <button key={kind} onClick={(e) => pick(e, () => props.onDrawTrail(kind))}>
-              <span className={`swatch line${TRAIL_KINDS[kind].dashed ? ' dashed' : ''}`} style={{ '--line': TRAIL_KINDS[kind].color } as CSSProperties} />
-              {TRAIL_KINDS[kind].label}
-            </button>
-          ))}
+          {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => {
+            const style = trailTypeStyle(kind, props.trailStyles);
+            return (
+              <button key={kind} onClick={(e) => pick(e, () => props.onDrawTrail(kind))}>
+                <span className={`swatch line ${style.pattern}`} style={{ '--line': style.color, borderTopWidth: Math.max(2, style.px) } as CSSProperties} />
+                {TRAIL_KINDS[kind].label}
+              </button>
+            );
+          })}
         </div>
       </details>
 
-      <details className="dropdown">
+      <details className="dropdown" name="map-menu">
         <summary className={disabled ? 'disabled' : ''}>Add pin ▾</summary>
         <div className="dropdown-menu">
           {props.pinTypes.map((type) => (

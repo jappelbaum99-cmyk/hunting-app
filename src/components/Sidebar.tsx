@@ -367,7 +367,7 @@ export function Sidebar(props: SidebarProps) {
               key={t.id}
               selected={isSelected('trail', t.id)}
               onClick={() => onPick({ kind: 'trail', id: t.id })}
-              swatch={<span className={`swatch line ${trailStyle(t).pattern}`} style={{ '--line': t.color ?? trailKindInfo(t.kind).color, borderTopWidth: Math.max(2, trailStyle(t).px) } as CSSProperties} />}
+              swatch={<span className={`swatch line ${trailStyle(t, props.settings.trailStyles).pattern}`} style={{ '--line': trailStyle(t, props.settings.trailStyles).color, borderTopWidth: Math.max(2, trailStyle(t, props.settings.trailStyles).px) } as CSSProperties} />}
               title={t.name}
               detail={`${trailKindInfo(t.kind).label} · ${formatDistance(lineLengthM(t.line.coordinates))}`}
             />

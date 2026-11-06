@@ -86,6 +86,8 @@ export function emptyHubData(): HubData {
       snapping: DEFAULT_SNAPPING,
       pinsLocked: false,
       hiddenLabels: [],
+      hiddenTypeLabels: [],
+      trailStyles: {},
       scheduleLeadDays: DEFAULT_LEAD_DAYS,
     },
   };

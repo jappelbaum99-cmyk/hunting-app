@@ -14,6 +14,7 @@ import {
   COMPASS_POINTS,
   type AreaType,
   type CompassPoint,
+  type HubSettings,
   type LinePattern,
   type LineThickness,
   type MapArea,
@@ -43,7 +44,7 @@ type DetailPanelProps =
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[] } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
-  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null } & Common);
+  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null; trailStyles: HubSettings['trailStyles'] } & Common);
 
 function headingFor(props: DetailPanelProps): string {
   switch (props.kind) {
@@ -109,7 +110,7 @@ export function DetailPanel(props: DetailPanelProps) {
         )}
         {props.kind === 'trail' && (
           <>
-            <TrailFields record={props.record} onChange={props.onChange} onCombine={props.onCombine} onPick={props.onPick} onUndoCombine={props.onUndoCombine} />
+            <TrailFields record={props.record} onChange={props.onChange} onCombine={props.onCombine} onPick={props.onPick} onUndoCombine={props.onUndoCombine} trailStyles={props.trailStyles} />
             <ColorField
               label="Line color"
               value={props.record.color ?? null}
@@ -357,10 +358,10 @@ function PlotLog({ record, onChange }: { record: MapArea; onChange(a: MapArea): 
   );
 }
 
-function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine }: { record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null }) {
+function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine, trailStyles }: { record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null; trailStyles: HubSettings['trailStyles'] }) {
   const [feet, setFeet] = useState(DEFAULT_COMBINE_FT);
-  const style = trailStyle(record);
-  const lineColor = record.color ?? trailKindInfo(record.kind).color;
+  const style = trailStyle(record, trailStyles);
+  const lineColor = style.color;
   return (
     <>
       <Field label="Type">
@@ -400,7 +401,7 @@ function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine }: { r
         </div>
         {(record.pattern || record.thickness) && (
           <button className="link line-style-default" onClick={() => onChange({ ...record, pattern: null, thickness: null })}>
-            Use the default for this type
+            Use this type's style from Settings
           </button>
         )}
       </Field>

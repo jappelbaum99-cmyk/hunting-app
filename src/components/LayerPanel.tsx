@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '@/components/Icon';
+import { MapLabelToggles } from '@/components/MapLabelToggles';
+import type { HubSettings } from '@/types/models';
 
 import {
   BASE_MAPS,
@@ -14,6 +16,8 @@ import {
 interface LayerPanelProps {
   layers: MapLayersState;
   onChange(layers: MapLayersState): void;
+  settings: HubSettings;
+  onChangeSettings(settings: HubSettings): void;
 }
 
 // Preview pictures for the map chooser: one USGS tile over Salem, MO
@@ -42,7 +46,7 @@ function Thumbnail({ id }: { id: BaseMapId }) {
   return <img src={THUMBNAILS[id]} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
 
-export function LayerPanel({ layers, onChange }: LayerPanelProps) {
+export function LayerPanel({ layers, onChange, settings, onChangeSettings }: LayerPanelProps) {
   const [open, setOpen] = useState(false);
   const set = (patch: Partial<MapLayersState>) => onChange({ ...layers, ...patch });
   const showsLidar = layers.base === 'lidar' || layers.lidarBlend > 0;
@@ -142,6 +146,11 @@ export function LayerPanel({ layers, onChange }: LayerPanelProps) {
             <input type="checkbox" checked={layers.huntSpots} onChange={(e) => set({ huntSpots: e.target.checked })} />
             <span>New spots hunted (not stands)</span>
           </label>
+
+          <details className="layer-labels">
+            <summary>Map labels</summary>
+            <MapLabelToggles settings={settings} onChange={onChangeSettings} />
+          </details>
         </div>
       )}
     </div>

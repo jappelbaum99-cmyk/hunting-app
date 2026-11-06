@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings } from '@/components/CampSettings';
+import { MapLabelToggles } from '@/components/MapLabelToggles';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { Icon } from '@/components/Icon';
 import { UpdateSettings, type Updater } from '@/components/UpdateBanner';
@@ -10,14 +11,14 @@ import { AREA_ICON_NAMES } from '@/lib/icons';
 import {
   areaTypeList,
   categoryStyle,
-  LABEL_KINDS,
   MARKER_SHAPES,
   MAX_MARKER_SIZE,
   MIN_MARKER_SIZE,
   propertyColor,
   type AreaTypeView,
 } from '@/lib/styles';
-import type { CustomAreaType, CustomPinType, HubSettings, MarkerShape, MarkerStyle, MarkerType } from '@/types/models';
+import { LINE_PATTERNS, LINE_THICKNESS, TRAIL_KINDS, trailTypeStyle } from '@/lib/trails';
+import type { CustomAreaType, CustomPinType, HubSettings, LinePattern, LineThickness, MarkerShape, MarkerStyle, MarkerType, TrailKind } from '@/types/models';
 
 interface SettingsPanelProps {
   settings: HubSettings;
@@ -141,23 +142,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
 
       <section className="sidebar-section">
         <h2>Map labels</h2>
-        <ul className="settings-list">
-          {LABEL_KINDS.map(({ id, label }) => (
-            <li key={id} className="setting-row">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={!settings.hiddenLabels.includes(id)}
-                  onChange={(e) =>
-                    onChange({ ...settings, hiddenLabels: e.target.checked ? settings.hiddenLabels.filter((k) => k !== id) : [...settings.hiddenLabels, id] })
-                  }
-                />
-                <span>{label}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        <p className="hint">Unchecked names stay off the map. A selected stand, pin or hunt spot still shows its name.</p>
+        <MapLabelToggles settings={settings} onChange={onChange} />
       </section>
 
       <section className="sidebar-section">
@@ -254,6 +239,49 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         >
           + Add pin type
         </button>
+      </section>
+
+      <section className="sidebar-section">
+        <h2>Trails</h2>
+        <p className="hint">The color, pattern and thickness for each type of trail. A single trail can still have its own.</p>
+        <ul className="settings-list">
+          {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => {
+            const style = trailTypeStyle(kind, settings.trailStyles);
+            const label = TRAIL_KINDS[kind].label;
+            const setStyle = (patch: NonNullable<HubSettings['trailStyles'][TrailKind]>) =>
+              onChange({ ...settings, trailStyles: { ...settings.trailStyles, [kind]: { ...settings.trailStyles[kind], ...patch } } });
+            return (
+              <li key={kind} className="pin-setting">
+                <div className="setting-row">
+                  <span className={`swatch line ${style.pattern}`} style={{ '--line': style.color, borderTopWidth: style.px } as CSSProperties} />
+                  <span className="row-title">{label}</span>
+                  <input type="color" className="color-input" value={style.color} onChange={(e) => setStyle({ color: e.target.value })} aria-label={`${label} color`} />
+                </div>
+                <div className="setting-row trail-style-row">
+                  <select value={style.pattern} onChange={(e) => setStyle({ pattern: e.target.value as LinePattern })} aria-label={`${label} pattern`}>
+                    {(Object.keys(LINE_PATTERNS) as LinePattern[]).map((p) => (
+                      <option key={p} value={p}>
+                        {LINE_PATTERNS[p]}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={style.thickness} onChange={(e) => setStyle({ thickness: e.target.value as LineThickness })} aria-label={`${label} thickness`}>
+                    {(Object.keys(LINE_THICKNESS) as LineThickness[]).map((t) => (
+                      <option key={t} value={t}>
+                        {LINE_THICKNESS[t].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {Object.keys(settings.trailStyles).length > 0 && (
+          <button className="link" onClick={() => onChange({ ...settings, trailStyles: {} })}>
+            Back to the built-in looks
+          </button>
+        )}
       </section>
 
       <section className="sidebar-section">

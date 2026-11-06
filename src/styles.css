@@ -1791,12 +1791,14 @@ input[type='number'] {
   inset: -7px;
 }
 
-/* Name kinds turned off in Settings. A selected pin still shows its name. */
+/* Names turned off in Map labels. A selected pin still shows its name. */
+.map-pin-no-label:not(.map-pin-selected) .map-pin-label,
+.map-label.map-label-hidden,
 .hide-label-pin .map-pin:not(.map-pin-selected) .map-pin-label,
 .hide-label-hunt .hunt-spot:not(.hunt-spot-selected) .hunt-spot-label,
 .hide-label-property .map-label-property,
 .hide-label-section .map-label-section,
-.hide-label-area .map-label-area,
+.hide-label-area .map-label-area:not(.map-label-selected),
 .hide-label-trail .map-label-trail {
   display: none;
 }
@@ -2757,6 +2759,50 @@ button.mini {
   padding: 0;
   display: grid;
   gap: 8px;
+}
+
+.trail-style-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.label-toggles {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.label-toggle-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.label-toggle-actions button {
+  flex: 1;
+  font-size: 12px;
+}
+
+.label-types {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 4px 22px;
+}
+
+.layer-labels summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.layer-labels[open] summary {
+  margin-bottom: 8px;
+}
+
+.layer-labels .label-toggles {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .trail-combine {

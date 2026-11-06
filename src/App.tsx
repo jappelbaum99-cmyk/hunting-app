@@ -31,7 +31,7 @@ import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
-import { formatDistance, lineBounds, metersBetween, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
+import { formatDistance, lineBounds, metersBetween, TRAIL_KINDS, trailStyle, trailTypeStyle, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
@@ -218,7 +218,19 @@ export function App() {
       if (p) hub.saveProperty({ ...p, boundary: withRings(p.boundary, editRings) });
     } else if (mode.target === 'section') {
       const s = hub.sections.find((r) => r.id === mode.id);
-      if (s) hub.saveSection({ ...s, geometry: withRings(s.geometry, editRings) });
+      if (s) {
+        // Stretches left close to the property line land exactly on it, as they do when drawing.
+        const lines = ringsOfShapes(hub.properties.map((p) => p.boundary));
+        const followed = hub.settings.snapping.enabled
+          ? editRings.map((ring) => {
+              const closed = [...ring, ring[0]];
+              const result = followNearbyLines(closed, lines);
+              return result === closed ? ring : result.slice(0, -1);
+            })
+          : editRings;
+        hub.saveSection({ ...s, geometry: withRings(s.geometry, followed) });
+        if (followed.some((ring, i) => ring !== editRings[i])) setNotice(`${s.name} now follows the property line where it runs close to it.`);
+      }
     } else if (mode.target === 'area') {
       const a = hub.areas.find((r) => r.id === mode.id);
       if (a) hub.saveArea({ ...a, geometry: withRings(a.geometry, editRings) });
@@ -960,7 +972,7 @@ export function App() {
   } else if (mode.kind === 'draw' && mode.target === 'section') {
     [draftColor, modeTitle] = ['#f7efe6', 'section'];
   } else if (mode.kind === 'draw' && mode.target === 'trail') {
-    [draftColor, modeTitle] = [TRAIL_KINDS[mode.trailKind].color, TRAIL_KINDS[mode.trailKind].label.toLowerCase()];
+    [draftColor, modeTitle] = [trailTypeStyle(mode.trailKind, hub.settings.trailStyles).color, TRAIL_KINDS[mode.trailKind].label.toLowerCase()];
   } else if (mode.kind === 'draw') {
     const info = areaTypeInfo(mode.areaType, hub.settings);
     [draftColor, modeTitle] = [info.color, info.label.toLowerCase()];
@@ -1231,7 +1243,7 @@ export function App() {
       [editColor, editTitle] = [a ? areaTypeInfo(a.type, hub.settings).color : '#ffffff', a?.name ?? 'area'];
     } else {
       const t = hub.trails.find((r) => r.id === mode.id);
-      [editColor, editTitle] = [t ? (t.color ?? TRAIL_KINDS[t.kind].color) : '#ffffff', t?.name ?? 'trail'];
+      [editColor, editTitle] = [t ? trailStyle(t, hub.settings.trailStyles).color : '#ffffff', t?.name ?? 'trail'];
     }
   }
 
@@ -1403,6 +1415,7 @@ export function App() {
         {mode.kind !== 'align' && (
           <MapToolbar
             disabled={mode.kind !== 'browse'}
+            trailStyles={hub.settings.trailStyles}
             areaTypes={areaTypeList(hub.settings)}
             pinTypes={pinTypeList(hub.settings.customPinTypes)}
             onDrawProperty={() => startMode({ kind: 'draw', target: 'property' })}
@@ -1414,7 +1427,7 @@ export function App() {
             onAddImage={(file) => void startAlignNew(file)}
           />
         )}
-        <LayerPanel layers={layers} onChange={setLayers} />
+        <LayerPanel layers={layers} onChange={setLayers} settings={hub.settings} onChangeSettings={hub.saveSettings} />
         {camerasOpen && (
           // Stays mounted (just hidden) while a new camera is pinned, so the import picks up where it was.
           <div className="camera-overlay" hidden={cameraPinName !== null}>
@@ -1586,7 +1599,8 @@ export function App() {
           record={record}
           onEditShape={() => startEdit('trail', record.id)}
           propertyName={propertyName(record.propertyId)}
-          defaultColor={TRAIL_KINDS[record.kind]?.color}
+          defaultColor={trailTypeStyle(record.kind, hub.settings.trailStyles).color}
+          trailStyles={hub.settings.trailStyles}
           onChange={hub.saveTrail}
           onCombine={(feet) => combineTrails(record, feet)}
           onPick={(action) => setMode({ kind: 'trailPick', action, id: record.id })}

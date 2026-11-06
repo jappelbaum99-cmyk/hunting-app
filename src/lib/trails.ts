@@ -2,7 +2,7 @@
 // lines), drawn in the hub or walked with the phone's GPS.
 import type { LineString, Position } from 'geojson';
 
-import type { LinePattern, LineThickness, MapTrail, TrailKind } from '@/types/models';
+import type { HubSettings, LinePattern, LineThickness, MapTrail, TrailKind } from '@/types/models';
 
 export const TRAIL_KINDS: Record<TrailKind, { label: string; color: string; dashed: boolean }> = {
   deer: { label: 'Deer trail', color: '#c4935c', dashed: true },
@@ -23,11 +23,26 @@ export const LINE_THICKNESS: Record<LineThickness, { label: string; px: number }
   thick: { label: 'Thick', px: 5 },
 };
 
-// How a trail is drawn: its own choices, else its type's.
-export function trailStyle(trail: Pick<MapTrail, 'kind' | 'pattern' | 'thickness'>): { pattern: LinePattern; thickness: LineThickness; px: number } {
-  const pattern = trail.pattern ?? (trailKindInfo(trail.kind).dashed ? 'dashed' : 'solid');
-  const thickness = trail.thickness ?? 'normal';
-  return { pattern, thickness, px: LINE_THICKNESS[thickness].px };
+export interface TrailLook {
+  color: string;
+  pattern: LinePattern;
+  thickness: LineThickness;
+  px: number;
+}
+
+// How a trail type is drawn: what's set in Settings, else the built-in look.
+export function trailTypeStyle(kind: string, styles: HubSettings['trailStyles'] = {}): TrailLook {
+  const info = trailKindInfo(kind);
+  const set = styles[kind as TrailKind];
+  const thickness = set?.thickness ?? 'normal';
+  return { color: set?.color ?? info.color, pattern: set?.pattern ?? (info.dashed ? 'dashed' : 'solid'), thickness, px: LINE_THICKNESS[thickness].px };
+}
+
+// How one trail is drawn: its own choices, else its type's.
+export function trailStyle(trail: Pick<MapTrail, 'kind' | 'color' | 'pattern' | 'thickness'>, styles: HubSettings['trailStyles'] = {}): TrailLook {
+  const type = trailTypeStyle(trail.kind, styles);
+  const thickness = trail.thickness ?? type.thickness;
+  return { color: trail.color ?? type.color, pattern: trail.pattern ?? type.pattern, thickness, px: LINE_THICKNESS[thickness].px };
 }
 
 const EARTH_M = 6_371_000;

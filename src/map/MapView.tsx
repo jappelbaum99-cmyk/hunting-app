@@ -21,7 +21,7 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import { lineMidpoint, trailKindInfo, trailStyle, unpackPoints } from '@/lib/trails';
+import { lineMidpoint, trailStyle, unpackPoints } from '@/lib/trails';
 import type { AreaGeometry, DeerKind, FieldTrack, HubSettings, MapArea, MapMarker, MapTrail, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
@@ -769,8 +769,8 @@ export function MapView(props: MapViewProps) {
     map.getSource<GeoJSONSource>('trails')?.setData({
       type: 'FeatureCollection',
       features: trails.map((t) => {
-        const { pattern, px } = trailStyle(t);
-        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color: t.color ?? trailKindInfo(t.kind).color, pattern, width: px, selected: t.id === selectedId } };
+        const { color, pattern, px } = trailStyle(t, settings.trailStyles);
+        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color, pattern, width: px, selected: t.id === selectedId } };
       }),
     });
     map.getSource<GeoJSONSource>('field-tracks')?.setData({
@@ -779,14 +779,14 @@ export function MapView(props: MapViewProps) {
     });
 
     // Names for shapes, drawn as HTML so no font server is needed.
-    const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string; icon?: IconName }>();
+    const wanted = new Map<string, { text: string; at: [number, number]; kind: string; color?: string; icon?: IconName; hidden?: boolean; selected?: boolean }>();
     for (const p of properties) {
       wanted.set(p.id, { text: p.name, at: topCenterOf(p.boundary), kind: 'property', color: propertyColor(p, settings) });
     }
     // Section names sit at the top of the section so they don't cover areas in the middle.
     for (const s of sections) wanted.set(s.id, { text: s.name, at: topCenterOf(s.geometry), kind: 'section' });
     for (const a of areas) {
-      wanted.set(a.id, { text: a.name, icon: areaTypeInfo(a.type, settings).icon, at: centerOf(a.geometry), kind: 'area' });
+      wanted.set(a.id, { text: a.name, icon: areaTypeInfo(a.type, settings).icon, at: centerOf(a.geometry), kind: 'area', selected: a.id === selectedId, hidden: settings.hiddenTypeLabels.includes(`area:${a.type}`) && a.id !== selectedId });
     }
     for (const t of trails) {
       const [lng, lat] = lineMidpoint(t.line.coordinates);
@@ -796,6 +796,8 @@ export function MapView(props: MapViewProps) {
       const el = existing ?? document.createElement('div');
       // classList, not className: maplibre adds its own positioning class to this element.
       el.classList.add('map-label', `map-label-${item.kind}`);
+      el.classList.toggle('map-label-hidden', item.hidden === true);
+      el.classList.toggle('map-label-selected', item.selected === true);
       el.textContent = item.text;
       if (item.icon) el.insertAdjacentHTML('afterbegin', iconSvg(item.icon, 15));
       el.style.color = item.color ?? '';
@@ -810,7 +812,7 @@ export function MapView(props: MapViewProps) {
     const wanted = new Map(
       markers.map((m) => [
         m.id,
-        { id: m.id, name: m.name, selected: m.id === selectedId, style: markerStyle(m, settings), at: [m.lng, m.lat] as [number, number] },
+        { id: m.id, name: m.name, selected: m.id === selectedId, noLabel: settings.hiddenTypeLabels.includes(`pin:${m.type}`), style: markerStyle(m, settings), at: [m.lng, m.lat] as [number, number] },
       ]),
     );
     syncHtmlMarkers(
@@ -821,6 +823,7 @@ export function MapView(props: MapViewProps) {
         const el = existing ?? document.createElement('div');
         el.classList.add('map-pin');
         el.classList.toggle('map-pin-selected', item.selected);
+        el.classList.toggle('map-pin-no-label', item.noLabel);
         // Forecast highlight: good stands glow, bad ones fade.
         const rating = standRatings?.[item.id];
         for (const r of ['good', 'ok', 'bad', 'unset'] as const) el.classList.toggle(`rating-${r}`, rating === r);

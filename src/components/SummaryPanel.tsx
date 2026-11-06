@@ -9,7 +9,7 @@ import { entryTitle, formatPlotDate, plotEntries, todayDate } from '@/lib/plotLo
 import { huntPlaceName, sightingSummary } from '@/lib/reports';
 import { cadenceLabel, comingUp, isOverdue, scheduleTitle } from '@/lib/schedules';
 import { areaTypeInfo } from '@/lib/styles';
-import { formatDistance, lineLengthM, TRAIL_KINDS } from '@/lib/trails';
+import { formatDistance, lineLengthM, TRAIL_KINDS, trailTypeStyle } from '@/lib/trails';
 import type { CameraPhoto, HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
 
 interface SummaryPanelProps {
@@ -277,7 +277,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
             {[...trailMeters.entries()].map(([kind, meters]) => (
               <li key={kind}>
                 <span className="summary-label">
-                  <span className={`swatch line${TRAIL_KINDS[kind].dashed ? ' dashed' : ''}`} style={{ '--line': TRAIL_KINDS[kind].color } as CSSProperties} />{' '}
+                  <span className={`swatch line ${trailTypeStyle(kind, props.settings.trailStyles).pattern}`} style={{ '--line': trailTypeStyle(kind, props.settings.trailStyles).color } as CSSProperties} />{' '}
                   {TRAIL_KINDS[kind].label}
                 </span>
                 <strong>{formatDistance(meters)}</strong>
