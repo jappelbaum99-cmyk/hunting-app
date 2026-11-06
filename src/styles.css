@@ -2759,6 +2759,40 @@ button.mini {
   gap: 8px;
 }
 
+.trail-combine {
+  display: flex;
+  gap: 8px;
+}
+
+.trail-combine select,
+.trail-combine button {
+  flex: 1;
+  min-width: 0;
+}
+
+.line-style {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.line-style button {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  font-size: 12px;
+}
+
+.line-style button.active {
+  background: var(--selected);
+  outline: 1px solid var(--accent);
+}
+
+.line-style-default {
+  margin-top: 6px;
+}
+
 .board-done summary {
   padding: 0 8px;
   cursor: pointer;
@@ -2965,6 +2999,10 @@ body.resizing {
 
 .swatch.line.dashed {
   border-top-style: dashed;
+}
+
+.swatch.line.dotted {
+  border-top-style: dotted;
 }
 
 .map-label-trail {

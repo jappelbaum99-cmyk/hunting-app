@@ -21,7 +21,7 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import { lineMidpoint, trailKindInfo, unpackPoints } from '@/lib/trails';
+import { lineMidpoint, trailKindInfo, trailStyle, unpackPoints } from '@/lib/trails';
 import type { AreaGeometry, DeerKind, FieldTrack, HubSettings, MapArea, MapMarker, MapTrail, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
@@ -219,22 +219,31 @@ function addFeatureLayers(map: maplibregl.Map): void {
     type: 'line',
     source: 'trails',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', 'rgba(20, 12, 6, 0.7)'], 'line-width': ['case', ['get', 'selected'], 8, 6] },
+    paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', 'rgba(20, 12, 6, 0.7)'], 'line-width': ['+', ['get', 'width'], ['case', ['get', 'selected'], 5, 3]] },
   });
+  // A pattern can't vary line by line within a layer, so each has its own.
   map.addLayer({
     id: 'trail-line',
     type: 'line',
     source: 'trails',
-    filter: ['!', ['get', 'dashed']],
+    filter: ['==', ['get', 'pattern'], 'solid'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['get', 'color'], 'line-width': 3 },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'] },
   });
   map.addLayer({
     id: 'trail-line-dashed',
     type: 'line',
     source: 'trails',
-    filter: ['get', 'dashed'],
-    paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-dasharray': [2, 1.5] },
+    filter: ['==', ['get', 'pattern'], 'dashed'],
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-dasharray': [2, 1.5] },
+  });
+  map.addLayer({
+    id: 'trail-line-dotted',
+    type: 'line',
+    source: 'trails',
+    filter: ['==', ['get', 'pattern'], 'dotted'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-dasharray': [0.01, 2] },
   });
   // Scent cones sit over areas, so you can see one drifting into bedding.
   // Each cone is three stacked wedges (full, two-thirds and one-third width),
@@ -760,8 +769,8 @@ export function MapView(props: MapViewProps) {
     map.getSource<GeoJSONSource>('trails')?.setData({
       type: 'FeatureCollection',
       features: trails.map((t) => {
-        const info = trailKindInfo(t.kind);
-        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color: t.color ?? info.color, dashed: info.dashed, selected: t.id === selectedId } };
+        const { pattern, px } = trailStyle(t);
+        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color: t.color ?? trailKindInfo(t.kind).color, pattern, width: px, selected: t.id === selectedId } };
       }),
     });
     map.getSource<GeoJSONSource>('field-tracks')?.setData({

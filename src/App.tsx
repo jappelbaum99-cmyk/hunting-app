@@ -26,11 +26,12 @@ import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { boardCards, placeNotes } from '@/lib/actionBoard';
+import { combineLines, feetToMeters, joinLines, nearestLine, overlaps, splitLine } from '@/lib/combineTrails';
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
-import { lineBounds, metersBetween, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
+import { formatDistance, lineBounds, metersBetween, TRAIL_KINDS, unpackPoints } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
@@ -67,6 +68,8 @@ type Mode =
   | { kind: 'draw'; target: 'trail'; trailKind: TrailKind }
   // Reshaping a saved shape: drag its corners.
   | { kind: 'edit'; target: EditTarget; id: string }
+  // Clicking the map picks where to split this trail, or which trail to join it to.
+  | { kind: 'trailPick'; action: 'split' | 'join'; id: string }
   | { kind: 'align' }
   // Clicking the map sets where a sighting in a hunt report happened.
   | { kind: 'placeSighting'; reportId: string; sightingId: string };
@@ -76,6 +79,8 @@ const STAND_NAME = /\b(stand|blind|tree ?stand|ladder|box)\b/i;
 // The align panel's width (--detail-width under .has-align in styles.css) plus its gaps.
 const ALIGN_PANEL_INSET = 520 + 24;
 const DEFAULT_OVERLAY_OPACITY = 0.6;
+// How close a click has to be to count as on a trail, in meters.
+const TRAIL_PICK_M = 60;
 
 function cornersPolygon(corners: OverlayView['corners']): AreaGeometry {
   return pointsToPolygon(corners);
@@ -148,6 +153,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  // What the last Combine changed, so it can be undone.
+  const [lastCombine, setLastCombine] = useState<{ trailId: string; before: MapTrail[]; createdIds: string[] } | null>(null);
   // Trail Cameras: open, hidden while a new camera is pinned, and that camera once pinned.
   const [camerasOpen, setCamerasOpen] = useState(false);
   const [cameraPinName, setCameraPinName] = useState<string | null>(null);
@@ -587,6 +594,87 @@ export function App() {
     );
   };
 
+  // Folds overlapping lines of the same type into this one.
+  const combineTrails = (record: MapTrail, feet: number) => {
+    const distance = feetToMeters(feet);
+    const sameKind = hub.trails.filter((t) => t.kind === record.kind);
+    const result = combineLines(sameKind.map((t) => ({ id: t.id, points: t.line.coordinates })), record.id, distance);
+    if (result.removed.length === 0) {
+      const otherTypes = hub.trails.filter((t) => t.kind !== record.kind && overlaps(record.line.coordinates, t.line.coordinates, distance));
+      setNotice(
+        otherTypes.length > 0
+          ? `${otherTypes.map((t) => t.name).join(', ')} overlap${otherTypes.length === 1 ? 's' : ''} this line but ${otherTypes.length === 1 ? 'is' : 'are'} a different type. Set the same type to combine them.`
+          : `No other lines of this type run within ${feet} ft of this one.`,
+      );
+      return;
+    }
+    const touched = new Set([...result.removed, ...result.changed.keys()]);
+    const created = result.branches.map(({ from, points }) => {
+      const source = sameKind.find((t) => t.id === from) ?? record;
+      const branch: MapTrail = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, points[0])?.id ?? source.propertyId,
+        kind: source.kind,
+        name: `${source.name} branch`,
+        line: { type: 'LineString', coordinates: points },
+        notes: source.notes,
+        color: source.color,
+        pattern: source.pattern,
+        thickness: source.thickness,
+        source: source.source,
+      };
+      return branch;
+    });
+    setLastCombine({ trailId: record.id, before: sameKind.filter((t) => touched.has(t.id)), createdIds: created.map((t) => t.id) });
+    for (const [id, points] of result.changed) {
+      const trail = sameKind.find((t) => t.id === id);
+      if (trail) hub.saveTrail({ ...trail, line: { type: 'LineString', coordinates: points } });
+    }
+    for (const id of result.removed) hub.deleteTrail(id);
+    for (const branch of created) hub.saveTrail(branch);
+    const count = result.removed.length;
+    const branches = created.length ? ` ${created.length} turn-off${created.length === 1 ? '' : 's'} kept as ${created.length === 1 ? 'a branch' : 'branches'}.` : '';
+    setNotice(`Combined ${count} line${count === 1 ? '' : 's'} into ${record.name}.${branches}`);
+  };
+
+  // A click on the map while splitting a trail or picking one to join it to.
+  const pickOnTrail = (id: string, action: 'split' | 'join', position: Position) => {
+    const record = hub.trails.find((t) => t.id === id);
+    if (!record) return cancelMode();
+    if (action === 'split') {
+      if (!nearestLine([{ id, points: record.line.coordinates }], position, TRAIL_PICK_M)) return setNotice('Click on the line to split it there.');
+      const parts = splitLine(record.line.coordinates, position);
+      if (!parts) return setNotice("That's right at the end of the line. Click farther along it.");
+      const taken = new Set(hub.trails.map((t) => t.name));
+      let n = 2;
+      while (taken.has(`${record.name} ${n}`)) n++;
+      const second: MapTrail = { ...record, ...newRecordFields(), name: `${record.name} ${n}`, line: { type: 'LineString', coordinates: parts[1] }, propertyId: propertyContaining(hub.properties, parts[1][0])?.id ?? record.propertyId };
+      setLastCombine({ trailId: record.id, before: [record], createdIds: [second.id] });
+      hub.saveTrail({ ...record, line: { type: 'LineString', coordinates: parts[0] } });
+      hub.saveTrail(second);
+      setNotice(`Split into ${record.name} and ${second.name}.`);
+    } else {
+      const others = hub.trails.filter((t) => t.id !== id).map((t) => ({ id: t.id, points: t.line.coordinates, trail: t }));
+      const picked = nearestLine(others, position, TRAIL_PICK_M);
+      if (!picked) return setNotice('Click on the line you want to join to this one.');
+      const { line, gapM } = joinLines(record.line.coordinates, picked.points);
+      setLastCombine({ trailId: record.id, before: [record, picked.trail], createdIds: [] });
+      hub.saveTrail({ ...record, line: { type: 'LineString', coordinates: line } });
+      hub.deleteTrail(picked.id);
+      setNotice(`Joined ${picked.trail.name} to ${record.name}${gapM >= 1 ? `, bridging ${formatDistance(gapM)} with a straight line` : ''}.`);
+    }
+    cancelMode();
+    setSelection({ kind: 'trail', id: record.id });
+  };
+
+  const undoCombine = () => {
+    if (!lastCombine) return;
+    for (const trail of lastCombine.before) hub.saveTrail(trail);
+    for (const id of lastCombine.createdIds) hub.deleteTrail(id);
+    setLastCombine(null);
+    setNotice('Undone.');
+  };
+
   // Walks recorded on phones: look at one, turn it into a trail, or dismiss it.
   const handleFieldTrack = (id: string, action: 'show' | 'add' | 'dismiss') => {
     const track = hub.fieldTracks.find((t) => t.id === id);
@@ -672,6 +760,10 @@ export function App() {
   };
 
   const handleMapClick = (position: Position) => {
+    if (mode.kind === 'trailPick') {
+      pickOnTrail(mode.id, mode.action, position);
+      return;
+    }
     if (mode.kind === 'placeSighting') {
       const report = hub.reports.find((r) => r.id === mode.reportId);
       if (report) {
@@ -1108,7 +1200,9 @@ export function App() {
   // area edges when drawing a section, area or trail, so neighbors share an edge.
   const editing = mode.kind === 'edit' ? mode : null;
   const snapRings =
-    mode.kind === 'draw' || editing
+    mode.kind === 'trailPick'
+      ? hub.trails.filter((t) => (mode.action === 'split') === (t.id === mode.id)).map((t) => t.line.coordinates)
+      : mode.kind === 'draw' || editing
       ? [
           ...ringsOfShapes([
             ...hub.properties.filter((p) => p.id !== editing?.id).map((p) => p.boundary),
@@ -1294,7 +1388,7 @@ export function App() {
           huntSpots={huntSpotViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
           selection={selection}
-          interaction={mode.kind === 'placeSighting' ? 'place' : mode.kind}
+          interaction={mode.kind === 'placeSighting' ? 'place' : mode.kind === 'trailPick' ? 'draw' : mode.kind}
           draftPoints={draftPoints}
           draftColor={draftColor}
           onMapClick={handleMapClick}
@@ -1378,6 +1472,14 @@ export function App() {
             onFinish={finishDrawing}
             minPoints={mode.kind === 'draw' && mode.target === 'trail' ? 2 : 3}
           />
+        )}
+        {mode.kind === 'trailPick' && (
+          <div className="draw-bar">
+            <span>{mode.action === 'split' ? 'Click the spot on the line where it should split.' : 'Click the line to join to this one.'}</span>
+            <button onClick={cancelMode} title="Esc">
+              Cancel
+            </button>
+          </div>
         )}
         <UpdateBanner updater={update} />
         {(notice || hub.saveError) && (
@@ -1486,6 +1588,9 @@ export function App() {
           propertyName={propertyName(record.propertyId)}
           defaultColor={TRAIL_KINDS[record.kind]?.color}
           onChange={hub.saveTrail}
+          onCombine={(feet) => combineTrails(record, feet)}
+          onPick={(action) => setMode({ kind: 'trailPick', action, id: record.id })}
+          onUndoCombine={lastCombine?.trailId === record.id ? undoCombine : null}
           onDelete={() => {
             hub.deleteTrail(record.id);
             setSelection(null);

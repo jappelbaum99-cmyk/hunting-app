@@ -16,7 +16,7 @@ Fenceline (formerly Hunting Hub): a Windows desktop app (Electron + React + Vite
 - Offline map downloads stay property-sized.
 - Don't default the photo library to OneDrive.
 - Never bundle or commit the MegaDetector `.onnx` model (AGPL). Each PC downloads it once.
-- In-app updates passed a local test, but the GitHub download route stays untested until the first release after 0.7.0.
+- In-app updates work through the GitHub download route (0.7.0 to 0.8.0 confirmed on a real PC).
 
 ## Working with the owner
 

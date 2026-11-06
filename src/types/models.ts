@@ -387,6 +387,8 @@ export interface FieldPin extends Syncable {
 }
 
 export type TrailKind = 'deer' | 'path' | 'road' | 'fence' | 'other';
+export type LinePattern = 'solid' | 'dashed' | 'dotted';
+export type LineThickness = 'skinny' | 'normal' | 'thick';
 
 // A line on the map: a deer trail, walking path, ATV road, fence line...
 export interface MapTrail extends Syncable {
@@ -397,6 +399,9 @@ export interface MapTrail extends Syncable {
   notes: string | null;
   // Overrides the trail type's color.
   color?: string | null;
+  // Override the trail type's line style.
+  pattern?: LinePattern | null;
+  thickness?: LineThickness | null;
   // Drawn in the hub, or walked with a phone's GPS.
   source: 'drawn' | 'walked';
 }

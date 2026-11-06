@@ -2,7 +2,7 @@
 // lines), drawn in the hub or walked with the phone's GPS.
 import type { LineString, Position } from 'geojson';
 
-import type { TrailKind } from '@/types/models';
+import type { LinePattern, LineThickness, MapTrail, TrailKind } from '@/types/models';
 
 export const TRAIL_KINDS: Record<TrailKind, { label: string; color: string; dashed: boolean }> = {
   deer: { label: 'Deer trail', color: '#c4935c', dashed: true },
@@ -14,6 +14,20 @@ export const TRAIL_KINDS: Record<TrailKind, { label: string; color: string; dash
 
 export function trailKindInfo(kind: string): { label: string; color: string; dashed: boolean } {
   return TRAIL_KINDS[kind as TrailKind] ?? TRAIL_KINDS.other;
+}
+
+export const LINE_PATTERNS: Record<LinePattern, string> = { solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted' };
+export const LINE_THICKNESS: Record<LineThickness, { label: string; px: number }> = {
+  skinny: { label: 'Skinny', px: 1.5 },
+  normal: { label: 'Normal', px: 3 },
+  thick: { label: 'Thick', px: 5 },
+};
+
+// How a trail is drawn: its own choices, else its type's.
+export function trailStyle(trail: Pick<MapTrail, 'kind' | 'pattern' | 'thickness'>): { pattern: LinePattern; thickness: LineThickness; px: number } {
+  const pattern = trail.pattern ?? (trailKindInfo(trail.kind).dashed ? 'dashed' : 'solid');
+  const thickness = trail.thickness ?? 'normal';
+  return { pattern, thickness, px: LINE_THICKNESS[thickness].px };
 }
 
 const EARTH_M = 6_371_000;

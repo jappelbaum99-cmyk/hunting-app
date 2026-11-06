@@ -1,18 +1,21 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { SchedulesField } from '@/components/SchedulesField';
 
+import { COMBINE_DISTANCES_FT, DEFAULT_COMBINE_FT } from '@/lib/combineTrails';
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { entryTitle, formatPlotDate, PLOT_ACTIONS, plotEntries, removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
-import { formatDistance, lineLengthM, TRAIL_KINDS, trailKindInfo } from '@/lib/trails';
+import { formatDistance, LINE_PATTERNS, LINE_THICKNESS, lineLengthM, TRAIL_KINDS, trailKindInfo, trailStyle } from '@/lib/trails';
 import {
   COMPASS_POINTS,
   type AreaType,
   type CompassPoint,
+  type LinePattern,
+  type LineThickness,
   type MapArea,
   type MapImageOverlay,
   type MapMarker,
@@ -40,7 +43,7 @@ type DetailPanelProps =
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[] } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
-  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void } & Common);
+  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null } & Common);
 
 function headingFor(props: DetailPanelProps): string {
   switch (props.kind) {
@@ -106,7 +109,7 @@ export function DetailPanel(props: DetailPanelProps) {
         )}
         {props.kind === 'trail' && (
           <>
-            <TrailFields record={props.record} onChange={props.onChange} />
+            <TrailFields record={props.record} onChange={props.onChange} onCombine={props.onCombine} onPick={props.onPick} onUndoCombine={props.onUndoCombine} />
             <ColorField
               label="Line color"
               value={props.record.color ?? null}
@@ -354,7 +357,10 @@ function PlotLog({ record, onChange }: { record: MapArea; onChange(a: MapArea): 
   );
 }
 
-function TrailFields({ record, onChange }: { record: MapTrail; onChange(t: MapTrail): void }) {
+function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine }: { record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null }) {
+  const [feet, setFeet] = useState(DEFAULT_COMBINE_FT);
+  const style = trailStyle(record);
+  const lineColor = record.color ?? trailKindInfo(record.kind).color;
   return (
     <>
       <Field label="Type">
@@ -372,6 +378,50 @@ function TrailFields({ record, onChange }: { record: MapTrail; onChange(t: MapTr
           {formatDistance(lineLengthM(record.line.coordinates))}
           <span className="muted">{record.source === 'walked' ? ' · walked with a phone' : ''}</span>
         </span>
+      </Field>
+      <Field label="Line pattern">
+        <div className="line-style" role="radiogroup" aria-label="Line pattern">
+          {(Object.keys(LINE_PATTERNS) as LinePattern[]).map((pattern) => (
+            <button key={pattern} role="radio" aria-checked={style.pattern === pattern} className={style.pattern === pattern ? 'active' : ''} onClick={() => onChange({ ...record, pattern })}>
+              <span className={`swatch line ${pattern}`} style={{ '--line': lineColor } as CSSProperties} />
+              {LINE_PATTERNS[pattern]}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Line thickness">
+        <div className="line-style" role="radiogroup" aria-label="Line thickness">
+          {(Object.keys(LINE_THICKNESS) as LineThickness[]).map((thickness) => (
+            <button key={thickness} role="radio" aria-checked={style.thickness === thickness} className={style.thickness === thickness ? 'active' : ''} onClick={() => onChange({ ...record, thickness })}>
+              <span className="swatch line" style={{ '--line': lineColor, borderTopWidth: LINE_THICKNESS[thickness].px } as CSSProperties} />
+              {LINE_THICKNESS[thickness].label}
+            </button>
+          ))}
+        </div>
+        {(record.pattern || record.thickness) && (
+          <button className="link line-style-default" onClick={() => onChange({ ...record, pattern: null, thickness: null })}>
+            Use the default for this type
+          </button>
+        )}
+      </Field>
+      <Field label="Combine close trails" hint="Keeps this line and folds in overlapping lines of the same type. Parts that carry on past its ends make it longer, and turn-offs stay as branches.">
+        <div className="trail-combine">
+          <select value={feet} onChange={(e) => setFeet(Number(e.target.value))} aria-label="How close counts">
+            {COMBINE_DISTANCES_FT.map((ft) => (
+              <option key={ft} value={ft}>
+                Within {ft} ft
+              </option>
+            ))}
+          </select>
+          <button onClick={() => onCombine(feet)}>Combine</button>
+        </div>
+      </Field>
+      <Field label="Split or join" hint="Split cuts this line in two where you click. Join connects it to another line you click, end to end, and keeps this line's name and type.">
+        <div className="trail-combine">
+          <button onClick={() => onPick('split')}>Split</button>
+          <button onClick={() => onPick('join')}>Join</button>
+          {onUndoCombine && <button onClick={onUndoCombine}>Undo last</button>}
+        </div>
       </Field>
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
     </>
