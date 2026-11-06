@@ -693,6 +693,48 @@ input[type='checkbox'] {
   margin-right: 6px;
 }
 
+.camp-partners-title {
+  margin: 14px 0 4px;
+  font-size: 13px;
+}
+
+.camp-partners {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.camp-partners li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.camp-request {
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.camp-request-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.camp-confirm {
+  display: grid;
+  gap: 6px;
+}
+
+.camp-stop {
+  margin-top: 10px;
+}
+
 .trail-outline {
   display: flex;
   align-items: center;

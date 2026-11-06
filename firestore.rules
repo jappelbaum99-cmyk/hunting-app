@@ -2,8 +2,10 @@ rules_version = '2';
 
 // Camp sync rules. Paste these into Firebase console > Firestore > Rules.
 // A camp's document id is its code; knowing the code lets someone join.
-// Members can read everything in their camp. Each person can only change
-// their own hunts, pins and notes; only the hub that started the camp writes stands.
+// Members (hunters) can read hunts, pins, stands, walks and notes in their camp
+// and change only their own. Partners are the hubs that run the camp: the one
+// that started it, and any it or another partner approved. Only partners can
+// write stands, or read and write the shared map, plans and board.
 // Nothing can be deleted (records use soft deletes).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,33 +21,47 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in camp(code).members;
     }
 
+    function isPartner(code) {
+      return signedIn() && (request.auth.uid == camp(code).ownerUid || request.auth.uid in camp(code).get('partners', []));
+    }
+
     match /camps/{code} {
       // Only a lookup by code, never a list of all camps.
       allow get: if signedIn();
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.members == [request.auth.uid];
-      // Joining adds only yourself, and your own name.
       allow update: if signedIn() && (
         request.auth.uid == resource.data.ownerUid
+        // Partners run the camp too, but the owner stays the owner.
+        || (request.auth.uid in resource.data.get('partners', []) && request.resource.data.ownerUid == resource.data.ownerUid)
+        // Joining adds only yourself, and your own name. You can ask to be a
+        // partner, but only a partner can make you one.
         || (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'names'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'names', 'partnerRequests'])
           && request.resource.data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
           && request.resource.data.names.diff(resource.data.names).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.get('partnerRequests', {}).diff(resource.data.get('partnerRequests', {})).affectedKeys().hasOnly([request.auth.uid])
         )
       );
 
+      // The map, plans, logs and board that partners' hubs share.
+      match /shared/{id} {
+        allow read, create, update: if isPartner(code);
+      }
+
       match /{kind}/{id} {
-        allow read: if isMember(code);
+        allow read: if isMember(code) && kind in ['hunts', 'pins', 'stands', 'tracks', 'notes'];
         allow create: if isMember(code)
           && kind in ['hunts', 'pins', 'stands', 'tracks', 'notes']
-          && (kind != 'stands' || camp(code).ownerUid == request.auth.uid)
+          && (kind != 'stands' || isPartner(code))
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.id == id;
         allow update: if isMember(code)
+          && kind in ['hunts', 'pins', 'stands', 'tracks', 'notes']
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.id == id
-          && resource.data.createdBy == request.auth.uid;
+          && (kind == 'stands' ? isPartner(code) : resource.data.createdBy == request.auth.uid);
       }
     }
   }

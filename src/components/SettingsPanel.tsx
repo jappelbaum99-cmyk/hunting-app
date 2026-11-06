@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
-import { CampSettings } from '@/components/CampSettings';
+import { CampSettings, type CampPartners } from '@/components/CampSettings';
 import { MapLabelToggles } from '@/components/MapLabelToggles';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { Icon } from '@/components/Icon';
@@ -28,6 +28,7 @@ interface SettingsPanelProps {
   onImportPhone(file: File): void;
   onSendStands(): void;
   update: Updater;
+  campPartners: CampPartners;
 }
 
 // A pin drawn the same way as on the map, for previews.
@@ -65,7 +66,7 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
   );
 }
 
-export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands, update }: SettingsPanelProps) {
+export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands, update, campPartners }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
   const setPinType = (id: string, patch: Partial<CustomPinType>) =>
@@ -82,7 +83,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         <h2>Settings</h2>
       </div>
 
-      <CampSettings camp={settings.camp ?? null} onChange={(camp) => onChange({ ...settings, camp })} />
+      <CampSettings camp={settings.camp ?? null} partners={campPartners} onChange={(camp) => onChange({ ...settings, camp })} />
       <PhoneFiles onImportPhone={onImportPhone} onSendStands={onSendStands} />
 
       <section className="sidebar-section">

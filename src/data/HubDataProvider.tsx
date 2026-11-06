@@ -4,6 +4,7 @@ import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
 import { compactPhoto } from '@/lib/photos';
 import type {
   ActionItem,
+  CampLink,
   CustomAreaType,
   CameraPhoto,
   CustomPinType,
@@ -43,6 +44,8 @@ interface HubDataValue {
   actionItems: ActionItem[];
   settings: HubSettings;
   saveSettings(settings: HubSettings): void;
+  // Changes part of the camp link, keeping everything else in Settings as it now is.
+  patchCamp(patch: Partial<CampLink>): void;
   saveActionItem(item: ActionItem): void;
   deleteActionItem(id: string): void;
   saveProperty(property: Property): void;
@@ -243,6 +246,8 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
       actionItems: live(data?.actionItems),
       settings: data?.settings ?? emptyHubData().settings,
       saveSettings: (settings) => update((current) => ({ ...current, settings })),
+      patchCamp: (patch) =>
+        update((current) => (current.settings.camp ? { ...current, settings: { ...current.settings, camp: { ...current.settings.camp, ...patch } } } : current)),
       saveActionItem: (i) => save('actionItems', i),
       deleteActionItem: (id) => remove('actionItems', id),
       saveProperty: (p) => save('properties', p),

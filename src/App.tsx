@@ -21,11 +21,13 @@ import { StandHistory } from '@/components/StandHistory';
 import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { useHubCamp } from '@/data/useHubCamp';
+import { usePartnerSync } from '@/data/usePartnerSync';
 import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
-import { boardCards, placeNotes } from '@/lib/actionBoard';
+import { placeNotes } from '@/lib/actionBoard';
+import { countShared } from '@/lib/partnerSync';
 import { combineLines, cutParts, feetToMeters, joinParts, nearestLine, overlaps, removeFromParts } from '@/lib/combineTrails';
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
@@ -478,7 +480,6 @@ export function App() {
   // Phone notes the hub has taken in, onto the board or into a food plot's log.
   for (const i of hub.allData?.actionItems ?? []) if (i.source === 'phone') campHandled[i.id] = i.deletedAt ? 'dismissed' : 'added';
   for (const a of hub.allData?.areas ?? []) for (const e of a.log ?? []) if (e.fromPhone) campHandled[e.id] = 'added';
-  const campBoard = boardCards(hub.allData?.actionItems ?? []);
   const campPlots = hub.areas
     .filter((a) => isPlotType(a.type, areaTypeInfo(a.type, hub.settings).label))
     .map((a) => ({ id: a.id, name: a.name, planted: a.planted ?? null }));
@@ -512,7 +513,19 @@ export function App() {
       freshNotes.length ? `${freshNotes.length} note${freshNotes.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
-  }, hub.settings.customPinTypes, campHandled, campBoard, campPlots);
+  }, hub.settings.customPinTypes, campHandled, campPlots);
+
+  // The map, plans, logs and board shared with the camp's other partners.
+  const partnerSync = usePartnerSync({
+    camp: hub.settings.camp ?? null,
+    manager: camp.manager,
+    data: hub.allData,
+    pinTypes: hub.settings.customPinTypes,
+    areaTypes: hub.settings.customAreaTypes,
+    mergeRecords: hub.mergeRecords,
+    patchCamp: hub.patchCamp,
+    onNotice: setNotice,
+  });
 
   useEffect(() => {
     if (selection?.kind !== 'marker' || selection.id !== unlockedPinId) setUnlockedPinId(null);
@@ -1348,7 +1361,7 @@ export function App() {
         onResize={setSidebarWidth}
         onResizeEnd={saveSidebarWidth}
         camp={hub.settings.camp ?? null}
-        campError={camp.error}
+        campError={camp.error ?? partnerSync.error}
         onExportMap={() => void exportMap(null)}
         onImportMap={(file) => void importMap(file)}
         onFieldPin={handleFieldPin}
@@ -1367,6 +1380,7 @@ export function App() {
               onImportPhone={(file) => void importPhone(file)}
               onSendStands={sendStandsToPhone}
               update={update}
+              campPartners={{ manager: camp.manager, uid: camp.uid, info: camp.info, counts: countShared(hub.allData ?? {}), syncError: partnerSync.error, waiting: partnerSync.waiting }}
             />
           ) : summaryOpen ? (
             <SummaryPanel

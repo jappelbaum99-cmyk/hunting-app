@@ -1,6 +1,6 @@
 // What the phone keeps: its own pins and hunt reports, plus the stands sent
 // over from the hub. Stored in the phone browser, so it all works with no signal.
-import type { BoardCard, CampPlot } from '@/lib/actionBoard';
+import type { CampPlot } from '@/lib/actionBoard';
 import type { CampLink, CompassPoint, CustomPinType, FieldNote, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export interface FieldStand {
@@ -33,19 +33,21 @@ export interface FieldData {
   // Walks saved on this phone, and the one being recorded right now.
   tracks: FieldTrack[];
   activeWalk: { id: string; startedAt: string; points: [number, number][] } | null;
-  // Notes the hub doesn't have yet, and the board and food plots as last seen.
+  // Notes the hub doesn't have yet, and the food plots as last seen.
   notes: FieldNote[];
-  board: BoardCard[];
   plots: CampPlot[];
 }
 
 const KEY = 'hunting-hub-field';
 
 export function loadFieldData(): FieldData {
-  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [], handled: {}, tracks: [], activeWalk: null, notes: [], board: [], plots: [] };
+  const empty: FieldData = { pins: [], reports: [], stands: [], standsUpdatedAt: null, activeReportId: null, camp: null, sent: {}, campHunts: [], pinTypes: [], handled: {}, tracks: [], activeWalk: null, notes: [], plots: [] };
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...empty, ...(JSON.parse(raw) as Partial<FieldData>) } : empty;
+    if (!raw) return empty;
+    // Older versions kept a copy of the Action Board here; it stays with the hubs now.
+    const { board: _board, ...saved } = JSON.parse(raw) as Partial<FieldData> & { board?: unknown };
+    return { ...empty, ...saved };
   } catch {
     return empty;
   }

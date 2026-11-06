@@ -6,19 +6,27 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import {
+  arrayRemove,
   arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   initializeFirestore,
   onSnapshot,
+  query,
+  serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
+  where,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
 
-import type { BoardCard, CampPlot } from '@/lib/actionBoard';
+import type { CampPlot } from '@/lib/actionBoard';
 import { CAMP_SYNC_AVAILABLE, FIREBASE_CONFIG } from '@/lib/firebaseConfig';
+import type { SharedDoc } from '@/lib/partnerSync';
 import type { CampLink, CompassPoint, CustomPinType, FieldNote, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export { CAMP_SYNC_AVAILABLE };
@@ -66,6 +74,9 @@ function newCode(): string {
   return [0, 4, 8].map((i) => chars.slice(i, i + 4).join('')).join('-');
 }
 
+// Who this device is signed in as, to find it in the camp's list of partners.
+export const campUserId = userId;
+
 export function normalizeCode(text: string): string {
   const letters = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
   return letters.length === 12 ? [0, 4, 8].map((i) => letters.slice(i, i + 4)).join('-') : text.trim().toUpperCase();
@@ -94,6 +105,71 @@ export async function joinCamp(codeText: string, hunter: string): Promise<CampLi
   return { code, name: String(snap.get('name') ?? 'Camp'), hunter, isOwner: snap.get('ownerUid') === uid };
 }
 
+// A hub that joined asks to be a partner; a partner's hub approves it.
+export async function requestPartner(camp: CampLink): Promise<void> {
+  const uid = await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { [`partnerRequests.${uid}`]: camp.hunter });
+}
+
+export async function answerPartnerRequest(camp: CampLink, uid: string, approve: boolean): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), {
+    [`partnerRequests.${uid}`]: deleteField(),
+    ...(approve ? { partners: arrayUnion(uid) } : {}),
+  });
+}
+
+export async function removePartner(camp: CampLink, uid: string): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { partners: arrayRemove(uid) });
+}
+
+// Sends changed records to the other partners. Resolves once Firebase has them; while offline it waits.
+export async function sendShared(camp: CampLink, docs: SharedDoc[]): Promise<void> {
+  const uid = await userId();
+  const batch = writeBatch(firebase().db);
+  for (const { id, collection: kind, updatedAt, data } of docs) {
+    batch.set(doc(firebase().db, 'camps', camp.code, 'shared', id), { collection: kind, updatedAt, data, createdBy: uid, syncedAt: serverTimestamp() });
+  }
+  await batch.commit();
+}
+
+// What other partners have sent since `since`, now and whenever more arrives.
+// Only changes are read. It starts a little early so nothing arriving around
+// the last look can be missed; anything read twice is simply ignored.
+export function watchShared(camp: CampLink, since: string | null, onDocs: (docs: SharedDoc[]) => void, onError: (message: string) => void): () => void {
+  let stop: (() => void) | null = null;
+  let stopped = false;
+  userId()
+    .then(() => {
+      if (stopped) return;
+      const shared = collection(firebase().db, 'camps', camp.code, 'shared');
+      stop = onSnapshot(
+        since ? query(shared, where('syncedAt', '>', Timestamp.fromMillis(Date.parse(since) - 60_000))) : shared,
+        (snap) => {
+          const docs = snap
+            .docChanges()
+            // Our own write shows here before Firebase has it; it comes back once it does.
+            .filter((change) => change.type !== 'removed' && !change.doc.metadata.hasPendingWrites)
+            .map(({ doc: d }) => ({
+              id: d.id,
+              collection: d.get('collection') as SharedDoc['collection'],
+              updatedAt: String(d.get('updatedAt')),
+              data: String(d.get('data')),
+              syncedAt: (d.get('syncedAt') as Timestamp | null)?.toDate().toISOString() ?? null,
+            }));
+          if (docs.length > 0) onDocs(docs);
+        },
+        (error) => onError(error.message),
+      );
+    })
+    .catch((error: unknown) => onError(error instanceof Error ? error.message : String(error)));
+  return () => {
+    stopped = true;
+    stop?.();
+  };
+}
+
 // Saves a record to the camp. Resolves once the server has it; while offline
 // it waits, so callers can mark a record sent only when this resolves.
 async function put(camp: CampLink, kind: Kind, id: string, data: object): Promise<void> {
@@ -114,21 +190,29 @@ export type Handled = Record<string, 'added' | 'dismissed'>;
 
 export async function publishHandled(camp: CampLink, handled: Handled): Promise<void> {
   await userId();
-  await updateDoc(doc(firebase().db, 'camps', camp.code), { handled });
+  // Merged, because each partner's hub only knows what it has taken in so far.
+  await setDoc(doc(firebase().db, 'camps', camp.code), { handled }, { merge: true });
 }
 
-// The Action Board and the list of food plots, for phones to show.
-export async function publishBoard(camp: CampLink, board: BoardCard[], plots: CampPlot[]): Promise<void> {
+// The list of food plots, for phones to log work on. The Action Board stays with
+// partners, so this also clears the copy that older versions put here for phones.
+export async function publishPlots(camp: CampLink, plots: CampPlot[]): Promise<void> {
   await userId();
-  await updateDoc(doc(firebase().db, 'camps', camp.code), { board: JSON.parse(JSON.stringify(board)), plots });
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { plots, board: deleteField() });
 }
 
-// The camp's shared pin types, board and plots, and what the hub has handled, now and whenever they change.
-export function watchCampInfo(
-  camp: CampLink,
-  onInfo: (info: { pinTypes: CustomPinType[]; handled: Handled; board: BoardCard[]; plots: CampPlot[] }) => void,
-  onError: (message: string) => void,
-): () => void {
+export interface CampInfo {
+  pinTypes: CustomPinType[];
+  handled: Handled;
+  plots: CampPlot[];
+  ownerUid: string | null;
+  partners: string[];
+  partnerRequests: Record<string, string>;
+  names: Record<string, string>;
+}
+
+// The camp's shared pin types and plots, what's been handled, and who's a partner, now and whenever they change.
+export function watchCampInfo(camp: CampLink, onInfo: (info: CampInfo) => void, onError: (message: string) => void): () => void {
   let stop: (() => void) | null = null;
   let stopped = false;
   userId()
@@ -140,8 +224,11 @@ export function watchCampInfo(
           onInfo({
             pinTypes: ((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt),
             handled: (snap.get('handled') as Handled | undefined) ?? {},
-            board: (snap.get('board') as BoardCard[] | undefined) ?? [],
             plots: (snap.get('plots') as CampPlot[] | undefined) ?? [],
+            ownerUid: (snap.get('ownerUid') as string | undefined) ?? null,
+            partners: (snap.get('partners') as string[] | undefined) ?? [],
+            partnerRequests: (snap.get('partnerRequests') as Record<string, string> | undefined) ?? {},
+            names: (snap.get('names') as Record<string, string> | undefined) ?? {},
           }),
         (error) => onError(error.message),
       );

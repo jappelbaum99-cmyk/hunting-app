@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('hub', {
   loadData: () => ipcRenderer.invoke('hub:loadData'),
   saveData: (json) => ipcRenderer.invoke('hub:saveData', json),
+  backupData: () => ipcRenderer.invoke('hub:backupData'),
   dataPath: () => ipcRenderer.invoke('hub:dataPath'),
   saveImage: (name, bytes) => ipcRenderer.invoke('hub:saveImage', name, bytes),
   loadImage: (name) => ipcRenderer.invoke('hub:loadImage', name),

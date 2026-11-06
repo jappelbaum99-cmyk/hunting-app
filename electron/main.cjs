@@ -27,6 +27,14 @@ async function loadData() {
   }
 }
 
+// A dated copy kept before the map starts syncing with another hub. Returns its path.
+async function backupData() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const copy = path.join(dataDir(), `hub-data.before-sharing-${stamp}.json`);
+  await fs.copyFile(dataFile(), copy);
+  return copy;
+}
+
 // Writes to a temp file first so a crash mid-save never corrupts the data,
 // and keeps the previous version as a .bak.
 async function saveData(_event, json) {
@@ -349,6 +357,7 @@ app.whenReady().then(() => {
   protocol.handle('hubphoto', servePhoto);
   ipcMain.handle('hub:loadData', loadData);
   ipcMain.handle('hub:saveData', saveData);
+  ipcMain.handle('hub:backupData', backupData);
   ipcMain.handle('hub:dataPath', () => dataFile());
   ipcMain.handle('hub:saveImage', saveImage);
   ipcMain.handle('hub:loadImage', loadImage);

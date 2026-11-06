@@ -110,8 +110,14 @@ export interface CampLink {
   name: string;
   // The person using this device, shown on their hunts and pins.
   hunter: string;
-  // Set on the hub that started the camp; only it publishes the stand list.
+  // Set on the hub that started the camp.
   isOwner?: boolean;
+  // This hub shares its map, plans, logs and board with the camp's other partners.
+  sharing?: boolean;
+  // When this hub last finished sending changes, by its own clock.
+  pushedAt?: string | null;
+  // When Firebase got the newest change this hub has taken in.
+  cursor?: string | null;
 }
 
 export type BuiltInAreaType = 'food_plot' | 'bedding' | 'sanctuary' | 'timber' | 'water' | 'other';

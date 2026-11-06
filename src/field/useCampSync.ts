@@ -52,12 +52,12 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
   }, [camp?.code]);
 
   // Pin types added in the hub's Settings, which pins, walks and notes the hub has
-  // handled, and the board. A note the hub has is done with on this phone.
+  // handled, and the food plots. A note the hub has is done with on this phone.
   useEffect(() => {
     if (!camp) return;
     return watchCampInfo(
       camp,
-      ({ pinTypes, handled, board, plots }) => setData((d) => ({ ...d, pinTypes, handled, board, plots, notes: d.notes.filter((n) => !handled[n.id]) })),
+      ({ pinTypes, handled, plots }) => setData((d) => ({ ...d, pinTypes, handled, plots, notes: d.notes.filter((n) => !handled[n.id]) })),
       setError,
     );
   }, [camp?.code]);

@@ -5,6 +5,8 @@ import type { HubData, PhotoDetection } from '@/types/models';
 interface HubBridge {
   loadData(): Promise<string | null>;
   saveData(json: string): Promise<void>;
+  // A dated copy of the data file, kept before sharing starts. Returns its path.
+  backupData(): Promise<string>;
   dataPath(): Promise<string>;
   showDataFolder(): Promise<string>;
   saveImage(name: string, bytes: Uint8Array): Promise<void>;

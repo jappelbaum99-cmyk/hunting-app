@@ -3,10 +3,9 @@ import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import type { FieldData } from '@/field/fieldData';
 import { SentBadge, type SentStatus } from '@/field/SentTools';
-import { BOARD_LISTS, BOARD_STATUSES, NOTE_KINDS, type BoardCard } from '@/lib/actionBoard';
+import { NOTE_KINDS } from '@/lib/actionBoard';
 import { FOOD_PLOT_CROPS } from '@/lib/featureTypes';
 import { PLOT_ACTIONS, todayDate } from '@/lib/plotLog';
-import { isOverdue } from '@/lib/schedules';
 import type { FieldNote, NoteKind, PlotAction } from '@/types/models';
 
 type Pick = NoteKind | 'plot';
@@ -18,8 +17,8 @@ const PICKS: { id: Pick; label: string }[] = [
   { id: 'plot', label: 'Food plot work' },
 ];
 
-// Jot down an idea or work to do for the Action Board, or log work on a food plot,
-// and see what's on the board. Works with no signal: notes wait on the phone.
+// Send an idea or work to do to the hub's Action Board, or log work on a food
+// plot. The board itself stays on the hubs. Works with no signal: notes wait on the phone.
 export function NotesTab(props: {
   data: FieldData;
   fix: { lat: number; lng: number; accuracyM: number } | null;
@@ -137,7 +136,7 @@ export function NotesTab(props: {
 
       {data.notes.length > 0 && (
         <section className="field-card note-section">
-          <h3>Not on the board yet</h3>
+          <h3>Waiting to reach the hub</h3>
           <ul className="note-list">
             {data.notes.map((note) => (
               <li key={note.id}>
@@ -154,54 +153,6 @@ export function NotesTab(props: {
           </ul>
         </section>
       )}
-
-      <section className="field-card note-section">
-        <h3>Action Board</h3>
-        {data.board.length === 0 ? (
-          <p className="field-hint">{data.camp ? 'Nothing on the board yet.' : 'Join your camp (Camp tab) to see the board here.'}</p>
-        ) : (
-          <>
-            {BOARD_LISTS.map(({ status, heading }) => (
-              <BoardGroup key={status} heading={heading} cards={data.board.filter((c) => c.status === status)} />
-            ))}
-            {data.board.some((c) => c.status === 'done') && (
-              <details>
-                <summary>
-                  {BOARD_STATUSES.done} · {data.board.filter((c) => c.status === 'done').length}
-                </summary>
-                <BoardGroup cards={data.board.filter((c) => c.status === 'done')} />
-              </details>
-            )}
-          </>
-        )}
-      </section>
     </>
-  );
-}
-
-function BoardGroup({ heading, cards }: { heading?: string; cards: BoardCard[] }) {
-  if (cards.length === 0) return null;
-  return (
-    <div>
-      {heading && <div className="note-group">{`${heading} · ${cards.length}`}</div>}
-      <ul className="note-list">
-        {cards.map((card) => (
-          <li key={card.id}>
-            <div className="note-text">
-              <strong>{NOTE_KINDS[card.kind]}</strong>
-              <span>{card.text}</span>
-              {card.due && (
-                <span className={card.status !== 'done' && isOverdue(card.due.end, todayDate()) ? 'note-overdue' : 'muted'}>
-                  {card.status !== 'done' && isOverdue(card.due.end, todayDate()) ? 'Overdue' : 'Due'}: {card.due.label}
-                </span>
-              )}
-              <span className="muted">
-                {[card.loggedBy, new Date(card.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].filter(Boolean).join(' · ')}
-              </span>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
