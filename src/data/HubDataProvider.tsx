@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { emptyHubData, loadHubData, saveHubData } from '@/data/storage';
+import { compactPhoto } from '@/lib/photos';
 import type {
   ActionItem,
   CustomAreaType,
@@ -267,7 +268,7 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
         const at = nowIso();
         update((current) => {
           const byId = new Map(current.photos.map((p) => [p.id, p]));
-          for (const p of list) byId.set(p.id, { ...p, updatedAt: at });
+          for (const p of list) byId.set(p.id, { ...compactPhoto(p), updatedAt: at });
           return { ...current, photos: [...byId.values()] };
         });
       },

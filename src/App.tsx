@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 
 import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignPanel';
 import { DetailPanel } from '@/components/DetailPanel';
-import { DrawBar, EditBar } from '@/components/DrawBar';
+import { DrawBar, EditBar, LineEditBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { MapToolbar } from '@/components/MapToolbar';
@@ -26,12 +26,12 @@ import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
 import { useImageUrls } from '@/data/useImageUrls';
 import { boardCards, placeNotes } from '@/lib/actionBoard';
-import { combineLines, feetToMeters, joinLines, nearestLine, overlaps, splitLine } from '@/lib/combineTrails';
+import { combineLines, cutParts, feetToMeters, joinParts, nearestLine, overlaps, removeFromParts } from '@/lib/combineTrails';
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
-import { formatDistance, lineBounds, metersBetween, TRAIL_KINDS, trailStyle, trailTypeStyle, unpackPoints } from '@/lib/trails';
+import { formatDistance, lineBounds, lineLengthM, metersBetween, TRAIL_KINDS, trailParts, trailStyle, trailTypeStyle, unpackPoints, withParts } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
@@ -59,6 +59,8 @@ function withRings(geometry: AreaGeometry, rings: Position[][]): AreaGeometry {
   return { type: 'MultiPolygon', coordinates: geometry.coordinates.map((poly, i) => [close(rings[i]), ...poly.slice(1)]) };
 }
 
+type TrailPickAction = 'split' | 'join' | 'trim';
+
 type Mode =
   | { kind: 'browse' }
   | { kind: 'place'; markerType: MarkerType }
@@ -68,8 +70,9 @@ type Mode =
   | { kind: 'draw'; target: 'trail'; trailKind: TrailKind }
   // Reshaping a saved shape: drag its corners.
   | { kind: 'edit'; target: EditTarget; id: string }
-  // Clicking the map picks where to split this trail, or which trail to join it to.
-  | { kind: 'trailPick'; action: 'split' | 'join'; id: string }
+  // Clicking the map picks where to split this trail, which trail to join it
+  // to, or the two ends of a stretch to delete.
+  | { kind: 'trailPick'; action: TrailPickAction; id: string; otherId?: string }
   | { kind: 'align' }
   // Clicking the map sets where a sighting in a hunt report happened.
   | { kind: 'placeSighting'; reportId: string; sightingId: string };
@@ -205,12 +208,20 @@ export function App() {
             ? hub.areas.find((a) => a.id === id)?.geometry
             : null;
     const trail = target === 'trail' ? hub.trails.find((t) => t.id === id) : null;
-    const rings = shape ? ringsOf(shape) : trail ? [trail.line.coordinates] : null;
+    const rings = shape ? ringsOf(shape) : trail ? trailParts(trail) : null;
     if (!rings) return;
     setDraftPoints([]);
     setEditRings(rings);
     setEditHistory([]);
     setMode({ kind: 'edit', target, id });
+  };
+
+  // Back to editing a line after a tool changed it, before the saved copy has updated.
+  const editLine = (id: string, parts: Position[][]) => {
+    setDraftPoints([]);
+    setEditRings(parts);
+    setEditHistory([]);
+    setMode({ kind: 'edit', target: 'trail', id });
   };
 
   const finishEdit = useCallback(() => {
@@ -238,7 +249,7 @@ export function App() {
       if (a) hub.saveArea({ ...a, geometry: withRings(a.geometry, editRings) });
     } else {
       const t = hub.trails.find((r) => r.id === mode.id);
-      if (t) hub.saveTrail({ ...t, line: { type: 'LineString', coordinates: editRings[0] } });
+      if (t) hub.saveTrail(withParts(t, editRings));
     }
     const selected: Selection = mode.target === 'property' ? { kind: 'property', id: mode.id } : mode.target === 'section' ? { kind: 'section', id: mode.id } : mode.target === 'area' ? { kind: 'area', id: mode.id } : { kind: 'trail', id: mode.id };
     cancelMode();
@@ -615,82 +626,144 @@ export function App() {
   // Folds overlapping lines of the same type into this one.
   const combineTrails = (record: MapTrail, feet: number) => {
     const distance = feetToMeters(feet);
-    const sameKind = hub.trails.filter((t) => t.kind === record.kind);
-    const result = combineLines(sameKind.map((t) => ({ id: t.id, points: t.line.coordinates })), record.id, distance);
-    if (result.removed.length === 0) {
+    // The record may hold corners just dragged, newer than the saved copy.
+    const sameKind = hub.trails.filter((t) => t.kind === record.kind).map((t) => (t.id === record.id ? record : t));
+    // Each branch goes in as a line of its own, and what's left is put back together.
+    const partId = (trailId: string, index: number) => (index === 0 ? trailId : `${trailId}#${index}`);
+    const result = combineLines(sameKind.flatMap((t) => trailParts(t).map((points, i) => ({ id: partId(t.id, i), points }))), record.id, distance);
+    if (result.removed.length === 0 && result.changed.size === 0 && result.branches.length === 0) {
       const otherTypes = hub.trails.filter((t) => t.kind !== record.kind && overlaps(record.line.coordinates, t.line.coordinates, distance));
       setNotice(
         otherTypes.length > 0
           ? `${otherTypes.map((t) => t.name).join(', ')} overlap${otherTypes.length === 1 ? 's' : ''} this line but ${otherTypes.length === 1 ? 'is' : 'are'} a different type. Set the same type to combine them.`
           : `No other lines of this type run within ${feet} ft of this one.`,
       );
+      editLine(record.id, trailParts(record));
       return;
     }
-    const touched = new Set([...result.removed, ...result.changed.keys()]);
-    const created = result.branches.map(({ from, points }) => {
-      const source = sameKind.find((t) => t.id === from) ?? record;
-      const branch: MapTrail = {
-        ...newRecordFields(),
-        propertyId: propertyContaining(hub.properties, points[0])?.id ?? source.propertyId,
-        kind: source.kind,
-        name: `${source.name} branch`,
-        line: { type: 'LineString', coordinates: points },
-        notes: source.notes,
-        color: source.color,
-        pattern: source.pattern,
-        thickness: source.thickness,
-        source: source.source,
-      };
-      return branch;
-    });
-    setLastCombine({ trailId: record.id, before: sameKind.filter((t) => touched.has(t.id)), createdIds: created.map((t) => t.id) });
-    for (const [id, points] of result.changed) {
-      const trail = sameKind.find((t) => t.id === id);
-      if (trail) hub.saveTrail({ ...trail, line: { type: 'LineString', coordinates: points } });
+    const removed = new Set(result.removed);
+    const before: MapTrail[] = [];
+    let count = 0;
+    let ownParts = trailParts(record);
+    for (const trail of sameKind) {
+      const ids = trailParts(trail).map((_, i) => partId(trail.id, i));
+      const own = trail.id === record.id;
+      if (!own && !ids.some((id) => removed.has(id) || result.changed.has(id))) continue;
+      before.push(trail);
+      const parts = trailParts(trail).flatMap((part, i) => (removed.has(ids[i]) ? [] : [result.changed.get(ids[i]) ?? part]));
+      if (own) ownParts = [...parts, ...result.branches.map((branch) => branch.points)];
+      else if (parts.length > 0) hub.saveTrail(withParts(trail, parts));
+      else {
+        hub.deleteTrail(trail.id);
+        count++;
+      }
     }
-    for (const id of result.removed) hub.deleteTrail(id);
-    for (const branch of created) hub.saveTrail(branch);
-    const count = result.removed.length;
-    const branches = created.length ? ` ${created.length} turn-off${created.length === 1 ? '' : 's'} kept as ${created.length === 1 ? 'a branch' : 'branches'}.` : '';
-    setNotice(`Combined ${count} line${count === 1 ? '' : 's'} into ${record.name}.${branches}`);
+    hub.saveTrail(withParts(record, ownParts));
+    setLastCombine({ trailId: record.id, before, createdIds: [] });
+    const branches = result.branches.length ? ` ${result.branches.length} turn-off${result.branches.length === 1 ? '' : 's'} kept on it as ${result.branches.length === 1 ? 'a branch' : 'branches'}.` : '';
+    const shorter = count === 0 ? ` It's now ${formatDistance(ownParts.reduce((total, part) => total + lineLengthM(part), 0))}.` : '';
+    setNotice(`${count ? `Combined ${count} line${count === 1 ? '' : 's'} into ${record.name}.` : `Removed where ${record.name} doubled back on itself.`}${shorter}${branches}`);
+    editLine(record.id, ownParts);
   };
 
   // A click on the map while splitting a trail or picking one to join it to.
-  const pickOnTrail = (id: string, action: 'split' | 'join', position: Position) => {
+  const pickOnTrail = (id: string, action: TrailPickAction, position: Position) => {
     const record = hub.trails.find((t) => t.id === id);
     if (!record) return cancelMode();
-    if (action === 'split') {
-      if (!nearestLine([{ id, points: record.line.coordinates }], position, TRAIL_PICK_M)) return setNotice('Click on the line to split it there.');
-      const parts = splitLine(record.line.coordinates, position);
-      if (!parts) return setNotice("That's right at the end of the line. Click farther along it.");
+    const onThisTrail = nearestLine(trailParts(record).map((points, i) => ({ id: String(i), points })), position, TRAIL_PICK_M);
+    // Saves what a cut left: the first set stays this trail, any others become new ones.
+    const saveCut = (groups: Position[][][]) => {
       const taken = new Set(hub.trails.map((t) => t.name));
-      let n = 2;
-      while (taken.has(`${record.name} ${n}`)) n++;
-      const second: MapTrail = { ...record, ...newRecordFields(), name: `${record.name} ${n}`, line: { type: 'LineString', coordinates: parts[1] }, propertyId: propertyContaining(hub.properties, parts[1][0])?.id ?? record.propertyId };
-      setLastCombine({ trailId: record.id, before: [record], createdIds: [second.id] });
-      hub.saveTrail({ ...record, line: { type: 'LineString', coordinates: parts[0] } });
-      hub.saveTrail(second);
-      setNotice(`Split into ${record.name} and ${second.name}.`);
+      const created = groups.slice(1).map((parts) => {
+        let n = 2;
+        while (taken.has(`${record.name} ${n}`)) n++;
+        taken.add(`${record.name} ${n}`);
+        return withParts({ ...record, ...newRecordFields(), name: `${record.name} ${n}`, propertyId: propertyContaining(hub.properties, parts[0][0])?.id ?? record.propertyId }, parts);
+      });
+      setLastCombine({ trailId: record.id, before: [record], createdIds: created.map((t) => t.id) });
+      hub.saveTrail(withParts(record, groups[0]));
+      for (const trail of created) hub.saveTrail(trail);
+      editLine(record.id, groups[0]);
+      setSelection({ kind: 'trail', id: record.id });
+      return created;
+    };
+    if (action === 'trim') {
+      if (!onThisTrail) return setNotice('Click on the line.');
+      if (draftPoints.length === 0) return setDraftPoints([position]);
+      const groups = removeFromParts(trailParts(record), draftPoints[0], position);
+      setDraftPoints([]);
+      if (!groups) return setNotice('Both spots need to be on the same stretch of the line. Click the first one again.');
+      if (groups.length === 0) return setNotice('That would delete the whole line. Use Delete on its panel for that.');
+      const created = saveCut(groups);
+      setNotice(created.length > 0 ? `Deleted that part. The rest is now ${[record, ...created].map((t) => t.name).join(' and ')}.` : `Deleted that part of ${record.name}.`);
+    } else if (action === 'split') {
+      if (!onThisTrail) return setNotice('Click on the line to split it there.');
+      const groups = cutParts(trailParts(record), position);
+      if (!groups) return setNotice("That's right at the end of the line, or it still connects another way. Click somewhere else on it.");
+      const created = saveCut(groups);
+      setNotice(`Split into ${[record, ...created].map((t) => t.name).join(' and ')}.`);
     } else {
-      const others = hub.trails.filter((t) => t.id !== id).map((t) => ({ id: t.id, points: t.line.coordinates, trail: t }));
+      const others = hub.trails.filter((t) => t.id !== id).flatMap((t) => trailParts(t).map((points) => ({ id: t.id, points })));
       const picked = nearestLine(others, position, TRAIL_PICK_M);
       if (!picked) return setNotice('Click on the line you want to join to this one.');
-      const { line, gapM } = joinLines(record.line.coordinates, picked.points);
-      setLastCombine({ trailId: record.id, before: [record, picked.trail], createdIds: [] });
-      hub.saveTrail({ ...record, line: { type: 'LineString', coordinates: line } });
-      hub.deleteTrail(picked.id);
-      setNotice(`Joined ${picked.trail.name} to ${record.name}${gapM >= 1 ? `, bridging ${formatDistance(gapM)} with a straight line` : ''}.`);
+      setMode({ kind: 'trailPick', action, id, otherId: picked.id });
     }
-    cancelMode();
-    setSelection({ kind: 'trail', id: record.id });
   };
 
-  const undoCombine = () => {
+  // The second click's line becomes part of this one, whichever way they meet.
+  const confirmJoin = () => {
+    if (mode.kind !== 'trailPick' || !mode.otherId) return;
+    const record = hub.trails.find((t) => t.id === mode.id);
+    const other = hub.trails.find((t) => t.id === mode.otherId);
+    if (!record || !other) return cancelMode();
+    const { parts, gapM } = joinParts(trailParts(record), trailParts(other));
+    setLastCombine({ trailId: record.id, before: [record, other], createdIds: [] });
+    const notes = [record.notes, other.notes].filter(Boolean).join('\n') || null;
+    hub.saveTrail(withParts({ ...record, notes }, parts));
+    hub.deleteTrail(other.id);
+    setNotice(`Joined ${other.name} into ${record.name}${gapM >= 1 ? `, bridging ${formatDistance(gapM)} with a straight line` : ''}.`);
+    editLine(record.id, parts);
+  };
+
+  // While editing a line, clicking another one offers to join them.
+  const clickTrailWhileEditing = (ids: string[]) => {
+    if (mode.kind !== 'edit' || mode.target !== 'trail') return;
+    const otherId = ids.find((id) => id !== mode.id);
+    if (!otherId) return;
+    saveLineEdit();
+    setEditRings(null);
+    setEditHistory([]);
+    setDraftPoints([]);
+    setMode({ kind: 'trailPick', action: 'join', id: mode.id, otherId });
+  };
+
+  // Undo while editing a line: corners dragged since the last tool, then that tool.
+  const undoLineEdit = () => {
+    if (editHistory.length > 0) return undoEdit();
     if (!lastCombine) return;
     for (const trail of lastCombine.before) hub.saveTrail(trail);
     for (const id of lastCombine.createdIds) hub.deleteTrail(id);
+    const own = lastCombine.before.find((t) => t.id === lastCombine.trailId);
+    if (own) setEditRings(trailParts(own));
     setLastCombine(null);
     setNotice('Undone.');
+  };
+
+  // Dragged corners are saved before a tool runs, so the tool works on what's on screen.
+  const saveLineEdit = () => {
+    if (mode.kind !== 'edit' || !editRings) return null;
+    const trail = hub.trails.find((t) => t.id === mode.id);
+    if (!trail) return null;
+    const record = withParts(trail, editRings);
+    if (editHistory.length > 0) hub.saveTrail(record);
+    return record;
+  };
+
+  // Leaving Split, Join or Delete part without finishing it.
+  const backToLineEdit = () => {
+    const trail = mode.kind === 'trailPick' ? hub.trails.find((t) => t.id === mode.id) : null;
+    if (trail) editLine(trail.id, trailParts(trail));
+    else cancelMode();
   };
 
   // Walks recorded on phones: look at one, turn it into a trail, or dismiss it.
@@ -902,7 +975,7 @@ export function App() {
     } else if (target.kind === 'trail') {
       const t = hub.trails.find((r) => r.id === target.id);
       if (t) {
-        const [w, s, e, n] = lineBounds(t.line);
+        const [w, s, e, n] = lineBounds({ type: 'LineString', coordinates: trailParts(t).flat() });
         mapRef.current?.fitTo({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
       }
     } else if (target.kind === 'overlay') {
@@ -928,13 +1001,17 @@ export function App() {
       // Lining up an image takes real work, so only its Cancel button ends it.
       if (mode.kind === 'align') return;
       if (event.key === 'Escape') {
-        if (mode.kind !== 'browse') cancelMode();
+        if (mode.kind === 'trailPick') backToLineEdit();
+        else if (mode.kind !== 'browse') cancelMode();
         else setSelection(null);
+      } else if (mode.kind === 'trailPick' && event.key === 'Enter') {
+        confirmJoin();
       } else if (mode.kind === 'edit' && event.key === 'Enter') {
         finishEdit();
       } else if (mode.kind === 'edit' && event.key === 'z' && event.ctrlKey) {
         event.preventDefault();
-        undoEdit();
+        if (mode.target === 'trail') undoLineEdit();
+        else undoEdit();
       } else if (mode.kind === 'draw' && event.key === 'Enter') {
         finishDrawing();
       } else if (mode.kind === 'draw' && (event.key === 'Backspace' || (event.key === 'z' && event.ctrlKey))) {
@@ -944,7 +1021,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, cancelMode, finishDrawing, finishEdit, undoEdit]);
+  }, [mode, cancelMode, finishDrawing, finishEdit, undoEdit, undoLineEdit, backToLineEdit, confirmJoin]);
 
   useEffect(() => {
     if (cameraPinName !== null && mode.kind === 'browse') setCameraPinName(null);
@@ -1219,7 +1296,7 @@ export function App() {
   const editing = mode.kind === 'edit' ? mode : null;
   const snapRings =
     mode.kind === 'trailPick'
-      ? hub.trails.filter((t) => (mode.action === 'split') === (t.id === mode.id)).map((t) => t.line.coordinates)
+      ? hub.trails.filter((t) => (mode.action !== 'join') === (t.id === mode.id)).flatMap(trailParts)
       : mode.kind === 'draw' || editing
       ? [
           ...ringsOfShapes([
@@ -1230,7 +1307,7 @@ export function App() {
           ]),
           // Trails can join existing trails.
           ...((mode.kind === 'draw' && mode.target === 'trail') || editing?.target === 'trail'
-            ? hub.trails.filter((t) => t.id !== editing?.id).map((t) => t.line.coordinates)
+            ? hub.trails.filter((t) => t.id !== editing?.id).flatMap(trailParts)
             : []),
         ]
       : [];
@@ -1253,7 +1330,9 @@ export function App() {
     }
   }
 
-  const appClass = `app${selection ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
+  // While a line is being edited its menu at the bottom is the only one.
+  const editingLine = (mode.kind === 'edit' && mode.target === 'trail') || mode.kind === 'trailPick';
+  const appClass = `app${selection && !editingLine ? ' has-detail' : ''}${alignDraft ? ' has-align' : ''}`;
   return (
     <div className={appClass} style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
       <Sidebar
@@ -1395,6 +1474,8 @@ export function App() {
           editShape={editRings && mode.kind === 'edit' ? { rings: editRings, closed: mode.target !== 'trail', color: editColor } : null}
           onEditBegin={() => editRings && setEditHistory((h) => [...h, editRings])}
           onEditRings={setEditRings}
+          onEditClickTrails={clickTrailWhileEditing}
+          joiningTrailId={mode.kind === 'trailPick' ? (mode.otherId ?? null) : null}
           settings={hub.settings}
           snapRings={snapRings}
           snapPx={hub.settings.snapping.enabled ? hub.settings.snapping.distancePx : 0}
@@ -1471,10 +1552,30 @@ export function App() {
             />
           </div>
         )}
-        {mode.kind === 'edit' && editRings && (
+        {mode.kind === 'edit' && mode.target === 'trail' && editRings && (
+          <LineEditBar
+            title={editTitle}
+            parts={editRings}
+            canUndo={editHistory.length > 0 || lastCombine?.trailId === mode.id}
+            onUndo={undoLineEdit}
+            onCancel={cancelMode}
+            onDone={finishEdit}
+            onPick={(action) => {
+              saveLineEdit();
+              setDraftPoints([]);
+              setEditRings(null);
+              setEditHistory([]);
+              setMode({ kind: 'trailPick', action, id: mode.id });
+            }}
+            onCombine={(feet) => {
+              const record = saveLineEdit();
+              if (record) combineTrails(record, feet);
+            }}
+          />
+        )}
+        {mode.kind === 'edit' && mode.target !== 'trail' && editRings && (
           <EditBar
             title={editTitle}
-            line={mode.target === 'trail'}
             rings={editRings}
             canUndo={editHistory.length > 0}
             onUndo={undoEdit}
@@ -1494,11 +1595,30 @@ export function App() {
           />
         )}
         {mode.kind === 'trailPick' && (
-          <div className="draw-bar">
-            <span>{mode.action === 'split' ? 'Click the spot on the line where it should split.' : 'Click the line to join to this one.'}</span>
-            <button onClick={cancelMode} title="Esc">
-              Cancel
-            </button>
+          <div className="draw-bar line-edit">
+            <div className="line-edit-title">
+              {mode.action === 'split' ? (
+                'Click the spot on the line where it should split. Click right at a T to unhook that branch.'
+              ) : mode.action === 'trim' ? (
+                draftPoints.length === 0 ? 'Click one end of the part to delete.' : 'Now click the other end of the part to delete.'
+              ) : mode.otherId ? (
+                <>
+                  Join <strong>{hub.trails.find((t) => t.id === mode.otherId)?.name}</strong> into <strong>{hub.trails.find((t) => t.id === mode.id)?.name}</strong> as one line?
+                </>
+              ) : (
+                'Click the line to join to this one.'
+              )}
+            </div>
+            <div className="line-edit-tools">
+              <button onClick={backToLineEdit} title="Esc">
+                Cancel
+              </button>
+              {mode.otherId && (
+                <button className="primary" onClick={confirmJoin} title="Enter">
+                  Join
+                </button>
+              )}
+            </div>
           </div>
         )}
         <UpdateBanner updater={update} />
@@ -1515,7 +1635,7 @@ export function App() {
           onSave={() => void saveAlign()}
           onCancel={endAlign}
         />
-      ) : (
+      ) : editingLine ? null : (
         renderDetail()
       )}
     </div>
@@ -1609,9 +1729,6 @@ export function App() {
           defaultColor={trailTypeStyle(record.kind, hub.settings.trailStyles).color}
           trailStyles={hub.settings.trailStyles}
           onChange={hub.saveTrail}
-          onCombine={(feet) => combineTrails(record, feet)}
-          onPick={(action) => setMode({ kind: 'trailPick', action, id: record.id })}
-          onUndoCombine={lastCombine?.trailId === record.id ? undoCombine : null}
           onDelete={() => {
             hub.deleteTrail(record.id);
             setSelection(null);

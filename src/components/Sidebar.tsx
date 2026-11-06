@@ -8,7 +8,7 @@ import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { huntPlaceName } from '@/lib/reports';
-import { formatDistance, lineLengthM, metersBetween, trailKindInfo, trailStyle } from '@/lib/trails';
+import { formatDistance, metersBetween, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
@@ -369,7 +369,7 @@ export function Sidebar(props: SidebarProps) {
               onClick={() => onPick({ kind: 'trail', id: t.id })}
               swatch={<span className={`swatch line ${trailStyle(t, props.settings.trailStyles).pattern}`} style={{ '--line': trailStyle(t, props.settings.trailStyles).color, borderTopWidth: Math.max(2, trailStyle(t, props.settings.trailStyles).px) } as CSSProperties} />}
               title={t.name}
-              detail={`${trailKindInfo(t.kind).label} · ${formatDistance(lineLengthM(t.line.coordinates))}`}
+              detail={`${trailKindInfo(t.kind).label} · ${formatDistance(trailLengthM(t))}`}
             />
           ))}
         </Section>

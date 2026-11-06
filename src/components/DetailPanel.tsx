@@ -3,13 +3,12 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
 import { SchedulesField } from '@/components/SchedulesField';
 
-import { COMBINE_DISTANCES_FT, DEFAULT_COMBINE_FT } from '@/lib/combineTrails';
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
 import { controlPointErrorsFeet } from '@/lib/georef';
 import { entryTitle, formatPlotDate, PLOT_ACTIONS, plotEntries, removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
-import { formatDistance, LINE_PATTERNS, LINE_THICKNESS, lineLengthM, TRAIL_KINDS, trailKindInfo, trailStyle } from '@/lib/trails';
+import { formatDistance, LINE_PATTERNS, LINE_THICKNESS, TRAIL_KINDS, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
 import {
   COMPASS_POINTS,
   type AreaType,
@@ -44,7 +43,7 @@ type DetailPanelProps =
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
-  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null; trailStyles: HubSettings['trailStyles'] } & Common);
+  | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; trailStyles: HubSettings['trailStyles'] } & Common);
 
 function headingFor(props: DetailPanelProps): string {
   switch (props.kind) {
@@ -110,7 +109,7 @@ export function DetailPanel(props: DetailPanelProps) {
         )}
         {props.kind === 'trail' && (
           <>
-            <TrailFields record={props.record} onChange={props.onChange} onCombine={props.onCombine} onPick={props.onPick} onUndoCombine={props.onUndoCombine} trailStyles={props.trailStyles} />
+            <TrailFields record={props.record} onChange={props.onChange} trailStyles={props.trailStyles} />
             <ColorField
               label="Line color"
               value={props.record.color ?? null}
@@ -130,7 +129,7 @@ export function DetailPanel(props: DetailPanelProps) {
       <footer className="detail-footer">
         <button onClick={onZoom}>Zoom to</button>
         {props.onEditShape && (
-          <button onClick={props.onEditShape} title="Drag corners to reshape it">
+          <button onClick={props.onEditShape} title={props.kind === 'trail' ? 'Reshape, split, join, combine or delete part of the line' : 'Drag corners to reshape it'}>
             {props.kind === 'area' ? 'Edit shape' : 'Edit line'}
           </button>
         )}
@@ -358,8 +357,7 @@ function PlotLog({ record, onChange }: { record: MapArea; onChange(a: MapArea): 
   );
 }
 
-function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine, trailStyles }: { record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null; trailStyles: HubSettings['trailStyles'] }) {
-  const [feet, setFeet] = useState(DEFAULT_COMBINE_FT);
+function TrailFields({ record, onChange, trailStyles }: { record: MapTrail; onChange(t: MapTrail): void; trailStyles: HubSettings['trailStyles'] }) {
   const style = trailStyle(record, trailStyles);
   const lineColor = style.color;
   return (
@@ -376,7 +374,7 @@ function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine, trail
       <TextField label="Name" value={record.name} onChange={(name) => onChange({ ...record, name })} />
       <Field label="Length">
         <span>
-          {formatDistance(lineLengthM(record.line.coordinates))}
+          {formatDistance(trailLengthM(record))}
           <span className="muted">{record.source === 'walked' ? ' · walked with a phone' : ''}</span>
         </span>
       </Field>
@@ -399,30 +397,15 @@ function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine, trail
             </button>
           ))}
         </div>
-        {(record.pattern || record.thickness) && (
-          <button className="link line-style-default" onClick={() => onChange({ ...record, pattern: null, thickness: null })}>
+        <label className="trail-outline">
+          <input type="checkbox" checked={style.outline} onChange={(e) => onChange({ ...record, outline: e.target.checked })} />
+          Black outline
+        </label>
+        {(record.pattern || record.thickness || record.outline != null) && (
+          <button className="link line-style-default" onClick={() => onChange({ ...record, pattern: null, thickness: null, outline: null })}>
             Use this type's style from Settings
           </button>
         )}
-      </Field>
-      <Field label="Combine close trails" hint="Keeps this line and folds in overlapping lines of the same type. Parts that carry on past its ends make it longer, and turn-offs stay as branches.">
-        <div className="trail-combine">
-          <select value={feet} onChange={(e) => setFeet(Number(e.target.value))} aria-label="How close counts">
-            {COMBINE_DISTANCES_FT.map((ft) => (
-              <option key={ft} value={ft}>
-                Within {ft} ft
-              </option>
-            ))}
-          </select>
-          <button onClick={() => onCombine(feet)}>Combine</button>
-        </div>
-      </Field>
-      <Field label="Split or join" hint="Split cuts this line in two where you click. Join connects it to another line you click, end to end, and keeps this line's name and type.">
-        <div className="trail-combine">
-          <button onClick={() => onPick('split')}>Split</button>
-          <button onClick={() => onPick('join')}>Join</button>
-          {onUndoCombine && <button onClick={onUndoCombine}>Undo last</button>}
-        </div>
       </Field>
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
     </>

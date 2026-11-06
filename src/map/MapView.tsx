@@ -1,7 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { iconSvg, type IconName } from '@/lib/icons';
 
-import type { FeatureCollection, Polygon, Position } from 'geojson';
+import type { FeatureCollection, LineString, MultiLineString, Polygon, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, ImageSource, RasterTileSource } from 'maplibre-gl';
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
@@ -21,7 +21,7 @@ import {
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
-import { lineMidpoint, trailStyle, unpackPoints } from '@/lib/trails';
+import { lineMidpoint, trailParts, trailStyle, unpackPoints } from '@/lib/trails';
 import type { AreaGeometry, DeerKind, FieldTrack, HubSettings, MapArea, MapMarker, MapTrail, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
@@ -119,6 +119,10 @@ interface MapViewProps {
   // A drag, add or remove is starting (so it can be undone), then the new corners.
   onEditBegin(): void;
   onEditRings(rings: Position[][]): void;
+  // Trails under a click while a shape is being reshaped.
+  onEditClickTrails(ids: string[]): void;
+  // A second trail shown selected while choosing to join it.
+  joiningTrailId: string | null;
   onMapClick(position: Position): void;
   onSelect(selection: Selection | null): void;
   onMarkerMoved(id: string, position: Position): void;
@@ -221,7 +225,12 @@ function addFeatureLayers(map: maplibregl.Map): void {
     type: 'line',
     source: 'trails',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['case', ['get', 'selected'], '#ffffff', 'rgba(20, 12, 6, 0.7)'], 'line-width': ['+', ['get', 'width'], ['case', ['get', 'selected'], 5, 3]] },
+    // With the outline off it's see-through, not removed: it's also what clicks land on.
+    paint: {
+      'line-color': ['case', ['get', 'selected'], '#ffffff', 'rgba(20, 12, 6, 0.7)'],
+      'line-width': ['+', ['get', 'width'], ['case', ['get', 'selected'], 5, 3]],
+      'line-opacity': ['case', ['any', ['get', 'selected'], ['get', 'outline']], 1, 0],
+    },
   });
   // A pattern can't vary line by line within a layer, so each has its own.
   map.addLayer({
@@ -653,7 +662,14 @@ export function MapView(props: MapViewProps) {
     map.on('click', (event) => {
       const { interaction: mode, onMapClick, onSelect } = latest.current;
       const position: Position = snapAt(event.point)?.position ?? [event.lngLat.lng, event.lngLat.lat];
-      if (mode === 'edit') return;
+      if (mode === 'edit') {
+        const box: [[number, number], [number, number]] = [
+          [event.point.x - 6, event.point.y - 6],
+          [event.point.x + 6, event.point.y + 6],
+        ];
+        latest.current.onEditClickTrails(map.queryRenderedFeatures(box, { layers: ['trail-casing'] }).map((f) => f.properties.id as string));
+        return;
+      }
       if (mode !== 'browse') {
         onMapClick(position);
         return;
@@ -771,8 +787,9 @@ export function MapView(props: MapViewProps) {
     map.getSource<GeoJSONSource>('trails')?.setData({
       type: 'FeatureCollection',
       features: trails.map((t) => {
-        const { color, pattern, px } = trailStyle(t, settings.trailStyles);
-        return { type: 'Feature', geometry: t.line, properties: { id: t.id, color, pattern, width: px, selected: t.id === selectedId } };
+        const { color, pattern, px, outline } = trailStyle(t, settings.trailStyles);
+        const geometry: LineString | MultiLineString = t.branches?.length ? { type: 'MultiLineString', coordinates: trailParts(t) } : t.line;
+        return { type: 'Feature', geometry, properties: { id: t.id, color, pattern, width: px, outline, selected: t.id === selectedId || t.id === props.joiningTrailId } };
       }),
     });
     map.getSource<GeoJSONSource>('field-tracks')?.setData({
@@ -805,7 +822,7 @@ export function MapView(props: MapViewProps) {
       el.style.color = item.color ?? '';
       return el;
     }, { anchor: 'center' });
-  }, [properties, areas, sections, trails, fieldTracks, selectedId, settings, readyTick]);
+  }, [properties, areas, sections, trails, fieldTracks, selectedId, props.joiningTrailId, settings, readyTick]);
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {
@@ -1083,7 +1100,12 @@ export function MapView(props: MapViewProps) {
             const { lng, lat } = marker.getLngLat();
             const snap = findSnap(map.project([lng, lat]), latest.current.snapRings, latest.current.snapPx, (p) => map.project(p));
             const at = snap?.position ?? [lng, lat];
-            latest.current.onEditRings(withRing(current()[ringIndex].map((p, n) => (n === index ? at : p))));
+            const was = current()[ringIndex][index];
+            // Branches of a line share the corner where they meet, so it moves on all of them.
+            const moved = latest.current.editShape?.closed
+              ? withRing(current()[ringIndex].map((p, n) => (n === index ? at : p)))
+              : current().map((ring) => ring.map((p) => (p[0] === was[0] && p[1] === was[1] ? at : p)));
+            latest.current.onEditRings(moved);
           });
           el.addEventListener('contextmenu', (event) => {
             event.preventDefault();

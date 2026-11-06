@@ -184,3 +184,38 @@ export function tallyOf(photo: CameraPhoto): PhotoTally[] {
 export function kindsOf(tally: PhotoTally[]): DeerKind[] {
   return [...new Set(tally.filter((t) => t.count > 0).map((t) => t.kind))];
 }
+
+// One-click tags for what trail cameras catch most.
+export const TALLY_PRESETS: { label: string; tally: PhotoTally[] }[] = [
+  { label: '1 doe', tally: [{ kind: 'doe', count: 1 }] },
+  { label: '1 buck', tally: [{ kind: 'buck', count: 1 }] },
+  { label: '2 does', tally: [{ kind: 'doe', count: 2 }] },
+  { label: '1 doe, 1 fawn', tally: [{ kind: 'doe', count: 1 }, { kind: 'fawn', count: 1 }] },
+  { label: '1 fawn', tally: [{ kind: 'fawn', count: 1 }] },
+];
+
+// Whether a photo's tags are exactly these, in any order. A named buck never is.
+export function sameTally(a: PhotoTally[], b: PhotoTally[]): boolean {
+  const key = (t: PhotoTally[]) => t.map((x) => `${x.kind}:${x.count}:${x.buckName ?? ''}`).sort().join();
+  return key(a) === key(b);
+}
+
+const rounded = (n: number) => Math.round(n * 1000) / 1000;
+
+// What's saved for a photo, kept small because a season can be tens of
+// thousands of them: no fields that say nothing, and only the boxes the viewer
+// draws, to three decimals. It changes nothing on screen.
+export function compactPhoto(photo: CameraPhoto): CameraPhoto {
+  const { tally, detections, ...rest } = photo;
+  return {
+    ...rest,
+    ...(tally?.length ? { tally: tally.map(({ kind, count, buckName }) => (buckName == null ? { kind, count } : { kind, count, buckName })) } : {}),
+    ...(detections
+      ? {
+          detections: detections
+            .filter((d) => d.score >= EMPTY_BELOW)
+            .map((d) => ({ label: d.label, score: rounded(d.score), box: d.box.map(rounded) as PhotoDetection['box'] })),
+        }
+      : {}),
+  };
+}

@@ -235,7 +235,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
 
       <section className="sidebar-section">
         <h2>Trails</h2>
-        <p className="hint">The color, pattern and thickness for each type of trail. A single trail can still have its own.</p>
+        <p className="hint">The color, pattern, thickness and outline for each type of trail. A single trail can still have its own.</p>
         <ul className="settings-list">
           {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => {
             const style = trailTypeStyle(kind, settings.trailStyles);
@@ -265,6 +265,10 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
                     ))}
                   </select>
                 </div>
+                <label className="trail-outline">
+                  <input type="checkbox" checked={style.outline} onChange={(e) => setStyle({ outline: e.target.checked })} />
+                  Black outline
+                </label>
               </li>
             );
           })}

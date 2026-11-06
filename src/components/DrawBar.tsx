@@ -1,6 +1,8 @@
+import { COMBINE_DISTANCES_FT, DEFAULT_COMBINE_FT } from '@/lib/combineTrails';
 import { acresOf, formatAcres, pointsToPolygon } from '@/lib/geo';
 import { formatDistance, lineLengthM } from '@/lib/trails';
 import type { Position } from 'geojson';
+import { useState } from 'react';
 
 interface DrawBarProps {
   kind: 'draw' | 'place';
@@ -46,19 +48,69 @@ export function DrawBar({ kind, title, points, onUndo, onCancel, onFinish, minPo
   );
 }
 
+// Everything for changing a saved line, in one menu.
+export function LineEditBar(props: {
+  title: string;
+  parts: Position[][];
+  canUndo: boolean;
+  onUndo(): void;
+  onCancel(): void;
+  onDone(): void;
+  onPick(action: 'split' | 'join' | 'trim'): void;
+  onCombine(feet: number): void;
+}) {
+  const [feet, setFeet] = useState(DEFAULT_COMBINE_FT);
+  return (
+    <div className="draw-bar line-edit">
+      <div className="line-edit-title">
+        Editing <strong>{props.title}</strong> · {formatDistance(props.parts.reduce((total, part) => total + lineLengthM(part), 0))}: drag corners, click + to add one, right-click a corner to remove it, or click another line to join it.
+      </div>
+      <div className="line-edit-tools">
+        <button onClick={() => props.onPick('split')} title="Cut this line in two where you click">
+          Split
+        </button>
+        <button onClick={() => props.onPick('join')} title="Click another line, then press Join. They become one line with this line's name and look, even if they meet at a T.">
+          Join
+        </button>
+        <button onClick={() => props.onPick('trim')} title="Remove the stretch between two spots you click">
+          Delete part
+        </button>
+        <span className="line-edit-divider" />
+        <select value={feet} onChange={(e) => setFeet(Number(e.target.value))} aria-label="How close counts">
+          {COMBINE_DISTANCES_FT.map((ft) => (
+            <option key={ft} value={ft}>
+              Within {ft} ft
+            </option>
+          ))}
+        </select>
+        <button onClick={() => props.onCombine(feet)} title="Keeps this line, removes where it doubles back on itself, and folds in overlapping lines of the same type. Parts that carry on past its ends make it longer, and turn-offs stay as branches.">
+          Combine
+        </button>
+        <span className="line-edit-divider" />
+        <button onClick={props.onUndo} disabled={!props.canUndo} title="Ctrl+Z">
+          Undo
+        </button>
+        <button onClick={props.onCancel} title="Esc">
+          Cancel
+        </button>
+        <button className="primary" onClick={props.onDone} title="Enter">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Shown while reshaping a saved shape.
 export function EditBar(props: {
   title: string;
-  line: boolean;
   rings: Position[][];
   canUndo: boolean;
   onUndo(): void;
   onCancel(): void;
   onDone(): void;
 }) {
-  const size = props.line
-    ? formatDistance(lineLengthM(props.rings[0] ?? []))
-    : formatAcres(props.rings.reduce((t, ring) => t + (ring.length >= 3 ? acresOf(pointsToPolygon(ring)) : 0), 0));
+  const size = formatAcres(props.rings.reduce((t, ring) => t + (ring.length >= 3 ? acresOf(pointsToPolygon(ring)) : 0), 0));
   return (
     <div className="draw-bar">
       <span>

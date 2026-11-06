@@ -9,7 +9,7 @@ import { entryTitle, formatPlotDate, plotEntries, todayDate } from '@/lib/plotLo
 import { huntPlaceName, sightingSummary } from '@/lib/reports';
 import { cadenceLabel, comingUp, isOverdue, scheduleTitle } from '@/lib/schedules';
 import { areaTypeInfo } from '@/lib/styles';
-import { formatDistance, lineLengthM, TRAIL_KINDS, trailTypeStyle } from '@/lib/trails';
+import { formatDistance, TRAIL_KINDS, trailLengthM, trailTypeStyle } from '@/lib/trails';
 import type { CameraPhoto, HubSettings, HuntReport, MapArea, MapMarker, MapTrail, Property, Section, TrailKind } from '@/types/models';
 
 interface SummaryPanelProps {
@@ -84,7 +84,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
 
   // Trails
   const trailMeters = new Map<TrailKind, number>();
-  for (const t of trails) trailMeters.set(t.kind, (trailMeters.get(t.kind) ?? 0) + lineLengthM(t.line.coordinates));
+  for (const t of trails) trailMeters.set(t.kind, (trailMeters.get(t.kind) ?? 0) + trailLengthM(t));
   const totalTrail = [...trailMeters.values()].reduce((a, b) => a + b, 0);
 
   // Hunting, by season

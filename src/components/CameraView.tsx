@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Icon } from '@/components/Icon';
 import {
@@ -17,7 +18,7 @@ import {
   spotName,
   type Places,
 } from '@/lib/photoPlaces';
-import { importPhotos, judge, kindsOf, photoUrl, tallyOf, type ImportFile, type ImportProgress } from '@/lib/photos';
+import { ANIMAL_SCORE, EMPTY_BELOW, importPhotos, judge, kindsOf, photoUrl, sameTally, TALLY_PRESETS, tallyOf, type ImportFile, type ImportProgress } from '@/lib/photos';
 import { DEER_KINDS } from '@/lib/reports';
 import type { CameraPhoto, DeerKind, MapMarker, PhotoPlace, PhotoTally } from '@/types/models';
 
@@ -88,6 +89,8 @@ export function CameraView(props: CameraViewProps) {
   const [status, setStatus] = useState<StatusFilter>(props.initialCamera ? 'all' : 'new');
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewerIds, setViewerIds] = useState<string[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [importing, setImporting] = useState<ImportState | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -135,19 +138,29 @@ export function CameraView(props: CameraViewProps) {
 
   useEffect(() => setPage(0), [filter, status]);
 
+  // The photos being looked through, fixed when one is opened. A photo tagged
+  // while reviewing leaves To review but stays here, so you can go back and change it.
+  const viewerAt = selected ? viewerIds.indexOf(selected.id) : -1;
+  const step = (by: number) => {
+    const next = viewerIds[viewerAt + by];
+    if (next) setSelectedId(next);
+  };
   // Changing a photo; when reviewing "new" photos, move on to the next one.
   const update = (photo: CameraPhoto, patch: Partial<CameraPhoto>, advance = false) => {
     props.onSavePhotos([{ ...photo, ...patch }]);
-    if (advance) {
-      const i = shown.findIndex((p) => p.id === photo.id);
-      const next = shown[i + 1] ?? null;
-      setSelectedId(next?.id ?? null);
-    }
+    if (advance) setSelectedId(viewerIds[viewerIds.indexOf(photo.id) + 1] ?? null);
   };
   // Counts per kind ("2 does, 1 buck"); any count makes it an animal photo.
-  const setTally = (photo: CameraPhoto, tally: PhotoTally[]) => {
+  const setTally = (photo: CameraPhoto, tally: PhotoTally[], advance = false) => {
     const kept = tally.filter((t) => t.count > 0);
-    update(photo, { tally: kept, kinds: kindsOf(kept), status: kept.length ? 'animal' : photo.status });
+    update(photo, { tally: kept, kinds: kindsOf(kept), status: kept.length ? 'animal' : photo.status }, advance);
+  };
+  const markEmpty = (photo: CameraPhoto) => update(photo, { status: 'empty', kinds: [], tally: [] }, status === 'new');
+  // Sets the photo's tags to a preset. Pressing the one already set clears it.
+  const applyPreset = (photo: CameraPhoto, index: number) => {
+    const { tally } = TALLY_PRESETS[index];
+    if (sameTally(tallyOf(photo), tally)) setTally(photo, []);
+    else setTally(photo, tally, status === 'new');
   };
   const addOne = (photo: CameraPhoto, kind: DeerKind) => {
     const tally = tallyOf(photo);
@@ -155,17 +168,17 @@ export function CameraView(props: CameraViewProps) {
     setTally(photo, i >= 0 ? tally.map((t, n) => (n === i ? { ...t, count: t.count + 1 } : t)) : [...tally, { kind, count: 1, buckName: null }]);
   };
 
-  // Keys while a photo is open: E empty, A animal, B/D/F/T tag, arrows to move.
+  // Keys while a photo is open: E empty, A animal, 1-5 presets, B/D/F/T add one, arrows to move.
   const keyRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   keyRef.current = (event: KeyboardEvent) => {
     if (!selected || (event.target as HTMLElement).closest('input, textarea, select')) return;
     const key = event.key.toLowerCase();
-    const i = shown.findIndex((p) => p.id === selected.id);
-    if (key === 'arrowright' || key === 'arrowdown') setSelectedId(shown[i + 1]?.id ?? selected.id);
-    else if (key === 'arrowleft' || key === 'arrowup') setSelectedId(shown[i - 1]?.id ?? selected.id);
-    else if (key === 'e') update(selected, { status: 'empty', kinds: [], tally: [] }, status === 'new');
+    if (key === 'arrowright' || key === 'arrowdown') step(1);
+    else if (key === 'arrowleft' || key === 'arrowup') step(-1);
+    else if (key === 'e') markEmpty(selected);
     else if (key === 'a') update(selected, { status: 'animal' }, status === 'new');
     else if (key === 'escape') setSelectedId(null);
+    else if (TALLY_PRESETS[Number(key) - 1]) applyPreset(selected, Number(key) - 1);
     else {
       const quick = QUICK_KINDS.find((q) => q.key === key);
       if (!quick) return;
@@ -409,7 +422,7 @@ export function CameraView(props: CameraViewProps) {
               </div>
               {status === 'new' && shown.length > 0 && (
                 <p className="hint camera-keys">
-                  Click a photo to look closer. Keys: <kbd>E</kbd> empty · <kbd>A</kbd> animal · <kbd>B</kbd> buck · <kbd>D</kbd> doe · <kbd>F</kbd> fawn · <kbd>T</kbd> turkey · arrows to move.
+                  Click a photo to open it full size. Keys: <kbd>E</kbd> empty · <kbd>A</kbd> animal · <kbd>1</kbd>–<kbd>5</kbd> quick tags · <kbd>B</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>T</kbd> add a buck, doe, fawn or turkey · arrows to move.
                 </p>
               )}
               {shown.length === 0 ? (
@@ -417,7 +430,10 @@ export function CameraView(props: CameraViewProps) {
               ) : (
                 <div className="photo-grid">
                   {pageItems.map((p) => (
-                    <button key={p.id} className={`photo-tile ${p.status}${p.id === selectedId ? ' selected' : ''}`} onClick={() => setSelectedId(p.id)}>
+                    <button key={p.id} className={`photo-tile ${p.status}${p.id === selectedId ? ' selected' : ''}`} onClick={() => {
+                        setViewerIds(shown.map((s) => s.id));
+                        setSelectedId(p.id);
+                      }}>
                       <img src={photoUrl(p.file, true)} alt="" loading="lazy" decoding="async" />
                       <span className="photo-caption">
                         {shortDate(p.takenAt)}
@@ -447,53 +463,99 @@ export function CameraView(props: CameraViewProps) {
           )}
         </section>
 
-        {selected && !importing && (
-          <aside className="photo-detail">
-            <div className="photo-frame">
-              <img src={photoUrl(selected.file)} alt={`Photo from ${cameraName(selected.cameraId)}`} />
-              {(selected.detections ?? []).filter((d) => d.score >= 0.15).map((d, i) => (
-                <span
-                  key={i}
-                  className={`photo-box ${d.label}${d.score < 0.5 ? ' weak' : ''}`}
-                  style={{ left: `${d.box[0] * 100}%`, top: `${d.box[1] * 100}%`, width: `${d.box[2] * 100}%`, height: `${d.box[3] * 100}%` }}
-                >
-                  <span>
-                    {d.label} {Math.round(d.score * 100)}%
+        {selected &&
+          !importing &&
+          createPortal(
+            <div className="photo-viewer" role="dialog" aria-label="Photo">
+              <PhotoFrame key={selected.id} photo={selected} alt={`Photo from ${cameraName(selected.cameraId)}`} />
+
+              <div className="viewer-bar viewer-top">
+                <div className="viewer-info">
+                  <strong>{placeLabel(props.places, placeFor(selected))}</strong>
+                  <span className="muted">
+                    {cameraName(selected.cameraId)} · {new Date(selected.takenAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </span>
-                </span>
-              ))}
-            </div>
-            <div className="photo-detail-info">
-              <strong>{placeLabel(props.places, placeFor(selected))}</strong>
-              <span className="muted">{cameraName(selected.cameraId)}</span>
-              <span className="muted">{new Date(selected.takenAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-            </div>
-            <div className="photo-actions">
-              <button className={selected.status === 'empty' ? 'active' : ''} onClick={() => update(selected, { status: 'empty', kinds: [] }, status === 'new')}>
-                Empty <kbd>E</kbd>
-              </button>
-              <button className={selected.status === 'animal' ? 'active' : ''} onClick={() => update(selected, { status: 'animal' }, status === 'new')}>
-                Animal <kbd>A</kbd>
-              </button>
-            </div>
-            <TallyEditor tally={tallyOf(selected)} buckNames={props.buckNames} onChange={(t) => setTally(selected, t)} />
-            <PlacePicker
-              photo={selected}
-              place={placeFor(selected)}
-              choices={choices}
-              others={props.photos.filter((p) => p.batchId === selected.batchId && p.id !== selected.id && !samePlace(placeFor(p), placeFor(selected)))}
-              onChange={(list, place) => props.onSavePhotos(list.map((p) => ({ ...p, place })))}
-            />
-            <textarea rows={2} placeholder="Notes (e.g. big 8, same buck as last week)" value={selected.notes ?? ''} onChange={(e) => update(selected, { notes: e.target.value || null })} />
-            <p className="hint photo-file" title={selected.file}>
-              {selected.file} · from {selected.originalName}
-            </p>
-            <div className="photo-actions">
-              <button onClick={() => void window.hub?.openLibraryFolder(selected.file.split('/').slice(0, -1).join('/'))}>Show in folder</button>
-              <button onClick={() => setSelectedId(null)}>Close</button>
-            </div>
-          </aside>
-        )}
+                </div>
+                <div className="viewer-nav">
+                  <button onClick={() => step(-1)} disabled={viewerAt <= 0} title="Left arrow">
+                    Previous
+                  </button>
+                  <span className="muted">
+                    {viewerAt + 1} of {viewerIds.length}
+                  </span>
+                  <button onClick={() => step(1)} disabled={viewerAt >= viewerIds.length - 1} title="Right arrow">
+                    Next
+                  </button>
+                  <button className={detailsOpen ? 'active' : ''} onClick={() => setDetailsOpen(!detailsOpen)}>
+                    Details
+                  </button>
+                  <button className="icon" onClick={() => setSelectedId(null)} aria-label="Close photo" title="Esc">
+                    <Icon name="close" size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="viewer-bar viewer-bottom">
+                <div className="viewer-tags">{tallySummary(tallyOf(selected)) || (selected.status === 'empty' ? 'Empty' : 'Nothing tagged')}</div>
+                <div className="viewer-presets">
+                  <button className={selected.status === 'empty' ? 'active' : ''} onClick={() => markEmpty(selected)}>
+                    Empty <kbd>E</kbd>
+                  </button>
+                  <button className={selected.status === 'animal' && tallyOf(selected).length === 0 ? 'active' : ''} onClick={() => update(selected, { status: 'animal' }, status === 'new')}>
+                    Animal <kbd>A</kbd>
+                  </button>
+                  <span className="line-edit-divider" />
+                  {TALLY_PRESETS.map((preset, i) => (
+                    <button key={preset.label} className={sameTally(tallyOf(selected), preset.tally) ? 'active' : ''} onClick={() => applyPreset(selected, i)}>
+                      {preset.label} <kbd>{i + 1}</kbd>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {detailsOpen && (
+                <aside className="viewer-details">
+                  <TallyEditor tally={tallyOf(selected)} buckNames={props.buckNames} onChange={(t) => setTally(selected, t)} />
+                  <PlacePicker
+                    photo={selected}
+                    place={placeFor(selected)}
+                    choices={choices}
+                    others={props.photos.filter((p) => p.batchId === selected.batchId && p.id !== selected.id && !samePlace(placeFor(p), placeFor(selected)))}
+                    onChange={(list, place) => props.onSavePhotos(list.map((p) => ({ ...p, place })))}
+                  />
+                  <textarea rows={2} placeholder="Notes (e.g. big 8, same buck as last week)" value={selected.notes ?? ''} onChange={(e) => update(selected, { notes: e.target.value || null })} />
+                  <p className="hint photo-file" title={selected.file}>
+                    {selected.file} · from {selected.originalName}
+                  </p>
+                  <button onClick={() => void window.hub?.openLibraryFolder(selected.file.split('/').slice(0, -1).join('/'))}>Show in folder</button>
+                </aside>
+              )}
+            </div>,
+            document.body,
+          )}
+      </div>
+    </div>
+  );
+}
+
+// The photo as large as the window allows, with MegaDetector's boxes on it.
+function PhotoFrame({ photo, alt }: { photo: CameraPhoto; alt: string }) {
+  const [ratio, setRatio] = useState(16 / 9);
+  return (
+    <div className="viewer-stage">
+      <div className="photo-frame" style={{ width: `min(100vw, calc(100vh * ${ratio}))`, aspectRatio: ratio }}>
+        <img src={photoUrl(photo.file)} alt={alt} onLoad={(e) => e.currentTarget.naturalHeight > 0 && setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} />
+        {(photo.detections ?? []).filter((d) => d.score >= EMPTY_BELOW).map((d, i) => (
+          <span
+            key={i}
+            className={`photo-box ${d.label}${d.score < ANIMAL_SCORE ? ' weak' : ''}`}
+            style={{ left: `${d.box[0] * 100}%`, top: `${d.box[1] * 100}%`, width: `${d.box[2] * 100}%`, height: `${d.box[3] * 100}%` }}
+          >
+            <span>
+              {d.label} {Math.round(d.score * 100)}%
+            </span>
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -815,12 +877,14 @@ function tallySummary(tally: PhotoTally[]): string {
 // What's in the photo: a count for each kind, and a name for each buck you know.
 function TallyEditor({ tally, buckNames, onChange }: { tally: PhotoTally[]; buckNames: string[]; onChange(tally: PhotoTally[]): void }) {
   const kinds = Object.keys(DEER_KINDS) as DeerKind[];
-  const countOf = (kind: DeerKind) => tally.filter((t) => t.kind === kind && !(kind === 'buck' && t.buckName)).reduce((n, t) => n + t.count, 0);
+  // A buck being named has a name of '' until it's typed, so it isn't counted here.
+  const isPlain = (t: PhotoTally, kind: DeerKind) => t.kind === kind && !(kind === 'buck' && t.buckName != null);
+  const countOf = (kind: DeerKind) => tally.filter((t) => isPlain(t, kind)).reduce((n, t) => n + t.count, 0);
   const setCount = (kind: DeerKind, count: number) => {
-    const rest = tally.filter((t) => !(t.kind === kind && !(kind === 'buck' && t.buckName)));
-    onChange(count > 0 ? [...rest, { kind, count, buckName: null }] : rest);
+    const rest = tally.filter((t) => !isPlain(t, kind));
+    onChange(count > 0 ? [...rest, { kind, count }] : rest);
   };
-  const named = tally.filter((t) => t.kind === 'buck' && t.buckName !== null);
+  const named = tally.filter((t) => t.kind === 'buck' && t.buckName != null);
   return (
     <div className="tally">
       <div className="tally-head">

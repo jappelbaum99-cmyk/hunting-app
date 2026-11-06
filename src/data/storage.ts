@@ -103,7 +103,8 @@ export async function loadHubData(): Promise<HubData> {
 }
 
 export async function saveHubData(data: HubData): Promise<void> {
-  const json = JSON.stringify(data, null, 2);
+  // No indenting: with thousands of photos it adds a lot and only helps someone reading the file.
+  const json = JSON.stringify(data);
   if (window.hub) {
     await window.hub.saveData(json);
   } else {

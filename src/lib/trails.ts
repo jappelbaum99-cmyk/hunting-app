@@ -28,6 +28,7 @@ export interface TrailLook {
   pattern: LinePattern;
   thickness: LineThickness;
   px: number;
+  outline: boolean;
 }
 
 // How a trail type is drawn: what's set in Settings, else the built-in look.
@@ -35,14 +36,14 @@ export function trailTypeStyle(kind: string, styles: HubSettings['trailStyles'] 
   const info = trailKindInfo(kind);
   const set = styles[kind as TrailKind];
   const thickness = set?.thickness ?? 'normal';
-  return { color: set?.color ?? info.color, pattern: set?.pattern ?? (info.dashed ? 'dashed' : 'solid'), thickness, px: LINE_THICKNESS[thickness].px };
+  return { color: set?.color ?? info.color, pattern: set?.pattern ?? (info.dashed ? 'dashed' : 'solid'), thickness, px: LINE_THICKNESS[thickness].px, outline: set?.outline ?? true };
 }
 
 // How one trail is drawn: its own choices, else its type's.
-export function trailStyle(trail: Pick<MapTrail, 'kind' | 'color' | 'pattern' | 'thickness'>, styles: HubSettings['trailStyles'] = {}): TrailLook {
+export function trailStyle(trail: Pick<MapTrail, 'kind' | 'color' | 'pattern' | 'thickness' | 'outline'>, styles: HubSettings['trailStyles'] = {}): TrailLook {
   const type = trailTypeStyle(trail.kind, styles);
   const thickness = trail.thickness ?? type.thickness;
-  return { color: trail.color ?? type.color, pattern: trail.pattern ?? type.pattern, thickness, px: LINE_THICKNESS[thickness].px };
+  return { color: trail.color ?? type.color, pattern: trail.pattern ?? type.pattern, thickness, px: LINE_THICKNESS[thickness].px, outline: trail.outline ?? type.outline };
 }
 
 const EARTH_M = 6_371_000;
@@ -60,6 +61,19 @@ export function lineLengthM(points: Position[]): number {
   let total = 0;
   for (let i = 1; i < points.length; i++) total += metersBetween(points[i - 1], points[i]);
   return total;
+}
+
+// Every line of a trail: its main one first, then any branches.
+export function trailParts(trail: Pick<MapTrail, 'line' | 'branches'>): Position[][] {
+  return [trail.line.coordinates, ...(trail.branches ?? [])];
+}
+
+export function withParts<T extends Pick<MapTrail, 'line' | 'branches'>>(trail: T, parts: Position[][]): T {
+  return { ...trail, line: { type: 'LineString', coordinates: parts[0] }, branches: parts.length > 1 ? parts.slice(1) : null };
+}
+
+export function trailLengthM(trail: Pick<MapTrail, 'line' | 'branches'>): number {
+  return trailParts(trail).reduce((total, part) => total + lineLengthM(part), 0);
 }
 
 // "320 yd" or "1.4 mi".

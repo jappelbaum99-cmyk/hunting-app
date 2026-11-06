@@ -1,6 +1,6 @@
 // Shared data models for the hub (and later the phone site).
 // Ids are UUIDs and deletes are soft (deletedAt) so records can sync between devices.
-import type { LineString, MultiPolygon, Polygon } from 'geojson';
+import type { LineString, MultiPolygon, Polygon, Position } from 'geojson';
 
 export type AreaGeometry = Polygon | MultiPolygon;
 
@@ -94,7 +94,7 @@ export interface HubSettings {
   // The pin and area types left off the map, like "pin:camera" or "area:timber".
   hiddenTypeLabels: string[];
   // The look of each trail type. Anything left out uses the built-in default.
-  trailStyles: Partial<Record<TrailKind, { color?: string; pattern?: LinePattern; thickness?: LineThickness }>>;
+  trailStyles: Partial<Record<TrailKind, { color?: string; pattern?: LinePattern; thickness?: LineThickness; outline?: boolean }>>;
   // How many days ahead of a schedule's window its To do card appears.
   scheduleLeadDays: number;
   // The camp this hub gets phone hunts and pins from, if any.
@@ -404,6 +404,9 @@ export interface MapTrail extends Syncable {
   // Override the line style set for its type.
   pattern?: LinePattern | null;
   thickness?: LineThickness | null;
+  outline?: boolean | null;
+  // More lines belonging to this trail, meeting it at a T.
+  branches?: Position[][] | null;
   // Drawn in the hub, or walked with a phone's GPS.
   source: 'drawn' | 'walked';
 }
@@ -425,7 +428,8 @@ export interface FieldTrack extends Syncable {
 export interface PhotoTally {
   kind: DeerKind;
   count: number;
-  buckName: string | null;
+  // Left out unless it's a named buck: there can be a lot of photos.
+  buckName?: string | null;
 }
 
 // A box MegaDetector drew: [x, y, width, height] as fractions of the photo.

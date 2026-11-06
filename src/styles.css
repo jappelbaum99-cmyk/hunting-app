@@ -693,6 +693,53 @@ input[type='checkbox'] {
   margin-right: 6px;
 }
 
+.trail-outline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.draw-bar.line-edit {
+  flex-direction: column;
+  align-items: stretch;
+  /* Centered on the map beside the sidebar, leaving room for the map buttons. */
+  left: calc(50% + (var(--sidebar-width) + var(--gap)) / 2);
+  width: max-content;
+  max-width: calc(100% - var(--sidebar-width) - var(--gap) * 2 - 120px);
+  padding: 10px 12px;
+  border-radius: 16px;
+  white-space: normal;
+}
+
+.line-edit-title {
+  text-align: center;
+}
+
+.line-edit-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.line-edit-tools select {
+  width: auto;
+}
+
+.draw-bar .line-edit-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.draw-bar.line-edit ~ .toast {
+  bottom: 136px;
+}
+
 .toast {
   position: absolute;
   bottom: 96px;
@@ -2826,17 +2873,6 @@ button.mini {
   padding-right: 4px;
 }
 
-.trail-combine {
-  display: flex;
-  gap: 8px;
-}
-
-.trail-combine select,
-.trail-combine button {
-  flex: 1;
-  min-width: 0;
-}
-
 .line-style {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3509,17 +3545,6 @@ body.resizing {
 }
 
 .camera-keys kbd,
-.photo-actions kbd {
-  display: inline-block;
-  min-width: 18px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--fill-hover);
-  font: inherit;
-  font-size: 11px;
-  text-align: center;
-}
-
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -3573,40 +3598,124 @@ body.resizing {
   gap: 12px;
 }
 
-.photo-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 360px;
-  padding: 12px;
-  border-left: 1px solid var(--hairline);
-  overflow-y: auto;
-}
-
-.photo-detail img {
-  width: 100%;
-  border-radius: 10px;
+/* An opened photo fills the window, with its controls on top of it. */
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
   background: #000;
+  color: var(--text);
+  font-size: 14px;
 }
 
-.photo-detail-info {
+.viewer-stage {
+  position: absolute;
+  inset: 0;
   display: grid;
-  gap: 2px;
+  place-items: center;
+  overflow: hidden;
+}
+
+.viewer-stage img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.viewer-bar,
+.viewer-details {
+  position: absolute;
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-panel);
+}
+
+.viewer-top {
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 12px;
+}
+
+.viewer-info {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
   font-size: 13px;
 }
 
-.photo-actions {
+.viewer-nav {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewer-bottom {
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
+}
+
+.viewer-tags {
+  font-weight: 700;
+  text-align: center;
+}
+
+.viewer-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
-.photo-actions button {
-  flex: 1;
+.viewer-presets .line-edit-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
 }
 
-.photo-actions button.active {
+.viewer-presets kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--fill-hover);
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+
+.viewer-presets button.active,
+.viewer-nav button.active {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+.viewer-details {
+  top: 76px;
+  right: 12px;
+  bottom: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100% - 24px));
+  padding: 12px;
+  overflow-y: auto;
 }
 
 .photo-file {
