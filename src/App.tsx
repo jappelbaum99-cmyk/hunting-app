@@ -153,6 +153,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  // The pin unlocked to be moved. It locks again once it's no longer selected.
+  const [unlockedPinId, setUnlockedPinId] = useState<string | null>(null);
   // What the last Combine changed, so it can be undone.
   const [lastCombine, setLastCombine] = useState<{ trailId: string; before: MapTrail[]; createdIds: string[] } | null>(null);
   // Trail Cameras: open, hidden while a new camera is pinned, and that camera once pinned.
@@ -500,6 +502,10 @@ export function App() {
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
   }, hub.settings.customPinTypes, campHandled, campBoard, campPlots);
+
+  useEffect(() => {
+    if (selection?.kind !== 'marker' || selection.id !== unlockedPinId) setUnlockedPinId(null);
+  }, [selection, unlockedPinId]);
 
   // Schedules coming due put a To do card on the Action Board.
   useEffect(() => {
@@ -1395,6 +1401,7 @@ export function App() {
           overlays={overlayViews}
           alignMarkers={alignMarkers}
           standRatings={standRatings}
+          unlockedPinId={unlockedPinId}
           scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
           sightings={sightingViews}
           huntSpots={huntSpotViews}
@@ -1667,6 +1674,8 @@ export function App() {
         kind="marker"
         record={record}
         pinTypes={pinTypeList(hub.settings.customPinTypes)}
+        unlocked={unlockedPinId === record.id}
+        onToggleLock={() => setUnlockedPinId(unlockedPinId === record.id ? null : record.id)}
         onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
         history={
           isStandMarker(record) ? (

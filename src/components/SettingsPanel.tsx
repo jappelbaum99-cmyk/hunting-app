@@ -147,14 +147,6 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
 
       <section className="sidebar-section">
         <h2>Pins</h2>
-        <ul className="settings-list">
-          <li className="setting-row">
-            <label className="check">
-              <input type="checkbox" checked={settings.pinsLocked} onChange={(e) => onChange({ ...settings, pinsLocked: e.target.checked })} />
-              <span>Lock pins so they can't be moved by accident</span>
-            </label>
-          </li>
-        </ul>
         <p className="hint">Each type's color, shape and size, or add your own types. Slide size all the way down for a tiny dot. A single stand or pin can still get its own color.</p>
         <ul className="settings-list">
           {pinTypeList(settings.customPinTypes).map(({ id: type, label, custom }) => {

@@ -42,7 +42,7 @@ interface Common {
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
-  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[] } & Common)
+  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
   | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; onCombine(feet: number): void; onPick(action: 'split' | 'join'): void; onUndoCombine: (() => void) | null; trailStyles: HubSettings['trailStyles'] } & Common);
 
@@ -90,7 +90,7 @@ export function DetailPanel(props: DetailPanelProps) {
         {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} />}
         {props.kind === 'marker' && (
           <>
-            <MarkerFields record={props.record} onChange={props.onChange} pinTypes={props.pinTypes} />
+            <MarkerFields record={props.record} onChange={props.onChange} pinTypes={props.pinTypes} unlocked={props.unlocked} onToggleLock={props.onToggleLock} />
             {props.onLogHunt && (
               <button className="primary log-hunt" onClick={props.onLogHunt}>
                 Log a hunt here
@@ -429,7 +429,7 @@ function TrailFields({ record, onChange, onCombine, onPick, onUndoCombine, trail
   );
 }
 
-function MarkerFields({ record, onChange, pinTypes }: { record: MapMarker; onChange(m: MapMarker): void; pinTypes: PinTypeView[] }) {
+function MarkerFields({ record, onChange, pinTypes, unlocked, onToggleLock }: { record: MapMarker; onChange(m: MapMarker): void; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void }) {
   // Keep a removed custom type selectable for a pin that still uses it.
   const options = pinTypes.some((t) => t.id === record.type) ? pinTypes : [...pinTypes, { ...pinTypeInfo(record.type), label: 'Removed type' }];
   const [copied, setCopied] = useState(false);
@@ -469,7 +469,13 @@ function MarkerFields({ record, onChange, pinTypes }: { record: MapMarker; onCha
         </Field>
       )}
 
-      <Field label="Location" hint="Drag the pin on the map to move it.">
+      <Field
+        label="Location"
+        hint={unlocked ? 'Drag the pin on the map to move it. It locks again when you press Lock or click away.' : 'Locked so it can\'t be moved by accident. Unlock it to drag it on the map.'}
+      >
+        <button className={`pin-lock${unlocked ? ' unlocked' : ''}`} onClick={onToggleLock} aria-pressed={unlocked}>
+          {unlocked ? 'Lock' : 'Unlock to move'}
+        </button>
         <div className="coords">
           <code>{coords}</code>
           <button

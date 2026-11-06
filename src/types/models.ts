@@ -89,8 +89,6 @@ export interface HubSettings {
   propertyLineColor: string | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
-  // Pins can't be dragged on the map while this is on.
-  pinsLocked: boolean;
   // The kinds of names left off the map.
   hiddenLabels: LabelKind[];
   // The pin and area types left off the map, like "pin:camera" or "area:timber".

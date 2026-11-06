@@ -84,7 +84,6 @@ export function emptyHubData(): HubData {
       customPinTypes: [],
       propertyLineColor: null,
       snapping: DEFAULT_SNAPPING,
-      pinsLocked: false,
       hiddenLabels: [],
       hiddenTypeLabels: [],
       trailStyles: {},

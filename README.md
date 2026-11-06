@@ -41,7 +41,7 @@ That builds it into `site-dist`. To put it online, one time:
 ## Using it
 
 - **Draw property** and **Draw area**: click each corner on the map, then press **Done** (or Enter). Backspace undoes the last corner and Esc cancels.
-- **Add pin**: pick a type (stand, camera, scrape...), then click the map. Drag a pin to move it.
+- **Add pin**: pick a type (stand, camera, scrape...), then click the map. Pins are locked so they can't move by accident: to move one, click it, press **Unlock to move** and drag it. It locks again when you click away.
 - **Import KML/GPX**: brings in property lines and waypoints from Google Earth, onX, county GIS sites and other mapping apps. Waypoints with "stand" or "blind" in the name become stands.
 - **Add map image**: lay a screenshot of a parcel map, plat or survey over the map, then trace your property line from it.
   1. Take a screenshot of the map (for example, Dent County's parcel viewer as a guest). Press Win+Shift+S, then save it as a PNG.

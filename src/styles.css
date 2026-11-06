@@ -2761,6 +2761,27 @@ button.mini {
   gap: 8px;
 }
 
+.pin-lock {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.pin-lock.unlocked {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* A pin that can be dragged right now. */
+.map-pin-unlocked {
+  cursor: grab;
+}
+
+.map-pin-unlocked .map-pin-dot {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
 .trail-style-row select {
   flex: 1;
   min-width: 0;

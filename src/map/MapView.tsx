@@ -98,6 +98,8 @@ interface MapViewProps {
   alignMarkers: AlignMarker[];
   // Stand id -> forecast rating, while the Hunt Forecast is open.
   standRatings: Record<string, StandRating> | null;
+  // The one pin that can be dragged right now, if any.
+  unlockedPinId: string | null;
   // Downwind scent wedges for rated stands.
   scentCones: { id: string; rating: StandRating; cone: Polygon }[];
   // Deer seen in hunt reports.
@@ -854,10 +856,14 @@ export function MapView(props: MapViewProps) {
         });
       },
     );
-    for (const marker of markerElements.current.values()) marker.setDraggable(!settings.pinsLocked);
+    // Pins stay put unless this one was unlocked to move it.
+    for (const [id, marker] of markerElements.current) {
+      marker.setDraggable(id === props.unlockedPinId);
+      marker.getElement().classList.toggle('map-pin-unlocked', id === props.unlockedPinId);
+    }
     const container = map.getContainer();
     for (const { id } of LABEL_KINDS) container.classList.toggle(`hide-label-${id}`, settings.hiddenLabels.includes(id));
-  }, [markers, selectedId, standRatings, settings, readyTick]);
+  }, [markers, selectedId, standRatings, settings, props.unlockedPinId, readyTick]);
 
   // New spots hunted from: a dashed ring, so they read differently from stands.
   useEffect(() => {
