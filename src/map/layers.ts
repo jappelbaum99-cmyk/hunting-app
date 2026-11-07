@@ -67,6 +67,21 @@ const AERIAL_EXPORT = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGS
 export const AERIAL_TILE_URL = `${AERIAL_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512&format=jpg&f=image`;
 // Map zoom where the close-up aerial photos take over from the satellite tiles.
 export const AERIAL_MIN_ZOOM = 15;
+// They fade in over this much zoom rather than all at once: the two sources can
+// be different years and colors, and a hard switch made the map jump.
+const AERIAL_BLEND_ZOOMS = 0.8;
+// How long a newly loaded tile takes to fade in, in milliseconds.
+const TILE_FADE_MS = 250;
+// Missouri's own statewide aerial photos (MSDIS, 6 inch, leaf-off 2023-2024): free
+// and public, about four times sharper than NAIP. Only tiles saved by a property's
+// "Download for offline" are shown, so nothing is pulled from the state's server
+// while browsing. "jpgpng" comes back see-through outside Missouri.
+const MO_AERIAL_EXPORT = 'https://stateimagery.msdis.missouri.edu/arcgis/rest/services/Missouri_6inch_Statewide_2023_2024_Dynamic/ImageServer/exportImage';
+export const MO_AERIAL_TILE_URL = `${MO_AERIAL_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512&format=jpgpng&f=image`;
+// West, south, east, north, a little past the state line.
+export const MISSOURI_BOUNDS: [number, number, number, number] = [-95.8, 35.95, -89.05, 40.65];
+// 512 px tiles: source zoom 18 is about 30 cm a pixel, map zoom 19.
+export const MO_AERIAL_MAX_ZOOM = 18;
 export const SATELLITE_TILE_URL = `${BASEMAP_TILES}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`;
 export const TOPO_TILE_URL = `${BASEMAP_TILES}/USGSTopo/MapServer/tile/{z}/{y}/{x}`;
 const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS The National Map</a>';
@@ -79,6 +94,11 @@ const RETRY_PROTOCOL = 'retry';
 // Same retries, then the float elevation TIFF is re-coded for 3D terrain (src/map/terrain.ts).
 const RETRY_DEM_PROTOCOL = 'retry-dem';
 const RETRY_DELAYS_MS = [800, 2000, 4000, 8000];
+// Tiles only from the desktop's saved tiles; never fetched. A tile that isn't
+// saved is an empty see-through one, so the layer below shows through.
+const SAVED_PROTOCOL = 'saved';
+// A 1x1 see-through PNG.
+const EMPTY_PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
 
 // Lidar tiles are requested by bounding box. Rounding the box gives each tile
 // one exact URL, so the on-disk cache (and the property download, which
@@ -133,6 +153,12 @@ export function setUpMapLibre(): void {
     const tiff = await withRetries(normalizeTileUrl(params.url.slice(`${RETRY_DEM_PROTOCOL}://`.length)), abortController.signal);
     return { data: await toTerrariumPng(readElevationTiff(tiff)) };
   });
+  maplibregl.addProtocol(SAVED_PROTOCOL, async (params) => {
+    const url = normalizeTileUrl(params.url.slice(`${SAVED_PROTOCOL}://`.length));
+    const tile = window.hub ? await window.hub.getTile(url, { cacheOnly: true }).catch(() => null) : null;
+    const bytes = tile ? tile.bytes : EMPTY_PNG;
+    return { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer };
+  });
 }
 
 function elevationTiles(rasterFunction: string): string[] {
@@ -157,6 +183,7 @@ export function contourTiles(id: ContourInterval): string[] | null {
 export const LAYER_IDS = {
   satellite: 'base-satellite',
   aerial: 'base-aerial',
+  aerialMo: 'base-aerial-mo',
   topo: 'base-topo',
   lidar: 'base-lidar',
   lidarBlend: 'overlay-lidar',
@@ -166,6 +193,18 @@ export const LAYER_IDS = {
 export function buildBaseStyle(): StyleSpecification {
   return {
     version: 8,
+    // Tilted, the far-off ground can only get rough tiles (sharp ones all the way to
+    // the horizon would be hundreds of downloads), so it fades into a light haze
+    // and sky instead of looking smeared. Flat on, none of this shows.
+    sky: {
+      'sky-color': '#9dbad6',
+      'horizon-color': '#dde4e6',
+      'fog-color': '#dde4e6',
+      'sky-horizon-blend': 0.6,
+      'horizon-fog-blend': 0.4,
+      'fog-ground-blend': 0.75,
+      'atmosphere-blend': 0,
+    },
     sources: {
       satellite: {
         type: 'raster',
@@ -182,6 +221,15 @@ export function buildBaseStyle(): StyleSpecification {
         minzoom: AERIAL_MIN_ZOOM - 1,
         maxzoom: 18,
         attribution: `${ATTRIBUTION} NAIP`,
+      },
+      aerialMo: {
+        type: 'raster',
+        tiles: [`${SAVED_PROTOCOL}://${MO_AERIAL_TILE_URL}`],
+        tileSize: 512,
+        minzoom: AERIAL_MIN_ZOOM - 1,
+        maxzoom: MO_AERIAL_MAX_ZOOM,
+        bounds: MISSOURI_BOUNDS,
+        attribution: '<a href="https://msdis.missouri.edu">MSDIS</a> Missouri 6 inch',
       },
       topo: {
         type: 'raster',
@@ -217,8 +265,28 @@ export function buildBaseStyle(): StyleSpecification {
     },
     layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#1d221d' } },
-      { id: LAYER_IDS.satellite, type: 'raster', source: 'satellite' },
-      { id: LAYER_IDS.aerial, type: 'raster', source: 'aerial', minzoom: AERIAL_MIN_ZOOM, paint: { 'raster-fade-duration': 0 } },
+      { id: LAYER_IDS.satellite, type: 'raster', source: 'satellite', paint: { 'raster-fade-duration': TILE_FADE_MS } },
+      {
+        id: LAYER_IDS.aerial,
+        type: 'raster',
+        source: 'aerial',
+        minzoom: AERIAL_MIN_ZOOM,
+        paint: {
+          'raster-opacity': ['interpolate', ['linear'], ['zoom'], AERIAL_MIN_ZOOM, 0, AERIAL_MIN_ZOOM + AERIAL_BLEND_ZOOMS, 1],
+          'raster-fade-duration': TILE_FADE_MS,
+        },
+      },
+      // On top of NAIP where a Missouri property was downloaded; see-through elsewhere.
+      {
+        id: LAYER_IDS.aerialMo,
+        type: 'raster',
+        source: 'aerialMo',
+        minzoom: AERIAL_MIN_ZOOM,
+        paint: {
+          'raster-opacity': ['interpolate', ['linear'], ['zoom'], AERIAL_MIN_ZOOM, 0, AERIAL_MIN_ZOOM + AERIAL_BLEND_ZOOMS, 1],
+          'raster-fade-duration': TILE_FADE_MS,
+        },
+      },
       { id: LAYER_IDS.topo, type: 'raster', source: 'topo', layout: { visibility: 'none' } },
       {
         id: LAYER_IDS.lidar,

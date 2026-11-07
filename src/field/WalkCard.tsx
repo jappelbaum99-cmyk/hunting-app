@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { SentTools, type SentStatus } from '@/field/SentTools';
-import { formatDistance, lineLengthM } from '@/lib/trails';
+import { formatDistance, lineLengthM, metersBetween } from '@/lib/trails';
 import type { FieldTrack } from '@/types/models';
 import type { Position } from 'geojson';
 
@@ -10,6 +10,8 @@ export interface ActiveWalk {
   id: string;
   startedAt: string;
   points: Position[];
+  // Along a trail, or around the edge of an area. Missing on walks started before areas.
+  shape?: 'line' | 'area';
 }
 
 // Keeps the screen on while a walk is recorded: an iPhone stops GPS for a web
@@ -51,11 +53,14 @@ function minutesSince(iso: string): number {
 }
 
 // Start a walk, see how far you've gone, stop to save it as a trail for the hub.
+// Walking around the edge of an area instead gives the hub the area's outline.
 export function WalkCard(props: {
   walk: ActiveWalk | null;
   tracks: FieldTrack[];
   gpsReady: boolean;
-  onStart(): void;
+  // Where the phone is now, to tell an area walk how far it is back to the start.
+  here: Position | null;
+  onStart(shape: 'line' | 'area'): void;
   onStop(): void;
   onDiscard(): void;
   onDeleteTrack(id: string): void;
@@ -74,10 +79,15 @@ export function WalkCard(props: {
   }, [walk]);
 
   if (walk) {
+    const isArea = walk.shape === 'area';
+    const start = walk.points[0];
+    const backM = isArea && start && props.here ? metersBetween(props.here, start) : null;
+    // A real loop needs a few points and some distance walked.
+    const ready = isArea ? walk.points.length >= 3 && lineLengthM(walk.points) >= 40 : walk.points.length >= 2;
     return (
       <section className="field-card walk-card walking">
         <h2>
-          <span className="live-dot" /> Recording a walk
+          <span className="live-dot" /> {isArea ? 'Walking the edge of an area' : 'Recording a walk'}
         </h2>
         <div className="walk-stats">
           <div>
@@ -93,11 +103,20 @@ export function WalkCard(props: {
             <span>points</span>
           </div>
         </div>
+        {isArea && (
+          <p className={`walk-back${backM !== null && backM <= 15 && ready ? ' closed' : ''}`}>
+            {backM === null || (!ready && backM <= 15)
+              ? 'Walk all the way around and come back to where you started.'
+              : backM <= 15
+                ? "You're back at the start. Stop to save the area."
+                : `${formatDistance(backM)} back to where you started`}
+          </p>
+        )}
         <p className="field-hint">
           {awake ? 'The screen will stay on. ' : ''}Keep this page open: the phone stops GPS when the screen locks or you switch apps.
         </p>
-        <button className="big-button" onClick={props.onStop} disabled={walk.points.length < 2}>
-          Stop and save trail
+        <button className="big-button" onClick={props.onStop} disabled={!ready}>
+          {isArea ? 'Stop and save area' : 'Stop and save trail'}
         </button>
         <button
           className="end-button"
@@ -113,10 +132,16 @@ export function WalkCard(props: {
 
   return (
     <section className="field-card walk-card">
-      <h2>Walk a trail</h2>
-      <p className="field-hint">Records the path you walk with GPS, so the hub can add it as a trail.</p>
-      <button className="big-button" onClick={props.onStart} disabled={!props.gpsReady}>
-        {props.gpsReady ? 'Start walk' : 'Waiting for GPS…'}
+      <h2>Walk a trail or an area</h2>
+      <p className="field-hint">
+        Records the path you walk with GPS, so the hub can add it as a trail. To outline a food plot or other area, walk all the way around its edge and end where you
+        started.
+      </p>
+      <button className="big-button" onClick={() => props.onStart('line')} disabled={!props.gpsReady}>
+        {props.gpsReady ? 'Walk a trail' : 'Waiting for GPS…'}
+      </button>
+      <button className="big-button secondary" onClick={() => props.onStart('area')} disabled={!props.gpsReady}>
+        Walk around an area
       </button>
       {props.tracks.length > 0 && (
         <>
@@ -129,7 +154,7 @@ export function WalkCard(props: {
                 <span>
                   {t.name}
                   <span className="muted"> · {formatDistance(t.lengthM)}</span>
-                  {props.status(t) === 'added' && <span className="sent-badge added">Trail on the hub</span>}
+                  {props.status(t) === 'added' && <span className="sent-badge added">{t.shape === 'area' ? 'On the hub' : 'Trail on the hub'}</span>}
                   {props.status(t) === 'sent' && <span className="sent-badge sent">At camp</span>}
                   {props.status(t) === 'waiting' && <span className="sent-badge waiting">Waiting to send</span>}
                 </span>

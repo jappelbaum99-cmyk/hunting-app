@@ -152,14 +152,17 @@ export function FieldApp() {
             walk={data.activeWalk}
             tracks={data.tracks}
             gpsReady={gps.fix !== null}
-            onStart={() => setData((d) => ({ ...d, activeWalk: { id: crypto.randomUUID(), startedAt: new Date().toISOString(), points: [] } }))}
+            here={gps.fix ? [gps.fix.lng, gps.fix.lat] : null}
+            onStart={(shape) => setData((d) => ({ ...d, activeWalk: { id: crypto.randomUUID(), startedAt: new Date().toISOString(), points: [], shape } }))}
             onStop={() => {
               const walk = data.activeWalk;
               if (!walk || walk.points.length < 2) return;
+              const isArea = walk.shape === 'area';
               const ended = new Date();
               const started = new Date(walk.startedAt);
               const track: FieldTrack = record({
-                name: `Walk ${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+                name: `${isArea ? 'Area walk' : 'Walk'} ${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+                shape: isArea ? ('area' as const) : ('line' as const),
                 coords: packPoints(simplifyLine(walk.points)),
                 startedAt: walk.startedAt,
                 endedAt: ended.toISOString(),
@@ -233,6 +236,7 @@ export function FieldApp() {
             gpsError={gps.error}
             status={statusOf}
             onAdd={(note) => setData((d) => ({ ...d, notes: [note, ...d.notes] }))}
+            onUpdate={(note) => setData((d) => ({ ...d, notes: d.notes.map((n) => (n.id === note.id ? note : n)) }))}
             onRemove={(id) => setData((d) => ({ ...d, notes: d.notes.filter((n) => n.id !== id) }))}
             onMessage={setMessage}
           />

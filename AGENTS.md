@@ -2,7 +2,7 @@ Fenceline (formerly Hunting Hub): a Windows desktop app (Electron + React + Vite
 
 ## Rules
 
-- Everything must be free: no paid APIs, no services that need a card. Map data comes from public USGS services (basemap.nationalmap.gov, elevation.nationalmap.gov, and imagery.nationalmap.gov for close-up NAIP aerials past zoom 15).
+- Everything must be free: no paid APIs, no services that need a card. Map data comes from public USGS services (basemap.nationalmap.gov, elevation.nationalmap.gov, and imagery.nationalmap.gov for close-up NAIP aerials past zoom 15). In Missouri, the state's free 6 inch aerials (MSDIS, stateimagery.msdis.missouri.edu) come only through a property's offline download; the map shows them from saved tiles (`saved://` in `src/map/layers.ts`) and never fetches them while browsing.
 - The USGS elevation (lidar) server often answers 502/504. All USGS tiles go through the `retry://` protocol in `src/map/layers.ts` (3D terrain uses `retry-dem://`, the same retries plus re-coding the float elevation TIFF in `src/map/terrain.ts`); keep it that way.
 - Data lives in `Documents\Hunting Hub\hub-data.json`, written by `electron/main.cjs` (temp file + rename, previous copy kept as `.bak`). In a plain browser it falls back to localStorage, which is for development only.
 - Records use UUID ids, `createdAt`/`updatedAt`, and soft deletes (`deletedAt`) so they can sync with the phone site later. Never hard-delete records.

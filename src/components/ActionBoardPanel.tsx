@@ -17,6 +17,9 @@ interface ActionBoardPanelProps {
   onOpenStand(id: string): void;
   // Opens the area or section a scheduled card belongs to.
   onOpenPlace(item: ActionItem): void;
+  // The lists folded shut, kept in this hub's settings.
+  closed: BoardStatus[];
+  onClosedChange(closed: BoardStatus[]): void;
   onClose(): void;
 }
 
@@ -38,6 +41,32 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
     setText('');
   };
 
+  // Each list folds open or shut from its heading; the header button does them all.
+  const shown = STATUSES.filter((s) => props.items.some((i) => i.status === s));
+  const isOpen = (status: BoardStatus) => !props.closed.includes(status);
+  const toggle = (status: BoardStatus) => props.onClosedChange(isOpen(status) ? [...props.closed, status] : props.closed.filter((s) => s !== status));
+  const allOpen = shown.every(isOpen);
+  const listSection = (status: BoardStatus, heading: string, cards: ActionItem[]) => (
+    <section className="sidebar-section" key={status}>
+      <details className="board-fold" open={isOpen(status)}>
+        <summary
+          onClick={(e) => {
+            // Opened and shut through settings, so it's remembered.
+            e.preventDefault();
+            toggle(status);
+          }}
+        >
+          {heading} <span className="muted">· {cards.length}</span>
+        </summary>
+        <ul className="board-list">
+          {cards.map((item) => (
+            <BoardCardRow key={item.id} item={item} {...props} />
+          ))}
+        </ul>
+      </details>
+    </section>
+  );
+
   return (
     <div className="forecast action-board">
       <div className="forecast-header">
@@ -45,6 +74,11 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
           ‹ Back
         </button>
         <h2>Action Board</h2>
+        {shown.length > 1 && (
+          <button className="link board-fold-all" onClick={() => props.onClosedChange(allOpen ? [...STATUSES] : [])}>
+            {allOpen ? 'Collapse all' : 'Expand all'}
+          </button>
+        )}
       </div>
 
       <section className="sidebar-section">
@@ -68,35 +102,10 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
       {BOARD_LISTS.map(({ status, heading }) => {
         // Overdue work comes first.
         const cards = newestFirst.filter((i) => i.status === status).sort((a, b) => late(a) - late(b));
-        if (cards.length === 0) return null;
-        return (
-          <section className="sidebar-section" key={status}>
-            <h2>
-              {heading} <span className="muted">· {cards.length}</span>
-            </h2>
-            <ul className="board-list">
-              {cards.map((item) => (
-                <BoardCardRow key={item.id} item={item} {...props} />
-              ))}
-            </ul>
-          </section>
-        );
+        return cards.length === 0 ? null : listSection(status, heading, cards);
       })}
 
-      {done.length > 0 && (
-        <section className="sidebar-section">
-          <details className="board-done">
-            <summary>
-              Done <span className="muted">· {done.length}</span>
-            </summary>
-            <ul className="board-list">
-              {done.map((item) => (
-                <BoardCardRow key={item.id} item={item} {...props} />
-              ))}
-            </ul>
-          </details>
-        </section>
-      )}
+      {done.length > 0 && listSection('done', 'Done', done)}
     </div>
   );
 }

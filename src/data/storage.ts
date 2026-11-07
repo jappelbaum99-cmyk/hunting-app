@@ -90,6 +90,7 @@ export function emptyHubData(): HubData {
       hiddenTypeLabels: [],
       trailStyles: {},
       scheduleLeadDays: DEFAULT_LEAD_DAYS,
+      scheduleOrder: [],
     },
   };
 }

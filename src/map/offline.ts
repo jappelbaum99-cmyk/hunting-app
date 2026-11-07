@@ -7,6 +7,9 @@ import {
   AERIAL_TILE_URL,
   contourTiles,
   lidarStyleTiles,
+  MISSOURI_BOUNDS,
+  MO_AERIAL_MAX_ZOOM,
+  MO_AERIAL_TILE_URL,
   normalizeTileUrl,
   SATELLITE_TILE_URL,
   TERRAIN_TILE_URL,
@@ -33,7 +36,7 @@ interface LayerPlan {
 
 // Zooms match what the map asks for: 256 px imagery up to 16 (the USGS
 // limit), 512 px close-up aerial and lidar tiles one level lower than the map zoom, up to 17.
-function layerPlans(layers: MapLayersState): LayerPlan[] {
+function layerPlans(layers: MapLayersState, bbox: [number, number, number, number]): LayerPlan[] {
   const strip = (url: string) => url.replace(/^retry:\/\//, '');
   const plans: LayerPlan[] = [
     { label: 'Satellite', template: SATELLITE_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 30 },
@@ -41,6 +44,13 @@ function layerPlans(layers: MapLayersState): LayerPlan[] {
     { label: 'Topo', template: TOPO_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 25 },
     { label: 'Lidar', template: strip(lidarStyleTiles(layers.lidarStyle)[0]), minZoom: 10, maxZoom: 17, kbPerTile: 120 },
   ];
+  // Missouri's 6 inch photos, for a property in (or touching) Missouri. The map only
+  // shows them where they've been downloaded, so this is the one way they arrive.
+  const [w, s, e, n] = bbox;
+  const [mw, ms, me, mn] = MISSOURI_BOUNDS;
+  if (w < me && e > mw && s < mn && n > ms) {
+    plans.push({ label: 'Missouri 6 inch close-up', template: MO_AERIAL_TILE_URL, minZoom: AERIAL_MIN_ZOOM - 1, maxZoom: MO_AERIAL_MAX_ZOOM, kbPerTile: 60 });
+  }
   if (layers.terrain) plans.push({ label: '3D terrain', template: TERRAIN_TILE_URL, minZoom: 10, maxZoom: 15, kbPerTile: 260 });
   const contours = contourTiles(layers.contours);
   if (contours) plans.push({ label: 'Contours', template: strip(contours[0]), minZoom: 12, maxZoom: 17, kbPerTile: 15 });
@@ -89,7 +99,7 @@ export function planDownload(boundary: AreaGeometry, layers: MapLayersState): Do
   const urls: string[] = [];
   const byLayer: DownloadPlan['byLayer'] = [];
   let kb = 0;
-  for (const plan of layerPlans(layers)) {
+  for (const plan of layerPlans(layers, bbox)) {
     let tiles = 0;
     for (let z = plan.minZoom; z <= plan.maxZoom; z++) {
       const { x0, x1, y0, y1, size } = tileRange(bbox, z);

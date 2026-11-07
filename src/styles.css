@@ -2890,6 +2890,20 @@ button.mini {
 
 .label-toggle-actions button {
   flex: 1;
+  padding-inline: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.label-toggle-actions button.active {
+  background: var(--selected);
+  color: var(--accent);
+}
+
+.label-default-save,
+.label-default-note {
+  justify-self: start;
+  margin: 0 0 4px;
   font-size: 12px;
 }
 
@@ -2938,15 +2952,22 @@ button.mini {
   margin-top: 6px;
 }
 
-.board-done summary {
+/* Action Board lists fold open and shut from their headings. */
+.board-fold summary {
   padding: 0 8px;
   cursor: pointer;
   font-size: 15px;
   font-weight: 700;
 }
 
-.board-done[open] summary {
+.board-fold[open] summary {
   margin-bottom: 8px;
+}
+
+.board-fold-all {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .board-card {
@@ -2956,6 +2977,48 @@ button.mini {
   border-radius: 12px;
   background: var(--fill);
   font-size: 13px;
+}
+
+.schedules-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.schedule-row {
+  cursor: grab;
+}
+
+.schedule-row.dragging {
+  opacity: 0.5;
+}
+
+.schedule-row.drop-before {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+
+.schedule-row.drop-after {
+  box-shadow: 0 2px 0 var(--accent);
+}
+
+.schedule-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.schedule-row-main .plot-log-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-move {
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
 }
 
 .board-card-head {
@@ -3327,7 +3390,7 @@ body.resizing {
   font-size: 13px;
 }
 
-.phone-join li {
+.phone-join ol > li {
   display: grid;
   gap: 4px;
 }

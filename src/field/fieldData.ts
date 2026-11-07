@@ -32,7 +32,7 @@ export interface FieldData {
   handled: Record<string, 'added' | 'dismissed'>;
   // Walks saved on this phone, and the one being recorded right now.
   tracks: FieldTrack[];
-  activeWalk: { id: string; startedAt: string; points: [number, number][] } | null;
+  activeWalk: { id: string; startedAt: string; points: [number, number][]; shape?: 'line' | 'area' } | null;
   // Notes the hub doesn't have yet, and the food plots as last seen.
   notes: FieldNote[];
   plots: CampPlot[];

@@ -56,19 +56,29 @@ export function boardCards(items: ActionItem[]): BoardCard[] {
 
 // Sorts incoming notes into new cards and food plots with new log entries.
 // Both are skipped once the hub has them, so a card's edits and a removed log
-// entry stay as the hub left them. Plot work for a plot this hub doesn't have
-// becomes a card, so it isn't lost.
+// entry stay as the hub left them. The one exception: a note changed on the
+// phone after the hub took it in (the phone hadn't heard yet) updates its card,
+// if that change is newer than anything done to the card here and the card
+// wasn't removed. Plot work for a plot this hub doesn't have becomes a card, so it isn't lost.
 export function placeNotes(
   notes: FieldNote[],
   items: ActionItem[],
   areas: MapArea[],
   propertyAt: (lng: number, lat: number) => string | null,
-): { items: ActionItem[]; areas: MapArea[] } {
-  const known = new Set(items.map((i) => i.id));
+): { items: ActionItem[]; areas: MapArea[]; updated: ActionItem[] } {
+  const known = new Map(items.map((i) => [i.id, i]));
   const changed = new Map<string, MapArea>();
   const fresh: ActionItem[] = [];
+  const updated: ActionItem[] = [];
   for (const note of notes) {
-    if (note.deletedAt || known.has(note.id)) continue;
+    const card = known.get(note.id);
+    if (card) {
+      if (card.source === 'phone' && !card.deletedAt && !note.deletedAt && note.updatedAt > card.updatedAt) {
+        updated.push({ ...card, kind: note.kind, text: cardText(note), updatedAt: note.updatedAt });
+      }
+      continue;
+    }
+    if (note.deletedAt) continue;
     const plot = note.plot;
     const area = plot ? (changed.get(plot.areaId) ?? areas.find((a) => a.id === plot.areaId)) : undefined;
     if (plot && area) {
@@ -89,14 +99,13 @@ export function placeNotes(
       );
       continue;
     }
-    const work = plot ? `${PLOT_ACTIONS[plot.action]}${plot.what ? ` ${plot.what}` : ''} (${plot.date})` : null;
     fresh.push({
       id: note.id,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
       deletedAt: null,
       kind: note.kind,
-      text: [work, note.text].filter(Boolean).join(': '),
+      text: cardText(note),
       status: 'idea',
       lat: note.lat,
       lng: note.lng,
@@ -106,5 +115,12 @@ export function placeNotes(
       markerId: null,
     });
   }
-  return { items: fresh, areas: [...changed.values()] };
+  return { items: fresh, areas: [...changed.values()], updated };
+}
+
+// A card's text: the note, after the plot work when it's for a plot this hub doesn't have.
+function cardText(note: FieldNote): string {
+  const plot = note.plot;
+  const work = plot ? `${PLOT_ACTIONS[plot.action]}${plot.what ? ` ${plot.what}` : ''} (${plot.date})` : null;
+  return [work, note.text].filter(Boolean).join(': ');
 }

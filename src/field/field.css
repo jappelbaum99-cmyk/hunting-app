@@ -455,6 +455,24 @@ textarea {
   color: var(--muted);
 }
 
+.note-edit {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--card, rgba(255, 255, 255, 0.08));
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.note-list li.editing {
+  outline: 2px solid var(--accent);
+}
+
+.field-card.note-editing {
+  outline: 2px solid var(--accent);
+}
+
 /* Camp sync status */
 .camp-status {
   margin: 0 0 12px;
@@ -919,6 +937,26 @@ textarea {
 .walk-stats span {
   font-size: 12px;
   color: var(--muted);
+}
+
+.big-button.secondary {
+  background: var(--fill);
+  color: var(--text);
+}
+
+/* Walking around an area: how far back to the start. */
+.walk-back {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-weight: 600;
+  text-align: center;
+}
+
+.walk-back.closed {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .icon-button {

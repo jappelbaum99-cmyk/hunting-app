@@ -93,10 +93,16 @@ export interface HubSettings {
   hiddenLabels: LabelKind[];
   // The pin and area types left off the map, like "pin:camera" or "area:timber".
   hiddenTypeLabels: string[];
+  // The label choices saved as "My default", to come back to after Show all or Hide all.
+  labelDefault?: { hiddenLabels: LabelKind[]; hiddenTypeLabels: string[] } | null;
   // The look of each trail type. Anything left out uses the built-in default.
   trailStyles: Partial<Record<TrailKind, { color?: string; pattern?: LinePattern; thickness?: LineThickness; outline?: boolean }>>;
   // How many days ahead of a schedule's window its To do card appears.
   scheduleLeadDays: number;
+  // Action Board lists folded shut. Missing means only Done is shut.
+  boardClosed?: BoardStatus[];
+  // The order chosen on the Schedules tab, as row keys. Empty means soonest first.
+  scheduleOrder: string[];
   // The camp this hub gets phone hunts and pins from, if any.
   camp?: CampLink | null;
   // Folder where trail camera photos are kept (desktop app).
@@ -417,9 +423,11 @@ export interface MapTrail extends Syncable {
   source: 'drawn' | 'walked';
 }
 
-// A walk recorded on the phone, waiting to become a trail here.
+// A walk recorded on the phone, waiting to become a trail (or an area) here.
 export interface FieldTrack extends Syncable {
   name: string;
+  // Walked along a trail, or around the edge of an area. Older walks are lines.
+  shape?: 'line' | 'area';
   // Simplified GPS points as a flat [lng, lat, lng, lat, ...] list.
   coords: number[];
   startedAt: string;
@@ -429,6 +437,8 @@ export interface FieldTrack extends Syncable {
   status: 'new' | 'added' | 'dismissed';
   // The trail made from it.
   trailId: string | null;
+  // Or the area.
+  areaId?: string | null;
 }
 
 export interface PhotoTally {

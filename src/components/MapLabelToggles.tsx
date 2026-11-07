@@ -33,12 +33,35 @@ export function MapLabelToggles({ settings, onChange }: { settings: HubSettings;
       </div>
     );
 
+  // "My default": the choices saved below, which Show all and Hide all don't touch.
+  const saved = settings.labelDefault ?? null;
+  const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((k) => b.includes(k));
+  const onDefault = saved !== null && sameList(saved.hiddenLabels, settings.hiddenLabels) && sameList(saved.hiddenTypeLabels, settings.hiddenTypeLabels);
+
   return (
     <div className="label-toggles">
       <div className="label-toggle-actions">
         <button onClick={() => onChange({ ...settings, hiddenLabels: [], hiddenTypeLabels: [] })}>Show all</button>
         <button onClick={() => onChange({ ...settings, hiddenLabels: LABEL_KINDS.map((k) => k.id) })}>Hide all</button>
+        <button
+          className={onDefault ? 'active' : undefined}
+          disabled={saved === null}
+          title={saved === null ? 'Set the names the way you like, then save them as your default below' : 'Back to the names you saved'}
+          onClick={() => saved && onChange({ ...settings, hiddenLabels: [...saved.hiddenLabels], hiddenTypeLabels: [...saved.hiddenTypeLabels] })}
+        >
+          My default
+        </button>
       </div>
+      {onDefault ? (
+        <p className="hint label-default-note">Showing your default.</p>
+      ) : (
+        <button
+          className="link-button label-default-save"
+          onClick={() => onChange({ ...settings, labelDefault: { hiddenLabels: [...settings.hiddenLabels], hiddenTypeLabels: [...settings.hiddenTypeLabels] } })}
+        >
+          {saved === null ? 'Save these as my default' : 'Save these as my new default'}
+        </button>
+      )}
       {LABEL_KINDS.map(({ id, label }) => (
         <div key={id}>
           {kindRow(id, label)}

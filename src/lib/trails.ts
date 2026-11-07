@@ -125,12 +125,13 @@ export function simplifyLine(points: Position[], toleranceM = 4): Position[] {
     const [a, b] = stack.pop()!;
     const [ax, ay] = xy[a];
     const [bx, by] = xy[b];
-    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const len = Math.hypot(bx - ax, by - ay);
     let far = -1;
     let farDist = 0;
     for (let i = a + 1; i < b; i++) {
       const [px, py] = xy[i];
-      const d = Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
+      // A walk around an area ends about where it began: measure from that spot.
+      const d = len < 1 ? Math.hypot(px - ax, py - ay) : Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
       if (d > farDist) [far, farDist] = [i, d];
     }
     if (far !== -1 && farDist > toleranceM) {

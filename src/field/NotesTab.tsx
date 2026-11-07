@@ -25,6 +25,8 @@ export function NotesTab(props: {
   gpsError: string | null;
   status(item: { id: string; updatedAt: string }): SentStatus;
   onAdd(note: FieldNote): void;
+  // A changed note, sent again in place of the old one.
+  onUpdate(note: FieldNote): void;
   onRemove(id: string): void;
   onMessage(m: string): void;
 }) {
@@ -36,15 +38,59 @@ export function NotesTab(props: {
   const [action, setAction] = useState<PlotAction>('planted');
   const [what, setWhat] = useState('');
   const [date, setDate] = useState(todayDate);
+  // The note being changed, until it's updated or the change is cancelled.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = editingId ? (data.notes.find((n) => n.id === editingId) ?? null) : null;
 
   const onPlot = pick === 'plot';
   const plots = [...data.plots].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const plot = plots.find((p) => p.id === areaId) ?? (plots.length === 1 ? plots[0] : null);
   const ready = onPlot ? plot !== null && date !== '' && (action !== 'planted' || what.trim() !== '') : text.trim() !== '';
 
+  const clearForm = () => {
+    setText('');
+    setWhat('');
+    setEditingId(null);
+  };
+
+  // Puts a note waiting on this phone (or at camp) back in the form to change it.
+  const startEdit = (note: FieldNote) => {
+    setEditingId(note.id);
+    setText(note.text);
+    if (note.plot) {
+      setPick('plot');
+      setAreaId(note.plot.areaId);
+      setAction(note.plot.action);
+      setWhat(note.plot.what ?? '');
+      setDate(note.plot.date);
+    } else {
+      setPick(note.kind);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const save = () => {
     if (!ready) return;
     const at = new Date().toISOString();
+    if (editingId) {
+      // The hub took it in while it was being changed: it's on the board now.
+      if (!editing) {
+        clearForm();
+        props.onMessage('The hub already has that note, so change it on the Action Board.');
+        return;
+      }
+      props.onUpdate({
+        ...editing,
+        updatedAt: at,
+        kind: onPlot ? 'work' : pick,
+        text: text.trim(),
+        // Keeps the spot it was saved at.
+        plot: onPlot && plot ? { areaId: plot.id, action, what: action === 'planted' ? what.trim() : null, date } : null,
+      });
+      clearForm();
+      props.onMessage(data.camp ? 'Note changed. The new version goes to camp as soon as you have signal.' : 'Note changed on this phone.');
+      return;
+    }
     const spot = useSpot && fix ? { lat: fix.lat, lng: fix.lng } : { lat: null, lng: null };
     props.onAdd({
       id: crypto.randomUUID(),
@@ -57,15 +103,14 @@ export function NotesTab(props: {
       loggedBy: data.camp?.hunter ?? null,
       plot: onPlot && plot ? { areaId: plot.id, action, what: action === 'planted' ? what.trim() : null, date } : null,
     });
-    setText('');
-    setWhat('');
+    clearForm();
     props.onMessage(data.camp ? 'Saved. It goes to camp as soon as you have signal.' : 'Saved on this phone. Send it to the hub from the Send tab.');
   };
 
   return (
     <>
-      <section className="field-card">
-        <h2>Notes</h2>
+      <section className={`field-card${editingId ? ' note-editing' : ''}`}>
+        <h2>{editingId ? 'Change note' : 'Notes'}</h2>
         <div className="note-kinds" role="radiogroup" aria-label="Kind of note">
           {PICKS.map(({ id, label }) => (
             <button key={id} role="radio" aria-checked={pick === id} className={pick === id ? 'active' : ''} onClick={() => setPick(id)}>
@@ -122,7 +167,7 @@ export function NotesTab(props: {
           aria-label="Note"
         />
 
-        {!onPlot && (
+        {!onPlot && !editingId && (
           <label className="note-check">
             <input type="checkbox" checked={useSpot} onChange={(e) => setUseSpot(e.target.checked)} />
             <span>{fix ? `Mark this spot (GPS ±${Math.round(fix.accuracyM)} m)` : props.gpsError ? 'Mark this spot (GPS is off)' : 'Mark this spot (finding GPS…)'}</span>
@@ -130,8 +175,13 @@ export function NotesTab(props: {
         )}
 
         <button className="big-button" disabled={!ready} onClick={save}>
-          Save note
+          {editingId ? 'Update note' : 'Save note'}
         </button>
+        {editingId && (
+          <button className="end-button" onClick={clearForm}>
+            Cancel change
+          </button>
+        )}
       </section>
 
       {data.notes.length > 0 && (
@@ -139,13 +189,23 @@ export function NotesTab(props: {
           <h3>Waiting to reach the hub</h3>
           <ul className="note-list">
             {data.notes.map((note) => (
-              <li key={note.id}>
+              <li key={note.id} className={note.id === editingId ? 'editing' : undefined}>
                 <div className="note-text">
                   <strong>{note.plot ? `${PLOT_ACTIONS[note.plot.action]}${note.plot.what ? ` ${note.plot.what}` : ''}` : NOTE_KINDS[note.kind]}</strong>
                   {note.text && <span>{note.text}</span>}
                   <SentBadge status={props.status(note)} />
                 </div>
-                <button className="note-remove" aria-label="Remove note" onClick={() => props.onRemove(note.id)}>
+                <button className="note-edit" onClick={() => startEdit(note)} disabled={note.id === editingId}>
+                  Edit
+                </button>
+                <button
+                  className="note-remove"
+                  aria-label="Remove note"
+                  onClick={() => {
+                    if (note.id === editingId) clearForm();
+                    props.onRemove(note.id);
+                  }}
+                >
                   <Icon name="close" size={18} />
                 </button>
               </li>

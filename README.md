@@ -41,6 +41,7 @@ That builds it into `site-dist`. To put it online, one time:
 ## Using it
 
 - **Draw property** and **Draw area**: click each corner on the map, then press **Done** (or Enter). Backspace undoes the last corner and Esc cancels.
+- **Walk an area**: on the phone page's Pin tab, press **Walk around an area** and walk its edge. The card counts down the distance back to where you started; when you're back, stop to save. On the hub the walk arrives with the phone's other walks: press **Area** to make the shape you walked an area, then pick its type and name. Any walk can be made a trail or an area.
 - **Add pin**: pick a type (stand, camera, scrape...), then click the map. Pins are locked so they can't move by accident: to move one, click it, press **Unlock to move** and drag it. It locks again when you click away.
 - **Import KML/GPX**: brings in property lines and waypoints from Google Earth, onX, county GIS sites and other mapping apps. Waypoints with "stand" or "blind" in the name become stands.
 - **Add map image**: lay a screenshot of a parcel map, plat or survey over the map, then trace your property line from it.
@@ -48,15 +49,15 @@ That builds it into `site-dist`. To put it online, one time:
   2. Click **Add map image** and pick the file.
   3. Click a spot on the image (a road intersection, section corner or pond corner), then click the same spot on the map. Do this 2–4 times, with the spots spread out. With 3 or more points the panel shows how many feet off each one is.
   4. Save, then use **Draw property** to click along the lines in the image. Use **See-through** to fade the image in and out.
-- **Map labels** (the layers button at the top right, or Settings): turn names on or off by kind, and for stands, pins and areas by type, so you can hide trail camera names but keep stands. Show all and Hide all do everything at once.
+- **Map labels** (the layers button at the top right, or Settings): turn names on or off by kind, and for stands, pins and areas by type, so you can hide trail camera names but keep stands. Show all and Hide all do everything at once. Set them the way you like and press **Save these as my default**, then **My default** brings them back after Show all or Hide all.
 - **Edit line** (on a trail) opens one menu at the bottom of the map with all the tools. **Combine** turns several walks of one road into one line: it keeps the trail you're on, removes where a walk doubled back on itself, and folds in overlapping lines of the same type; turn-offs stay on it as branches, and Undo puts it all back. **Join**: click another line, then press Join, and the two become one line with this line's name, even if they meet at a T. **Split** cuts a trail in two where you click (click right at a T to unhook that branch), and **Delete part** removes the stretch between two spots you click. Set the color, pattern (solid, dashed or dotted), thickness (skinny, normal or thick) and black outline (on or off) for each type of trail in Settings, or for a single trail on its panel.
-- **Action Board** (sidebar): ideas and work to do, moved from Idea to To do to Done. Finished cards go in a Done dropdown at the bottom. Add a **Schedule** to any area or section (a burn every 3 years in Feb–Mar, say) and a To do card appears 60 days ahead (change that in Settings); marking it done starts the next cycle, and upcoming work shows under **Coming up** in the Summary. Notes saved on the phone's Notes tab land here, and a stand idea with a GPS spot can become a real stand. Work logged on a food plot from the phone goes into that plot's log instead.
+- **Action Board** (sidebar): ideas and work to do, moved from Idea to To do to Done. Finished cards go in Done at the bottom. Click a list's heading (Ideas, To do or Done) to fold it open or shut, or use **Collapse all** / **Expand all**; the board remembers which are shut. Add a **Schedule** to any area or section (a burn every 3 years in Feb–Mar, say) and a To do card appears 60 days ahead (change that in Settings); marking it done starts the next cycle, and upcoming work shows under **Coming up** in the Summary. Notes saved on the phone's Notes tab land here (until the hub has one, it can be changed with **Edit** on the phone), and a stand idea with a GPS spot can become a real stand. Work logged on a food plot from the phone goes into that plot's log instead.
 - **Draw section**: split a property into named units (e.g. "North Ridge"). Click a section to add plans:
   - **Burn plans:** safe wind directions plus wind and humidity limits. The plan lists the hours in the forecast that meet them.
   - **Timber plans:** the practice, contractor, and cost and income estimates.
   - **Habitat and other plans.**
   - Every plan has a status, target date, checklist and notes.
-- **Download for offline** (on a property): saves the maps for the property plus about ¼ mile around it, after showing the size. Every map tile you look at is also saved on your PC, so it doesn't load again.
+- **Download for offline** (on a property): saves the maps for the property plus about ¼ mile around it, after showing the size. Every map tile you look at is also saved on your PC, so it doesn't load again. For a property in Missouri it also saves the state's 6 inch aerial photos (leaf-off, 2023–24), about four times sharper than the normal close-ups; they show when you zoom in close on a downloaded property.
 - **Settings** (gear next to the name): color, shape and size for each pin type, colors for area types, and the default property line color. A single stand, pin or property can also get its own color from its card.
 - **Hunt Forecast** (top of the sidebar):
   - Pick a sit (now, or any morning or evening in the next few days) to see its low and high temperature, how the wind direction and speed change, gusts, and rain, with graphs.
@@ -72,6 +73,7 @@ That builds it into `site-dist`. To put it online, one time:
   - **Lidar shading** blends the lidar hillshade over satellite.
   - **Contours** come in 10, 5 or 2 ft intervals and show when zoomed in.
 - Click anything on the map or in the sidebar to edit it. Stands have a **Good winds** picker.
+- **Schedules** (sidebar): everything coming up in one list, both repeating work on areas and sections and section plans with a date. Drag items or use the arrows to change the order (**Sort by date** puts it back), and edit or remove them right there. The order is kept on each PC; the changes themselves sync to partners.
 - **Partners** (Settings, Camp sync): two desktops can share one map. Start a camp on one PC, then on the other join with its code and approve it from the first. Press **Share the map with partners** on each, and stands, pins (camera pins too), property lines, areas, sections, trails, plans, food plot logs, hunts and the Action Board stay in step. Each PC still keeps its own full copy and only changes are sent, so it works offline and catches up later. If the same thing is changed on both PCs, the newest change wins. Trail camera photos and tags and map images stay on each PC. Hunters use the phone page with the same code: they see stands and deer reports, and can send notes to the Action Board.
 - **Share** (sidebar): **Export whole map** saves everything as one file. **Share** on a property saves just that property with its stands, pins, areas, sections, plans, hunts and map images. Send the file however you like (email, text, USB stick); the other person opens it with **Import a map file**. Importing adds what's new and replaces only what's newer, so you can send updates back and forth.
 
@@ -79,7 +81,8 @@ Your data is saved automatically to `Documents\Hunting Hub\hub-data.json`. The p
 
 ## Map data
 
-- Satellite: USGS Imagery Only (The National Map)
+- Satellite: USGS Imagery Only (The National Map), with NAIP aerial photos up close. On downloaded Missouri properties, Missouri's 6 inch statewide aerials from [MSDIS](https://msdis.missouri.edu).
+- In 3D, the close-up photos fade in as you zoom and the distance fades into haze, so the switch between photo sources and the rougher far-off tiles don't jump out.
 - Topo: USGS Topo (The National Map)
 - Lidar: USGS 3DEP elevation (bare-earth lidar). Hillshade, slope and contours are generated by the USGS server.
 

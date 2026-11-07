@@ -738,6 +738,7 @@ export function MapView(props: MapViewProps) {
     const show = (id: string, visible: boolean) => map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     show(LAYER_IDS.satellite, layers.base === 'satellite');
     show(LAYER_IDS.aerial, layers.base === 'satellite');
+    show(LAYER_IDS.aerialMo, layers.base === 'satellite');
     show(LAYER_IDS.topo, layers.base === 'topo');
     show(LAYER_IDS.lidar, layers.base === 'lidar');
     show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0);

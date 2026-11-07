@@ -29,7 +29,7 @@ interface SidebarProps {
   onFieldPin(id: string, action: 'show' | 'add' | 'dismiss'): void;
   // Walks recorded on phones that haven't been added or dismissed yet.
   newFieldTracks: FieldTrack[];
-  onFieldTrack(id: string, action: 'show' | 'add' | 'dismiss'): void;
+  onFieldTrack(id: string, action: 'show' | 'add' | 'area' | 'dismiss'): void;
   trails: MapTrail[];
   areas: MapArea[];
   markers: MapMarker[];
@@ -50,6 +50,9 @@ interface SidebarProps {
   // One-line summary for the Action Board card, e.g. "2 to do · 3 ideas".
   boardTeaser: string;
   onOpenBoard(): void;
+  // One-line summary for the Schedules card, e.g. "5 coming up · 1 overdue".
+  schedulesTeaser: string;
+  onOpenSchedules(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -215,6 +218,21 @@ export function Sidebar(props: SidebarProps) {
           </button>
         )}
 
+        {needle === '' && (
+          <button className="forecast-card summary-card" onClick={props.onOpenSchedules}>
+            <span className="forecast-card-icon" aria-hidden>
+              <Icon name="check" size={20} />
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Schedules</span>
+              <span className="row-detail">{props.schedulesTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
         {nothingFound && <p className="empty">Nothing matches “{query.trim()}”.</p>}
 
         {needle === '' && (
@@ -231,9 +249,26 @@ export function Sidebar(props: SidebarProps) {
                         {formatDistance(t.lengthM)}
                       </span>
                     </button>
-                    <button className="mini primary" onClick={() => props.onFieldTrack(t.id, 'add')} title="Make it a trail on the map">
-                      Add
-                    </button>
+                    {/* A walk around an area offers Area first; any walk can be either. */}
+                    {t.shape === 'area' ? (
+                      <>
+                        <button className="mini primary" onClick={() => props.onFieldTrack(t.id, 'area')} title="Make the shape you walked an area">
+                          Area
+                        </button>
+                        <button className="mini" onClick={() => props.onFieldTrack(t.id, 'add')} title="Make it a trail on the map instead">
+                          Trail
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="mini primary" onClick={() => props.onFieldTrack(t.id, 'add')} title="Make it a trail on the map">
+                          Add
+                        </button>
+                        <button className="mini" onClick={() => props.onFieldTrack(t.id, 'area')} title="Make the shape you walked an area instead">
+                          Area
+                        </button>
+                      </>
+                    )}
                     <button className="mini" onClick={() => props.onFieldTrack(t.id, 'dismiss')} title="Dismiss" aria-label="Dismiss walk">
                       <Icon name="close" size={16} />
                     </button>

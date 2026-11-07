@@ -14,6 +14,7 @@ import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type 
 import { SectionPanel } from '@/components/SectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ActionBoardPanel } from '@/components/ActionBoardPanel';
+import { SchedulesPanel } from '@/components/SchedulesPanel';
 import { SummaryPanel } from '@/components/SummaryPanel';
 import { CameraPhotosInfo } from '@/components/CameraPhotosInfo';
 import { CameraView } from '@/components/CameraView';
@@ -30,7 +31,8 @@ import { placeNotes } from '@/lib/actionBoard';
 import { countShared } from '@/lib/partnerSync';
 import { combineLines, cutParts, feetToMeters, joinParts, nearestLine, overlaps, removeFromParts } from '@/lib/combineTrails';
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
-import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
+import { dueCards, isOverdue, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
+import { upcomingRows } from '@/lib/upcoming';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { formatDistance, lineBounds, lineLengthM, metersBetween, TRAIL_KINDS, trailParts, trailStyle, trailTypeStyle, unpackPoints, withParts } from '@/lib/trails';
@@ -45,7 +47,7 @@ import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
-import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
 
 type EditTarget = 'property' | 'section' | 'area' | 'trail';
 
@@ -158,6 +160,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [schedulesOpen, setSchedulesOpen] = useState(false);
   // The pin unlocked to be moved. It locks again once it's no longer selected.
   const [unlockedPinId, setUnlockedPinId] = useState<string | null>(null);
   // What the last Combine changed, so it can be undone.
@@ -445,7 +448,7 @@ export function App() {
     // Notes become board cards, or entries in a food plot's log.
     const placed = placeNotes(incomingNotes, all?.actionItems ?? [], all?.areas ?? [], (lng, lat) => propertyContaining(hub.properties, [lng, lat])?.id ?? null);
     for (const area of placed.areas) hub.saveArea(area);
-    if (placed.items.length) hub.mergeRecords({ actionItems: placed.items });
+    if (placed.items.length + placed.updated.length) hub.mergeRecords({ actionItems: [...placed.items, ...placed.updated] });
     const reports = incomingReports.map((r) => {
       const have = all?.reports.find((h) => h.id === r.id);
       return {
@@ -464,7 +467,7 @@ export function App() {
       return have ? { ...t, status: have.status, trailId: have.trailId } : t;
     });
     const merged = hub.mergeFromPhone({ reports, fieldPins: pins, fieldTracks: tracks });
-    const result = { ...merged, added: merged.added + placed.items.length + placed.areas.length };
+    const result = { added: merged.added + placed.items.length + placed.areas.length, updated: merged.updated + placed.updated.length };
     // The phone has no internet in the stand, so look up weather for its hunts now.
     for (const r of reports) {
       const have = all?.reports.find((h) => h.id === r.id);
@@ -779,8 +782,9 @@ export function App() {
     else cancelMode();
   };
 
-  // Walks recorded on phones: look at one, turn it into a trail, or dismiss it.
-  const handleFieldTrack = (id: string, action: 'show' | 'add' | 'dismiss') => {
+  // Walks recorded on phones: look at one, turn it into a trail or (walked all the
+  // way around) an area, or dismiss it.
+  const handleFieldTrack = (id: string, action: 'show' | 'add' | 'area' | 'dismiss') => {
     const track = hub.fieldTracks.find((t) => t.id === id);
     if (!track) return;
     const points = unpackPoints(track.coords);
@@ -790,6 +794,26 @@ export function App() {
       mapRef.current?.fitTo({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
     } else if (action === 'dismiss') {
       hub.saveFieldTrack({ ...track, status: 'dismissed' });
+    } else if (action === 'area') {
+      // The walk ends near where it began; the outline closes back to the first point.
+      const ring = points.length > 3 && metersBetween(points[0], points[points.length - 1]) < 3 ? points.slice(0, -1) : points;
+      if (ring.length < 3) {
+        setNotice('This walk has too few points to make an area.');
+        return;
+      }
+      const label = areaTypeInfo('other', hub.settings).label;
+      const area: MapArea = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, ring[0])?.id ?? null,
+        type: 'other',
+        name: nextName(label, hub.areas),
+        geometry: pointsToPolygon(ring),
+        notes: track.loggedBy ? `Walked by ${track.loggedBy}` : null,
+      };
+      hub.saveArea(area);
+      hub.saveFieldTrack({ ...track, status: 'added', areaId: area.id });
+      setSelection({ kind: 'area', id: area.id });
+      setNotice(`${area.name} is the shape you walked. Pick its type and name on its panel.`);
     } else {
       const trail: MapTrail = {
         ...newRecordFields(),
@@ -1144,6 +1168,12 @@ export function App() {
   const boardCount = (status: ActionItem['status']) => hub.actionItems.filter((i) => i.status === status).length;
   const boardTeaser = hub.actionItems.length === boardCount('done') ? 'Ideas and work to do' : `${boardCount('planned')} to do · ${boardCount('idea')} idea${boardCount('idea') === 1 ? '' : 's'}`;
 
+  // The Schedules card's one-liner.
+  const schedulePlaces: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
+  const upcoming = upcomingRows(schedulePlaces, hub.plans, todayDate());
+  const overdueCount = upcoming.filter((r) => isOverdue(r.end, todayDate())).length;
+  const schedulesTeaser = upcoming.length === 0 ? 'Everything you have planned' : `${upcoming.length} coming up${overdueCount ? ` · ${overdueCount} overdue` : ''}`;
+
   // Marking a scheduled card done starts the schedule's next cycle and, on a
   // food plot, logs the work. Taking it back out of Done undoes both.
   const changeCard = (next: ActionItem) => {
@@ -1428,7 +1458,30 @@ export function App() {
                 setSelection({ kind: 'marker', id });
                 zoomTo({ kind: 'marker', id });
               }}
+              closed={hub.settings.boardClosed ?? ['done']}
+              onClosedChange={(boardClosed) => hub.saveSettings({ ...hub.settings, boardClosed })}
               onClose={() => setBoardOpen(false)}
+            />
+          ) : schedulesOpen ? (
+            <SchedulesPanel
+              places={schedulePlaces}
+              plans={hub.plans}
+              order={hub.settings.scheduleOrder}
+              onOrderChange={(scheduleOrder) => hub.saveSettings({ ...hub.settings, scheduleOrder })}
+              onSaveSchedules={(place, schedules) => {
+                const area = place.kind === 'area' ? hub.areas.find((a) => a.id === place.id) : undefined;
+                const section = place.kind === 'section' ? hub.sections.find((s) => s.id === place.id) : undefined;
+                if (area) hub.saveArea({ ...area, schedules });
+                if (section) hub.saveSection({ ...section, schedules });
+              }}
+              onSavePlan={hub.savePlan}
+              onRemovePlan={hub.deletePlan}
+              onOpenPlace={(place) => {
+                const next: Selection = { kind: place.kind, id: place.id };
+                setSelection(next);
+                zoomTo(next);
+              }}
+              onClose={() => setSchedulesOpen(false)}
             />
           ) : (
             forecastView
@@ -1447,6 +1500,7 @@ export function App() {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
           setBoardOpen(false);
+          setSchedulesOpen(false);
           setSummaryOpen(true);
         }}
         boardTeaser={boardTeaser}
@@ -1454,7 +1508,16 @@ export function App() {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
           setSummaryOpen(false);
+          setSchedulesOpen(false);
           setBoardOpen(true);
+        }}
+        schedulesTeaser={schedulesTeaser}
+        onOpenSchedules={() => {
+          if (mode.kind === 'align') return;
+          setForecastOpen(false);
+          setSummaryOpen(false);
+          setBoardOpen(false);
+          setSchedulesOpen(true);
         }}
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
@@ -1462,6 +1525,7 @@ export function App() {
           setForecastSitId('now');
           setSummaryOpen(false);
           setBoardOpen(false);
+          setSchedulesOpen(false);
           setForecastOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(!settingsOpen)}
