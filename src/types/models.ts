@@ -99,6 +99,10 @@ export interface HubSettings {
   trailStyles: Partial<Record<TrailKind, { color?: string; pattern?: LinePattern; thickness?: LineThickness; outline?: boolean }>>;
   // How many days ahead of a schedule's window its To do card appears.
   scheduleLeadDays: number;
+  // Desktop app: keep every property's maps saved in the background (on unless
+  // turned off), this many meters around the property line.
+  offlineAuto?: boolean;
+  offlineRadiusM?: number;
   // Action Board lists folded shut. Missing means only Done is shut.
   boardClosed?: BoardStatus[];
   // The order chosen on the Schedules tab, as row keys. Empty means soonest first.

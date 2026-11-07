@@ -87,9 +87,18 @@ function tilePath(url) {
 
 // Returns the tile's bytes from disk, or fetches and saves it. Only tile URLs
 // from TILE_HOSTS are allowed. Fails (so the page can retry) on any bad response.
-async function getTile(_event, url, { cacheOnly = false } = {}) {
+// With saveOnly, makes sure the tile is on disk and returns no bytes (the
+// background property download only needs it saved).
+async function getTile(_event, url, { cacheOnly = false, saveOnly = false } = {}) {
   if (typeof url !== 'string' || !TILE_HOSTS.has(new URL(url).hostname)) throw new Error(`Not a map tile URL: ${url}`);
   const file = tilePath(url);
+  if (saveOnly) {
+    const have = await fs.access(file).then(
+      () => true,
+      () => false,
+    );
+    if (have) return { bytes: null, cached: true };
+  }
   try {
     return { bytes: await fs.readFile(file), cached: true };
   } catch (error) {
@@ -106,7 +115,7 @@ async function getTile(_event, url, { cacheOnly = false } = {}) {
   const temp = `${file}.${process.pid}.tmp`;
   await fs.writeFile(temp, bytes);
   await fs.rename(temp, file).catch(() => fs.rm(temp, { force: true }));
-  return { bytes, cached: false };
+  return { bytes: saveOnly ? null : bytes, cached: false };
 }
 
 async function tileCacheInfo() {

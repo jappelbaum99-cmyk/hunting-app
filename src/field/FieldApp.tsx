@@ -14,6 +14,7 @@ import {
 import { Icon } from '@/components/Icon';
 import { useCampSync, type CampStatus } from '@/field/useCampSync';
 import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
+import { takeJoinCode } from '@/lib/site';
 import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
@@ -79,12 +80,22 @@ function clock(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+// A camp code from the hub's QR code (field.html?join=CODE), read once as the page opens.
+const JOIN_CODE = typeof window !== 'undefined' ? takeJoinCode() : null;
+const sameCode = (a: string, b: string) => a.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === b.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
 export function FieldApp() {
   const [data, setData] = useState<FieldData>(loadFieldData);
-  const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : 'pin');
+  // A scanned QR code opens the Camp tab with the code filled in.
+  const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : JOIN_CODE ? 'send' : 'pin');
   // Moving stands is off each time the page opens, so a stand can't be moved by a stray tap.
   const [movingStands, setMovingStands] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(() => {
+    if (!JOIN_CODE || !data.camp) return JOIN_CODE ? 'Enter your name to join the camp.' : null;
+    return sameCode(JOIN_CODE, data.camp.code)
+      ? `This phone is already in ${data.camp.name}.`
+      : `This phone is in ${data.camp.name}. To join the new camp, leave ${data.camp.name} below first.`;
+  });
 
   useEffect(() => saveFieldData(data), [data]);
   useEffect(() => {
@@ -241,7 +252,7 @@ export function FieldApp() {
             onMessage={setMessage}
           />
         )}
-        {tab === 'send' && <SendTab data={data} sync={sync} onData={setData} onMessage={setMessage} />}
+        {tab === 'send' && <SendTab data={data} sync={sync} joinCode={JOIN_CODE} onData={setData} onMessage={setMessage} />}
       </main>
 
       {message && <div className="field-toast">{message}</div>}
@@ -974,6 +985,8 @@ function FieldStandHistory({ stats, reports }: { stats: StandStats; reports: Hun
 function SendTab(props: {
   data: FieldData;
   sync: CampStatus;
+  // From a scanned QR code, to fill in the join form.
+  joinCode: string | null;
   onData(update: (d: FieldData) => FieldData): void;
   onMessage(m: string): void;
 }) {
@@ -1043,7 +1056,7 @@ function SendTab(props: {
   if (!CAMP_SYNC_AVAILABLE) return <section className="field-card">{files}</section>;
   return (
     <>
-      <CampCard data={data} sync={props.sync} onData={props.onData} onMessage={props.onMessage} />
+      <CampCard data={data} sync={props.sync} joinCode={props.joinCode} onData={props.onData} onMessage={props.onMessage} />
       <section className="field-card">
         <details>
           <summary>No internet at all? Use files instead</summary>
@@ -1055,10 +1068,16 @@ function SendTab(props: {
 }
 
 // Join a camp, then see whether everything has gone up.
-function CampCard(props: { data: FieldData; sync: CampStatus; onData(update: (d: FieldData) => FieldData): void; onMessage(m: string): void }) {
+function CampCard(props: {
+  data: FieldData;
+  sync: CampStatus;
+  joinCode: string | null;
+  onData(update: (d: FieldData) => FieldData): void;
+  onMessage(m: string): void;
+}) {
   const { data, sync } = props;
   const [hunter, setHunter] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(props.joinCode ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -23,6 +23,7 @@ import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
 import { useHubCamp } from '@/data/useHubCamp';
 import { usePartnerSync } from '@/data/usePartnerSync';
+import { useAutoOffline } from '@/map/useAutoOffline';
 import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
@@ -517,6 +518,9 @@ export function App() {
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
   }, hub.settings.customPinTypes, campHandled, campPlots);
+
+  // Every property's maps kept saved on this PC in the background (desktop app).
+  const autoOffline = useAutoOffline({ properties: hub.properties, layers, enabled: hub.settings.offlineAuto !== false, radiusM: hub.settings.offlineRadiusM });
 
   // The map, plans, logs and board shared with the camp's other partners.
   const partnerSync = usePartnerSync({
@@ -1410,6 +1414,7 @@ export function App() {
               onImportPhone={(file) => void importPhone(file)}
               onSendStands={sendStandsToPhone}
               update={update}
+              autoOffline={autoOffline}
               campPartners={{ manager: camp.manager, uid: camp.uid, info: camp.info, counts: countShared(hub.allData ?? {}), syncError: partnerSync.error, waiting: partnerSync.waiting }}
             />
           ) : summaryOpen ? (
@@ -1832,6 +1837,8 @@ export function App() {
               key={record.id}
               property={record}
               layers={layers}
+              radiusM={hub.settings.offlineRadiusM}
+              auto={autoOffline}
               onDownloaded={(offline) => hub.patchProperty(record.id, { offline })}
             />
           }

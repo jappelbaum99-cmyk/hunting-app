@@ -2888,6 +2888,28 @@ button.mini {
   margin-bottom: 4px;
 }
 
+/* Camp join QR code: black on white, which phone cameras read best. */
+.camp-qr {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+
+.camp-qr svg {
+  flex: none;
+  width: 116px;
+  height: 116px;
+  border-radius: 8px;
+}
+
+.camp-qr-side {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  font-size: 12px;
+}
+
 .label-toggle-actions button {
   flex: 1;
   padding-inline: 4px;

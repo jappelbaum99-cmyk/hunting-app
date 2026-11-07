@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { CampQr } from '@/components/CampQr';
 import { answerPartnerRequest, CAMP_SYNC_AVAILABLE, createCamp, joinCamp, removePartner, requestPartner, type CampInfo } from '@/lib/camp';
 import type { SharedCollection } from '@/lib/partnerSync';
 import type { CampLink } from '@/types/models';
@@ -105,7 +106,8 @@ export function CampSettings({ camp, partners, onChange }: CampSettingsProps) {
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
-        <p className="hint">Hunters open the Camp tab on the phone page and type their name and this code. They see stands and deer reports, and can send notes.</p>
+        <p className="hint">Hunters open the Camp tab on the phone page and type their name and this code, or scan the QR code with the phone's camera. They see stands and deer reports, and can send notes.</p>
+        <CampQr campName={camp.name} code={camp.code} />
 
         <h3 className="camp-partners-title">Partners</h3>
         {manager ? (

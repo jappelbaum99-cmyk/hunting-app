@@ -29,6 +29,7 @@
     "firebase": "^13.1.0",
     "maplibre-gl": "^6.16.0",
     "piexifjs": "^1.0.6",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "^7.0.2",

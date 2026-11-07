@@ -93,12 +93,15 @@ const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-
 const RETRY_PROTOCOL = 'retry';
 // Same retries, then the float elevation TIFF is re-coded for 3D terrain (src/map/terrain.ts).
 const RETRY_DEM_PROTOCOL = 'retry-dem';
-const RETRY_DELAYS_MS = [800, 2000, 4000, 8000];
+// About a minute in all. A tile that gives up stays a blurry stand-in (the
+// coarser zoom level, stretched) until the zoom changes, which shows as a
+// patchwork of sharp and soft squares on the lidar when the server is busy.
+const RETRY_DELAYS_MS = [800, 2000, 4000, 8000, 15000, 30000];
 // Tiles only from the desktop's saved tiles; never fetched. A tile that isn't
 // saved is an empty see-through one, so the layer below shows through.
 const SAVED_PROTOCOL = 'saved';
-// A 1x1 see-through PNG.
-const EMPTY_PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+// A 1x1 PNG whose one pixel is fully see-through (RGBA 0, 0, 0, 0).
+const EMPTY_PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 
 // Lidar tiles are requested by bounding box. Rounding the box gives each tile
 // one exact URL, so the on-disk cache (and the property download, which

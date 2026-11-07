@@ -40,20 +40,13 @@ body {
   margin: 0 0 12px;
 }
 
+/* The Fenceline wordmark (public/wordmark.png, cut from the logo sheet). */
 .badge {
   display: block;
   width: 100%;
-  max-width: 460px;
+  max-width: 400px;
   height: auto;
   margin: 0 auto;
-}
-
-.badge text {
-  font-family: var(--font-wordmark);
-  font-size: 50px;
-  font-weight: 600;
-  letter-spacing: 7px;
-  fill: #f08a24;
 }
 
 .hero p {

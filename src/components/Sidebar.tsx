@@ -7,6 +7,7 @@ import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { FIELD_PAGE_URL } from '@/lib/site';
+import { CampQr } from '@/components/CampQr';
 import { huntPlaceName } from '@/lib/reports';
 import { formatDistance, metersBetween, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
@@ -688,6 +689,8 @@ function PhoneDrop(props: { camp: CampLink | null; campError: string | null; new
                     {copied === 'code' ? 'Copied' : 'Copy'}
                   </button>
                 </span>
+                <span className="muted">Or skip both steps: scan this.</span>
+                <CampQr campName={props.camp.name} code={props.camp.code} />
               </li>
             ) : (
               <li>

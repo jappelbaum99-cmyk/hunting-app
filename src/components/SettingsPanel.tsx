@@ -18,6 +18,8 @@ import {
   type AreaTypeView,
 } from '@/lib/styles';
 import { LINE_PATTERNS, LINE_THICKNESS, TRAIL_KINDS, trailTypeStyle } from '@/lib/trails';
+import { DEFAULT_OFFLINE_RADIUS_M, OFFLINE_RADII } from '@/map/offline';
+import { autoOfflineText, type AutoOfflineStatus } from '@/map/useAutoOffline';
 import type { CustomAreaType, CustomPinType, HubSettings, LinePattern, LineThickness, MarkerShape, MarkerStyle, MarkerType, TrailKind } from '@/types/models';
 
 interface SettingsPanelProps {
@@ -29,6 +31,7 @@ interface SettingsPanelProps {
   onSendStands(): void;
   update: Updater;
   campPartners: CampPartners;
+  autoOffline: AutoOfflineStatus;
 }
 
 // A pin drawn the same way as on the map, for previews.
@@ -66,7 +69,7 @@ function IconPicker({ type, onPick }: { type: AreaTypeView; onPick(icon: string)
   );
 }
 
-export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands, update, campPartners }: SettingsPanelProps) {
+export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSendStands, update, campPartners, autoOffline }: SettingsPanelProps) {
   const setMarker = (type: MarkerType, patch: Partial<MarkerStyle>) =>
     onChange({ ...settings, markerStyles: { ...settings.markerStyles, [type]: { ...settings.markerStyles[type], ...patch } } });
   const setPinType = (id: string, patch: Partial<CustomPinType>) =>
@@ -386,7 +389,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         Reset look to defaults
       </button>
 
-      <SavedMaps />
+      <SavedMaps settings={settings} onChange={onChange} auto={autoOffline} />
       <UpdateSettings updater={update} />
     </div>
   );
@@ -396,16 +399,38 @@ function formatMb(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 100 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-// How many map tiles the desktop app has saved, with a way to clear them.
-function SavedMaps() {
+// Keeping properties' maps saved in the background, how many map tiles the
+// desktop app has saved, and a way to clear them.
+function SavedMaps({ settings, onChange, auto }: { settings: HubSettings; onChange(settings: HubSettings): void; auto: AutoOfflineStatus }) {
   const [info, setInfo] = useState<{ count: number; bytes: number } | null>(null);
+  const finished = auto.finishedAt;
   useEffect(() => {
     window.hub?.tileCacheInfo().then(setInfo).catch(() => setInfo(null));
-  }, []);
+  }, [finished]);
   if (!window.hub) return null;
+  const on = settings.offlineAuto !== false;
   return (
     <section className="sidebar-section">
       <h2>Saved maps</h2>
+      <label className="check">
+        <input type="checkbox" checked={on} onChange={(e) => onChange({ ...settings, offlineAuto: e.target.checked })} />
+        <span>Keep my properties' maps saved on this PC</span>
+      </label>
+      {on && (
+        <>
+          <label className="setting-row">
+            <span>Around each property</span>
+            <select value={settings.offlineRadiusM ?? DEFAULT_OFFLINE_RADIUS_M} onChange={(e) => onChange({ ...settings, offlineRadiusM: Number(e.target.value) })}>
+              {OFFLINE_RADII.map((r) => (
+                <option key={r.meters} value={r.meters}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="hint">{autoOfflineText(auto)}</p>
+        </>
+      )}
       <p className="hint">
         {info ? `${info.count.toLocaleString()} map tiles saved on this PC (${formatMb(info.bytes)}).` : 'Counting saved map tiles…'} They're
         reused instead of downloading again, and let downloaded properties work offline.
