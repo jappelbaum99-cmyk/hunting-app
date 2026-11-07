@@ -2,8 +2,8 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { compassPointOf } from '@/lib/standRating';
-import { DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
-import type { DeerKind, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
+import { BEHAVIORS, DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
+import type { DeerBehavior, DeerKind, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
   report: HuntReport;
@@ -234,8 +234,20 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
       </div>
 
       <label>
+        <span className="field-label">Doing</span>
+        <select value={s.behavior ?? ''} onChange={(e) => onChange({ behavior: (e.target.value || null) as DeerBehavior | null })}>
+          <option value="">Not noted</option>
+          {(Object.keys(BEHAVIORS) as DeerBehavior[]).map((b) => (
+            <option key={b} value={b}>
+              {BEHAVIORS[b]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
         <span className="field-label">Note</span>
-        <input type="text" placeholder="e.g. chasing a doe, came from the creek" value={s.comment ?? ''} onChange={(e) => onChange({ comment: e.target.value || null })} />
+        <input type="text" placeholder="e.g. came from the creek" value={s.comment ?? ''} onChange={(e) => onChange({ comment: e.target.value || null })} />
       </label>
 
       <div className="field-label">Where they were from the stand</div>

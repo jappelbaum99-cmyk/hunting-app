@@ -1,6 +1,6 @@
 // Shared helpers for hunt reports (the hub and the phone page both use these).
 import type { IconName } from '@/lib/icons';
-import { COMPASS_POINTS, type DeerKind, type HuntReport, type ReportWeather, type Sighting } from '@/types/models';
+import { COMPASS_POINTS, type DeerBehavior, type DeerKind, type HuntReport, type ReportWeather, type Sighting } from '@/types/models';
 import type { ForecastHour, Pressure } from '@/lib/weather';
 
 interface KindInfo {
@@ -103,11 +103,22 @@ export function sightingSummary(report: Pick<HuntReport, 'sightings'>): string {
     .join(', ');
 }
 
-// Distance bands for "where seen", in yards. The last one means "farther".
-export const DISTANCE_BANDS = [50, 100, 200, 300] as const;
+// The rings on the phone's "where seen" target, in yards. The last is its edge;
+// anything farther is typed in the distance box.
+export const DISTANCE_BANDS = [25, 50, 100, 150] as const;
 
 // Farthest distance a sighting can be from its stand, in yards.
 export const MAX_YARDS = 800;
+
+// What the deer were doing, picked with a tap on the phone.
+export const BEHAVIORS = {
+  feeding: 'Feeding',
+  walking: 'Walking',
+  running: 'Running',
+  chasing: 'Chasing',
+  bedded: 'Bedded',
+  scraping: 'Scraping',
+} as const satisfies Record<DeerBehavior, string>;
 
 // "~140 yd NE", or null when not given.
 export function whereLabel(s: Pick<Sighting, 'fromStand'>): string | null {

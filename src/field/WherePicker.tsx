@@ -7,13 +7,17 @@ import type { Sighting } from '@/types/models';
 
 type Where = NonNullable<Sighting['fromStand']>;
 
-// Ring radius (in the picker's own units) for each distance band.
-const BAND_RADIUS: Record<number, number> = { 50: 42, 100: 74, 200: 104, 300: 122 };
+// Ring radius (in the picker's own units) for each distance band. Bow range gets
+// the most room; the edge is 150 yd (farther is typed in the distance box).
+const BAND_RADIUS: Record<number, number> = { 25: 38, 50: 66, 100: 100, 150: 122 };
 const OUTER = 126;
 // Taps this close to the middle are "at the stand".
 const CENTER = 16;
 // A press that moves at least this far is a drag (sets the direction).
 const DRAG = 14;
+// On a touchscreen a drag only sets the direction after the finger has held
+// still this long; a quicker swipe scrolls the page instead of moving the deer.
+const HOLD_MS = 250;
 // Half the drawing's width: the target plus room for N/E/S/W outside it.
 const SIZE = OUTER + 20;
 
@@ -108,9 +112,36 @@ export function WherePicker(props: {
   const compass = useCompass();
   // Up on the target: north, or the way the phone faces.
   const rotation = compass.heading ?? 0;
-  const press = useRef<{ x: number; y: number; rotation: number; fromStand: boolean; onSpot: boolean } | null>(null);
+  // armed: the press may drag a direction (held still long enough, or a mouse).
+  // scrolling: it moved before that, so it's the page scrolling and changes nothing.
+  const press = useRef<{ x: number; y: number; rotation: number; fromStand: boolean; onSpot: boolean; armed: boolean; scrolling: boolean } | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const svg = useRef<SVGSVGElement>(null);
+  const [armed, setArmed] = useState(false);
   const [dragHeading, setDragHeading] = useState<number | null>(null);
   const [yardsText, setYardsText] = useState<string | null>(null);
+
+  // Once a press is armed, stop the page from scrolling under the finger. This
+  // has to be a non-passive listener; React's touch handlers are passive.
+  useEffect(() => {
+    const el = svg.current;
+    if (!el) return;
+    const onTouchMove = (event: TouchEvent) => {
+      if (press.current?.armed) event.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener('touchmove', onTouchMove);
+      clearTimeout(holdTimer.current);
+    };
+  }, []);
+
+  const endPress = () => {
+    clearTimeout(holdTimer.current);
+    press.current = null;
+    setArmed(false);
+    setDragHeading(null);
+  };
 
   const toLocal = (event: PointerEvent<SVGSVGElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
@@ -118,38 +149,60 @@ export function WherePicker(props: {
   };
 
   const onDown = (event: PointerEvent<SVGSVGElement>) => {
-    try {
-      // Keep getting moves if the finger slides off the target.
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Not every pointer can be captured; the press still works.
-    }
     const [x, y] = toLocal(event);
     const spot = props.where ? spotOf(props.where, rotation) : null;
+    const touch = event.pointerType === 'touch';
     press.current = {
       x,
       y,
       rotation,
       fromStand: Math.hypot(x, y) < CENTER,
       onSpot: spot !== null && Math.hypot(x - spot[0], y - spot[1]) < DRAG,
+      armed: !touch,
+      scrolling: false,
     };
+    clearTimeout(holdTimer.current);
+    if (touch) {
+      holdTimer.current = setTimeout(() => {
+        const p = press.current;
+        if (!p || p.scrolling) return;
+        p.armed = true;
+        setArmed(true);
+        navigator.vibrate?.(8);
+      }, HOLD_MS);
+    }
   };
 
   const onMove = (event: PointerEvent<SVGSVGElement>) => {
     const p = press.current;
-    if (!p) return;
+    if (!p || p.scrolling) return;
     const [x, y] = toLocal(event);
-    if (Math.hypot(x - p.x, y - p.y) < DRAG) return setDragHeading(null);
+    const moved = Math.hypot(x - p.x, y - p.y) >= DRAG;
+    if (!p.armed) {
+      // Moving before the hold: the finger is scrolling the page.
+      if (moved) {
+        p.scrolling = true;
+        clearTimeout(holdTimer.current);
+      }
+      return;
+    }
+    if (!moved) return setDragHeading(null);
+    try {
+      // Keep getting moves if the finger slides off the target.
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Not every pointer can be captured; the drag still works.
+    }
     setDragHeading(snap45(angleOf(x - p.x, y - p.y) + p.rotation));
   };
 
   const onUp = (event: PointerEvent<SVGSVGElement>) => {
     const p = press.current;
-    press.current = null;
-    setDragHeading(null);
-    if (!p) return;
+    endPress();
+    if (!p || p.scrolling) return;
     const [x, y] = toLocal(event);
-    const dragged = Math.hypot(x - p.x, y - p.y) >= DRAG;
+    // Only an armed press can drag; an unarmed one that got here barely moved (a tap).
+    const dragged = p.armed && Math.hypot(x - p.x, y - p.y) >= DRAG;
     const heading = dragged ? snap45(angleOf(x - p.x, y - p.y) + p.rotation) : null;
     setYardsText(null);
     // Dragging from your stand or from the spot already picked only sets the direction.
@@ -171,16 +224,18 @@ export function WherePicker(props: {
       <div className="where-head">
         <span>Where, and which way?</span>
         <span className="muted">
-          {label ? `${label} of you · ${going}` : shownHeading === null ? 'Tap the spot, drag the way they went' : `At the stand · ${going}`}
+          {label ? `${label} of you · ${going}` : shownHeading === null ? 'Tap the spot; hold, then drag the way they went' : `At the stand · ${going}`}
         </span>
       </div>
 
       <svg
+        ref={svg}
+        className={armed ? 'armed' : undefined}
         viewBox={`${-SIZE} ${-SIZE} ${SIZE * 2} ${SIZE * 2}`}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
-        onPointerCancel={() => ((press.current = null), setDragHeading(null))}
+        onPointerCancel={endPress}
         role="img"
         aria-label={label ? `Seen ${label} of the stand, ${going}` : 'Pick where they were'}
       >
@@ -200,7 +255,7 @@ export function WherePicker(props: {
             );
           })}
         </g>
-        {DISTANCE_BANDS.slice(0, -1).map((band) => (
+        {DISTANCE_BANDS.map((band) => (
           <g key={band}>
             <circle r={BAND_RADIUS[band]} className="where-ring" />
             <text x={4} y={-BAND_RADIUS[band] + 11} className="where-yards">

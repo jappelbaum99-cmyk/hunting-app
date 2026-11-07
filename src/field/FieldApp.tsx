@@ -27,8 +27,8 @@ import { WherePicker } from '@/field/WherePicker';
 import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
-import { DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
-import type { CustomPinType, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
+import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
+import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'notes' | 'send';
 
@@ -582,6 +582,7 @@ interface SightingDraft {
   where: Sighting['fromStand'];
   note: string;
   editingId: string | null;
+  behavior?: DeerBehavior | null;
 }
 
 function loadDraft(reportId: string): SightingDraft | null {
@@ -630,6 +631,7 @@ function QuickLog(props: {
   const [otherName, setOtherName] = useState(draft?.otherName ?? '');
   const [where, setWhere] = useState<Sighting['fromStand']>(draft?.where ?? null);
   const [note, setNote] = useState(draft?.note ?? '');
+  const [behavior, setBehavior] = useState<DeerBehavior | null>(draft?.behavior ?? null);
   const [editingId, setEditingId] = useState<string | null>(draft?.editingId ?? null);
   const notes = useRef<HTMLTextAreaElement>(null);
   // The latest report, for saves that happen a moment after typing.
@@ -638,8 +640,8 @@ function QuickLog(props: {
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, note, editingId });
-  }, [report.id, kind, count, heading, buckName, otherName, where, note, editingId]);
+    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, note, editingId, behavior });
+  }, [report.id, kind, count, heading, buckName, otherName, where, note, editingId, behavior]);
 
   // Hunt notes save as you type (a moment after you stop), not only when you tap away.
   const saveNotes = (value: string) => {
@@ -660,6 +662,7 @@ function QuickLog(props: {
     setOtherName('');
     setWhere(null);
     setNote('');
+    setBehavior(null);
   };
 
   const startEditing = (s: Sighting) => {
@@ -671,6 +674,7 @@ function QuickLog(props: {
     setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
     setWhere(s.fromStand ?? null);
     setNote(s.comment ?? '');
+    setBehavior(s.behavior ?? null);
   };
 
   const save = () => {
@@ -682,6 +686,7 @@ function QuickLog(props: {
       notes: kind === 'other' ? otherName.trim() || null : null,
       fromStand: where,
       comment: note.trim() || null,
+      behavior,
     };
     const sightings = editingId
       ? report.sightings.map((s) => (s.id === editingId ? { ...s, ...fields } : s))
@@ -729,6 +734,14 @@ function QuickLog(props: {
         <button onClick={() => setCount(count + 1)} aria-label="More">
           <Icon name="plus" size={24} />
         </button>
+      </div>
+
+      <div className="behavior-row" role="group" aria-label="What they were doing">
+        {(Object.keys(BEHAVIORS) as DeerBehavior[]).map((b) => (
+          <button key={b} className={behavior === b ? 'active' : ''} aria-pressed={behavior === b} onClick={() => setBehavior(behavior === b ? null : b)}>
+            {BEHAVIORS[b]}
+          </button>
+        ))}
       </div>
 
       <WherePicker
@@ -782,6 +795,7 @@ function QuickLog(props: {
                     {sightingLabel(s)}
                     {s.buckName ? ` (${s.buckName})` : ''}
                     {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
+                    {s.behavior ? ` · ${BEHAVIORS[s.behavior].toLowerCase()}` : ''}
                     {whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
                     {s.comment && <span className="sighting-comment">{s.comment}</span>}
                   </span>
@@ -896,22 +910,24 @@ function StandsTab({
           const open = openId === s.id;
           return (
             <li key={s.id}>
-              <button className="stand-head" onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open}>
-                <span>
-                  <strong>{s.name}</strong>
-                  {s.place && <span className="stand-place"> · {s.place}</span>}
-                  {s.goodWinds.length > 0 && <span className="muted"> · good on {s.goodWinds.join(' ')}</span>}
-                </span>
-                <span className="muted">
-                  {stats.hunts === 0
-                    ? 'No hunts yet'
-                    : `${stats.hunts} hunt${stats.hunts === 1 ? '' : 's'} · ${stats.deer} deer${stats.mainHeading ? ` · mostly ${stats.mainHeading}` : ''}`}
-                </span>
-              </button>
+              <div className="stand-top">
+                <button className="stand-head" onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open}>
+                  <span>
+                    <strong>{s.name}</strong>
+                    {s.place && <span className="stand-place"> · {s.place}</span>}
+                    {s.goodWinds.length > 0 && <span className="muted"> · good on {s.goodWinds.join(' ')}</span>}
+                  </span>
+                  <span className="muted">
+                    {stats.hunts === 0
+                      ? 'No hunts yet'
+                      : `${stats.hunts} hunt${stats.hunts === 1 ? '' : 's'} · ${stats.deer} deer${stats.mainHeading ? ` · mostly ${stats.mainHeading}` : ''}`}
+                  </span>
+                </button>
+                <a className="maps-button" href={appleMapsUrl(s)} aria-label={`Open ${s.name} in Apple Maps`}>
+                  <Icon name="pin" size={14} /> Maps
+                </a>
+              </div>
               {open && stats.hunts > 0 && <FieldStandHistory stats={stats} reports={standReports} />}
-              <a className="maps-button" href={appleMapsUrl(s)}>
-                Open in Apple Maps
-              </a>
               {pendingMove(s.id) && <p className="field-hint move-pending">New spot saved. The hub moves the stand once someone there says OK.</p>}
               {moving && (
                 <button className="move-button" disabled={!fresh} onClick={() => moveHere(s)}>

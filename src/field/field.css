@@ -127,6 +127,14 @@ textarea {
   gap: 12px;
 }
 
+/* Cards stacked on one tab: room and a line between them, so one card's last
+   button doesn't read as part of the next (Walk around an area / Drop a pin). */
+.field-card + .field-card {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
 .field-card h2 {
   margin: 0;
   font-size: 22px;
@@ -224,14 +232,30 @@ textarea {
   align-items: stretch;
 }
 
+/* A stand's name row, with a small Apple Maps button on the right. */
+.stand-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stand-top .stand-head {
+  flex: 1;
+  min-width: 0;
+}
+
 .maps-button {
-  display: block;
-  padding: 12px;
-  border-radius: 12px;
-  background: #0a84ff;
-  color: #fff;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
   font-weight: 700;
-  text-align: center;
   text-decoration: none;
 }
 
@@ -246,6 +270,27 @@ textarea {
   color: #fff7ec;
   box-shadow: inset 0 0 0 2px #f7efe6;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* What the deer were doing: one tap picks, a second tap clears. */
+.behavior-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.behavior-row button {
+  padding: 10px 4px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.behavior-row button.active {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .count-row {
@@ -996,8 +1041,18 @@ textarea {
 }
 
 /* Where-and-which-way target */
+/* Swipes up and down scroll the page; a press held still arms a direction drag
+   (WherePicker stops the scroll itself then). */
 .where-picker svg {
-  touch-action: none;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.where-picker svg.armed .where-outer {
+  stroke: var(--accent);
+  stroke-width: 3;
 }
 
 .where-compass.north {

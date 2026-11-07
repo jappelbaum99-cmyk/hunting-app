@@ -345,9 +345,13 @@ export interface Sighting {
   fromStand?: { bearingDeg: number; yards: number } | null;
   // For "other", what it was (e.g. "coyote").
   notes: string | null;
-  // Anything else worth remembering, e.g. "chasing a doe".
+  // Anything else worth remembering, e.g. "came from the creek".
   comment?: string | null;
+  // What they were doing (missing on older sightings).
+  behavior?: DeerBehavior | null;
 }
+
+export type DeerBehavior = 'feeding' | 'walking' | 'running' | 'chasing' | 'bedded' | 'scraping';
 
 export interface ReportWeather {
   tempF: number;
