@@ -12,6 +12,19 @@ export function campJoinUrl(code: string): string {
   return `${FIELD_PAGE_URL}?${JOIN_PARAM}=${encodeURIComponent(code)}`;
 }
 
+// The camp code in something a QR code held: the hub's join link, or a bare
+// code. Null when it isn't one of ours.
+export function joinCodeFrom(text: string): string | null {
+  const trimmed = text.trim();
+  try {
+    const code = new URL(trimmed).searchParams.get(JOIN_PARAM);
+    if (code) return code;
+  } catch {
+    // Not a link; maybe the code itself.
+  }
+  return trimmed.replace(/[^A-Za-z0-9]/g, '').length === 12 ? trimmed : null;
+}
+
 // The camp code from a scanned link, if the page was opened with one. It's
 // taken out of the address so a reload or a home screen icon doesn't keep it.
 export function takeJoinCode(): string | null {

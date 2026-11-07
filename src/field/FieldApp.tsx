@@ -15,6 +15,7 @@ import { Icon } from '@/components/Icon';
 import { useCampSync, type CampStatus } from '@/field/useCampSync';
 import { CAMP_SYNC_AVAILABLE, joinCamp } from '@/lib/camp';
 import { takeJoinCode } from '@/lib/site';
+import { QrScanner } from '@/field/QrScanner';
 import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
@@ -1078,6 +1079,7 @@ function CampCard(props: {
   const { data, sync } = props;
   const [hunter, setHunter] = useState('');
   const [code, setCode] = useState(props.joinCode ?? '');
+  const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1131,7 +1133,7 @@ function CampCard(props: {
   return (
     <section className="field-card">
       <h2>Join your camp</h2>
-      <p className="field-hint">Get the camp code from whoever runs the hub (Settings › Camp sync). You only do this once.</p>
+      <p className="field-hint">Get the camp code from whoever runs the hub (Join the Camp in its sidebar), or scan its QR code below. You only do this once.</p>
       <input type="text" placeholder="Your name, e.g. Dad" value={hunter} onChange={(e) => setHunter(e.target.value)} autoComplete="name" />
       <input
         type="text"
@@ -1142,6 +1144,23 @@ function CampCard(props: {
         autoCorrect="off"
         spellCheck={false}
       />
+      {scanning ? (
+        <QrScanner
+          onCode={(scanned) => {
+            setCode(scanned);
+            setScanning(false);
+            props.onMessage(hunter.trim() ? 'Got the camp code. Tap Join camp.' : 'Got the camp code. Enter your name, then tap Join camp.');
+          }}
+          onClose={() => setScanning(false)}
+        />
+      ) : (
+        // No camera API on pages that aren't https (or very old browsers).
+        'mediaDevices' in navigator && (
+          <button className="end-button" onClick={() => setScanning(true)}>
+            Scan the camp QR code
+          </button>
+        )
+      )}
       {error && <p className="field-warn">{error}</p>}
       <button className="big-button" disabled={busy || !hunter.trim() || code.replace(/[^A-Za-z0-9]/g, '').length < 12} onClick={() => void join()}>
         {busy ? 'Joining…' : 'Join camp'}

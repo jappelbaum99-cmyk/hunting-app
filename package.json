@@ -27,6 +27,7 @@
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
     "firebase": "^13.1.0",
+    "jsqr": "^1.4.0",
     "maplibre-gl": "^6.16.0",
     "piexifjs": "^1.0.6",
     "qrcode-generator": "^2.0.4",
