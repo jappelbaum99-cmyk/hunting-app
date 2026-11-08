@@ -18,6 +18,7 @@ import {
   DEFAULT_LAYERS,
   LAYER_IDS,
   lidarStyleTiles,
+  retryFailedTiles,
   setUpMapLibre,
   type MapLayersState,
 } from '@/map/layers';
@@ -643,6 +644,7 @@ export function MapView(props: MapViewProps) {
     setCompassHost(host);
     map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-left');
     map.on('rotate', () => setBearing(map.getBearing()));
+    retryFailedTiles(map);
 
     // 'style.load' fires before tiles arrive, unlike 'load', which waits on the slow USGS servers.
     map.once('style.load', () => {

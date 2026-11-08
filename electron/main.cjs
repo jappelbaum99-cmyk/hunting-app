@@ -105,8 +105,9 @@ async function getTile(_event, url, { cacheOnly = false, saveOnly = false } = {}
     if (error.code !== 'ENOENT') throw error;
   }
   if (cacheOnly) return null;
-  // The close-up aerial server can hang on a busy day; give up after a minute so it can be retried.
-  const response = await net.fetch(url, { signal: AbortSignal.timeout(60_000) });
+  // The USGS servers can hang on a busy day. Give up after 30 seconds so the map's
+  // loading slot frees up for saved tiles; the map tries the tile again later.
+  const response = await net.fetch(url, { signal: AbortSignal.timeout(30_000) });
   const type = response.headers.get('content-type') ?? '';
   if (!response.ok || !type.startsWith('image/')) throw new Error(`USGS answered ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());

@@ -10,6 +10,8 @@ export const SCHEDULE_WORK: Record<ScheduleWork, { label: string; start: number;
   fertilize: { label: 'Fertilize', start: 3, end: 4, plotAction: 'fertilized' },
   mow: { label: 'Mow', start: 6, end: 7, plotAction: 'mowed' },
   spray: { label: 'Spray', start: 4, end: 5, plotAction: 'sprayed' },
+  // Early enough that lime has months to work before fall planting.
+  soil_test: { label: 'Soil test', start: 2, end: 3, plotAction: 'soil_test' },
   timber: { label: 'Timber work', start: 11, end: 2, plotAction: 'other' },
   other: { label: 'Other', start: 3, end: 4, plotAction: 'other' },
 };

@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { SchedulesField } from '@/components/SchedulesField';
+import { SoilTestsField } from '@/components/SoilTestsField';
 
 import { FOOD_PLOT_CROPS, isPlotType, pinTypeInfo, type PinTypeView } from '@/lib/featureTypes';
 import { acresOf, formatAcres, formatLatLng } from '@/lib/geo';
@@ -40,7 +41,7 @@ interface Common {
 
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
-  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] } & Common)
+  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[]; onAddTask(text: string): void } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
   | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; trailStyles: HubSettings['trailStyles'] } & Common);
@@ -86,7 +87,7 @@ export function DetailPanel(props: DetailPanelProps) {
             <Field label="Offline maps">{props.offlineField}</Field>
           </>
         )}
-        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} />}
+        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} onAddTask={props.onAddTask} />}
         {props.kind === 'marker' && (
           <>
             <MarkerFields record={props.record} onChange={props.onChange} pinTypes={props.pinTypes} unlocked={props.unlocked} onToggleLock={props.onToggleLock} />
@@ -204,7 +205,7 @@ function OverlayFields(props: { record: MapImageOverlay; onChange(o: MapImageOve
   );
 }
 
-function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[] }) {
+function AreaFields({ record, onChange, areaTypes, onAddTask }: { record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[]; onAddTask(text: string): void }) {
   // Keep a removed custom type selectable for an area that still uses it.
   const options = areaTypes.some((t) => t.id === record.type) ? areaTypes : [...areaTypes, { id: record.type, label: 'Removed type' }];
   return (
@@ -223,7 +224,10 @@ function AreaFields({ record, onChange, areaTypes }: { record: MapArea; onChange
         <span>{formatAcres(acresOf(record.geometry))}</span>
       </Field>
       {isPlotType(record.type, options.find((t) => t.id === record.type)?.label ?? '') && (
-        <PlotLog key={record.id} record={record} onChange={onChange} />
+        <>
+          <PlotLog key={record.id} record={record} onChange={onChange} />
+          <SoilTestsField key={`soil-${record.id}`} record={record} onChange={onChange} onAddTask={onAddTask} />
+        </>
       )}
       <SchedulesField key={`schedules-${record.id}`} schedules={record.schedules} onChange={(schedules) => onChange({ ...record, schedules })} />
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />

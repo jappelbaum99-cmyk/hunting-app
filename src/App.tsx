@@ -1861,6 +1861,9 @@ export function App() {
           areaTypes={areaTypeList(hub.settings)}
           propertyName={propertyName(record.propertyId)}
           onChange={hub.saveArea}
+          onAddTask={(text) =>
+            hub.saveActionItem({ ...newRecordFields(), kind: 'work', text, status: 'planned', lat: null, lng: null, loggedBy: hub.settings.camp?.hunter ?? null, propertyId: record.propertyId, source: 'hub', markerId: null })
+          }
           onDelete={() => {
             hub.deleteArea(record.id);
             setSelection(null);

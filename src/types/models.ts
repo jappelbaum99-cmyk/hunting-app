@@ -156,9 +156,47 @@ export interface MapArea extends Syncable {
   plantedOn?: string | null;
   log?: PlotEntry[];
   schedules?: WorkSchedule[];
+  soilTests?: SoilTest[];
 }
 
-export type ScheduleWork = 'burn' | 'plant' | 'lime' | 'fertilize' | 'mow' | 'spray' | 'timber' | 'other';
+// A food plot's soil test results, typed in from the lab's report (see src/lib/soil.ts).
+// Empty boxes are null. The recommendations are per acre, as labs write them.
+export interface SoilTest {
+  id: string;
+  // yyyy-mm-dd, when the sample was taken.
+  date: string;
+  lab: string | null;
+  // What the lab's recommendations are for, e.g. Clover.
+  crop: string | null;
+  ph: number | null;
+  bufferPh: number | null;
+  // Phosphorus, potassium, calcium and magnesium, in `units`.
+  p: number | null;
+  k: number | null;
+  ca: number | null;
+  mg: number | null;
+  units: 'lb_acre' | 'ppm';
+  // Organic matter, percent.
+  om: number | null;
+  cec: number | null;
+  // Recommendations per acre: lime, in tons of ag lime or pounds of ENM (Missouri's
+  // lab writes ENM), and pounds of N, P2O5 and K2O.
+  lime: number | null;
+  limeUnits: 'tons' | 'enm';
+  // The ENM in a ton of the lime being bought, from the quarry's ticket, for ENM recommendations.
+  limeEnm: number | null;
+  nLbs: number | null;
+  pLbs: number | null;
+  kLbs: number | null;
+  // The bagged blend picked to cover them, e.g. 13-13-13.
+  blend?: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export type ScheduleWork = 'burn' | 'plant' | 'lime' | 'fertilize' | 'mow' | 'spray' | 'soil_test' | 'timber' | 'other';
 
 // Work that repeats on an area or section (see src/lib/schedules.ts).
 export interface WorkSchedule {

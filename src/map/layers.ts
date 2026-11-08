@@ -93,10 +93,14 @@ const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-
 const RETRY_PROTOCOL = 'retry';
 // Same retries, then the float elevation TIFF is re-coded for 3D terrain (src/map/terrain.ts).
 const RETRY_DEM_PROTOCOL = 'retry-dem';
-// About a minute in all. A tile that gives up stays a blurry stand-in (the
-// coarser zoom level, stretched) until the zoom changes, which shows as a
-// patchwork of sharp and soft squares on the lidar when the server is busy.
-const RETRY_DELAYS_MS = [800, 2000, 4000, 8000, 15000, 30000];
+// Kept short: MapLibre loads only so many images at once, saved tiles included,
+// so a tile waiting out a busy server holds up tiles that are already on disk.
+// One that gives up is tried again later by retryFailedTiles; meanwhile it shows
+// the coarser zoom level, stretched.
+const RETRY_DELAYS_MS = [800, 2500];
+// MapLibre's default is 16. Saved tiles come off the disk, so more at once
+// doesn't load the USGS servers any harder (the browser limits connections per server).
+const MAX_PARALLEL_IMAGE_REQUESTS = 32;
 // Tiles only from the desktop's saved tiles; never fetched. A tile that isn't
 // saved is an empty see-through one, so the layer below shows through.
 const SAVED_PROTOCOL = 'saved';
@@ -140,6 +144,7 @@ export function setUpMapLibre(): void {
   if (setUp) return;
   setUp = true;
   maplibregl.setWorkerUrl(workerUrl);
+  maplibregl.setMaxParallelImageRequests(MAX_PARALLEL_IMAGE_REQUESTS);
   const withRetries = async (url: string, signal: AbortSignal): Promise<ArrayBuffer> => {
     for (let attempt = 0; ; attempt++) {
       const result = await fetchImage(url, signal);
@@ -161,6 +166,34 @@ export function setUpMapLibre(): void {
     const tile = window.hub ? await window.hub.getTile(url, { cacheOnly: true }).catch(() => null) : null;
     const bytes = tile ? tile.bytes : EMPTY_PNG;
     return { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer };
+  });
+}
+
+// After a tile gives up, MapLibre keeps showing the coarser stand-in until the
+// zoom changes, so a busy spell on the USGS server leaves a blurry square on the
+// lidar. Try each failed tile again, further apart each time (about half an hour in all).
+const TILE_RETRY_ROUNDS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000];
+
+export function retryFailedTiles(map: maplibregl.Map): void {
+  const rounds = new Map<string, number>();
+  type TileError = { sourceId?: string; tile?: { tileID?: { canonical?: { x: number; y: number; z: number } } } };
+  map.on('error', (event) => {
+    const { sourceId, tile: failed } = event as unknown as TileError;
+    const tile = failed?.tileID?.canonical;
+    if (!sourceId || !tile) return;
+    const key = `${sourceId}/${tile.z}/${tile.x}/${tile.y}`;
+    const round = rounds.get(key) ?? 0;
+    if (round >= TILE_RETRY_ROUNDS_MS.length) return;
+    rounds.set(key, round + 1);
+    setTimeout(() => {
+      // The source may be gone (lidar style changed) or the map closed.
+      if (!map.getStyle() || !map.getSource(sourceId)) return;
+      try {
+        map.refreshTiles(sourceId, [{ x: tile.x, y: tile.y, z: tile.z }]);
+      } catch {
+        // Nothing to refresh.
+      }
+    }, TILE_RETRY_ROUNDS_MS[round]);
   });
 }
 
