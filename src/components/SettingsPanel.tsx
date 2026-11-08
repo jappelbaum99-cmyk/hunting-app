@@ -14,6 +14,7 @@ import {
   MARKER_SHAPES,
   MAX_MARKER_SIZE,
   MIN_MARKER_SIZE,
+  outlineLook,
   propertyColor,
   type AreaTypeView,
 } from '@/lib/styles';
@@ -376,13 +377,19 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
             />
           </li>
         </ul>
+        <OutlineControls kind="property" settings={settings} onChange={onChange} />
+      </section>
+
+      <section className="sidebar-section">
+        <h2>Section lines</h2>
+        <OutlineControls kind="section" settings={settings} onChange={onChange} />
       </section>
 
       <button
         className="reset-look"
         onClick={() => {
           if (window.confirm('Put every color, shape and size back to the defaults? Colors set on single stands and properties stay.')) {
-            onChange({ ...settings, markerStyles: {}, areaColors: {}, areaIcons: {}, propertyLineColor: null });
+            onChange({ ...settings, markerStyles: {}, areaColors: {}, areaIcons: {}, propertyLineColor: null, propertyLook: null, sectionLook: null });
           }
         }}
       >
@@ -391,6 +398,37 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
 
       <SavedMaps settings={settings} onChange={onChange} auto={autoOffline} />
       <UpdateSettings updater={update} />
+    </div>
+  );
+}
+
+// Border pattern and width, and how strong the shading inside is, for property or section outlines.
+function OutlineControls({ kind, settings, onChange }: { kind: 'property' | 'section'; settings: HubSettings; onChange(s: HubSettings): void }) {
+  const look = outlineLook(kind, settings);
+  const key = kind === 'property' ? 'propertyLook' : 'sectionLook';
+  const set = (patch: Partial<typeof look>) => onChange({ ...settings, [key]: { ...look, ...patch } });
+  return (
+    <div className="outline-controls">
+      <label className="outline-row">
+        <span>Border</span>
+        <select value={look.pattern} onChange={(e) => set({ pattern: e.target.value as LinePattern })} aria-label={`${kind} border pattern`}>
+          {(Object.keys(LINE_PATTERNS) as LinePattern[]).map((pattern) => (
+            <option key={pattern} value={pattern}>
+              {LINE_PATTERNS[pattern]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="outline-row">
+        <span>Width</span>
+        <input type="range" min={1} max={8} step={0.5} value={look.width} onChange={(e) => set({ width: Number(e.target.value) })} aria-label={`${kind} border width`} />
+        <span className="muted">{look.width} px</span>
+      </label>
+      <label className="outline-row">
+        <span>Shading</span>
+        <input type="range" min={0} max={0.6} step={0.01} value={look.fillOpacity} onChange={(e) => set({ fillOpacity: Number(e.target.value) })} aria-label={`${kind} shading`} />
+        <span className="muted">{Math.round(look.fillOpacity * 100)}%</span>
+      </label>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 // from Settings, else the built-in default.
 import { AREA_TYPES, pinTypeInfo, PROPERTY_LINE_COLOR } from '@/lib/featureTypes';
 import { iconName, type IconName } from '@/lib/icons';
-import type { AreaType, BuiltInAreaType, HubSettings, LabelKind, MapMarker, MarkerShape, MarkerStyle, MarkerType, Property } from '@/types/models';
+import type { AreaType, BuiltInAreaType, HubSettings, LabelKind, MapMarker, MarkerShape, MarkerStyle, MarkerType, OutlineLook, Property } from '@/types/models';
 
 export const DEFAULT_MARKER_SIZE = 16;
 export const MIN_MARKER_SIZE = 4;
@@ -97,6 +97,23 @@ export function areaTypeList(settings: HubSettings): AreaTypeView[] {
 
 export function areaColor(type: AreaType, settings: HubSettings): string {
   return areaTypeInfo(type, settings).color;
+}
+
+export const OUTLINE_DEFAULTS: Record<'property' | 'section', Required<OutlineLook>> = {
+  property: { pattern: 'solid', width: 2.5, fillOpacity: 0.08 },
+  section: { pattern: 'dashed', width: 2, fillOpacity: 0.05 },
+};
+
+// How property or section outlines look: Settings, else the defaults.
+export function outlineLook(kind: 'property' | 'section', settings: HubSettings): Required<OutlineLook> {
+  return { ...OUTLINE_DEFAULTS[kind], ...(kind === 'property' ? settings.propertyLook : settings.sectionLook) };
+}
+
+// Dash lengths in line widths, as MapLibre takes them ([1, 0] draws solid).
+export function dashFor(pattern: OutlineLook['pattern'], kind: 'property' | 'section'): number[] {
+  if (pattern === 'dashed') return kind === 'section' ? [4, 2] : [3, 2];
+  if (pattern === 'dotted') return [0.01, 2];
+  return [1, 0];
 }
 
 export function propertyColor(property: Property | null, settings: HubSettings): string {

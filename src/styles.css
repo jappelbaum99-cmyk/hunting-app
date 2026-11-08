@@ -4290,3 +4290,369 @@ body.resizing {
 .soil-with-unit input {
   flex: 1;
 }
+
+/* Poster editor: the paper on the left, choices on the right. */
+.poster-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  background: #120c08;
+}
+
+.poster-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(240, 138, 36, 0.06), transparent 60%),
+    #120c08;
+}
+
+.poster-paper {
+  position: relative;
+  overflow: hidden;
+  background: #1d221d;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 18px 50px rgba(0, 0, 0, 0.6);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.poster-paper:active {
+  cursor: grabbing;
+}
+
+.poster-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.poster-leaders {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.poster-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  line-height: 1.25;
+  cursor: move;
+  text-shadow:
+    0 0 2px #000,
+    0 0 4px rgba(0, 0, 0, 0.9),
+    0 1px 6px rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
+}
+
+.poster-label:hover {
+  outline: 1px dashed rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.poster-label-icon {
+  display: inline-grid;
+  place-items: center;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
+}
+
+.poster-label-hide {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  display: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: #1c130d;
+  color: #f7efe6;
+  text-shadow: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.poster-label:hover .poster-label-hide {
+  display: grid;
+}
+
+.poster-zoom {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.poster-zoom button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  background: var(--glass-strong);
+  color: var(--text, #f7efe6);
+}
+
+.poster-status {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  font-size: 13px;
+  text-align: center;
+}
+
+.poster-panel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px 0;
+  overflow-y: auto;
+  background: var(--glass-strong);
+  border-left: 1px solid var(--border);
+}
+
+.poster-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.poster-panel-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.poster-group {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.poster-group input[type='text'] {
+  width: 100%;
+}
+
+.poster-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.poster-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.poster-num {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.poster-num input {
+  width: 64px;
+}
+
+.poster-seg {
+  display: flex;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.poster-seg button {
+  flex: 1;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.poster-seg button.active {
+  background: var(--accent);
+  color: #1c130d;
+  font-weight: 700;
+}
+
+.poster-slider {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.poster-panel-foot {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px 0 16px;
+  background: var(--glass-strong);
+  border-top: 1px solid var(--border);
+}
+
+.poster-panel-foot button.primary {
+  padding: 10px;
+  font-size: 15px;
+}
+
+.poster-warn {
+  font-size: 13px;
+  color: #f3b75b;
+}
+
+/* Property and section border and shading, in Settings */
+.outline-controls {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+.outline-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.outline-row select {
+  grid-column: span 2;
+}
+
+.outline-row .muted {
+  text-align: right;
+  font-size: 12px;
+}
+
+/* Poster: a row per kind of thing, opening to list each one */
+.poster-kind summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.poster-kind summary::-webkit-details-marker {
+  display: none;
+}
+
+.poster-kind summary::before {
+  content: '›';
+  width: 10px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.poster-kind[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.poster-kind summary > .check:first-of-type {
+  flex: 1;
+}
+
+.poster-kind-labels,
+.poster-item-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.poster-kind-count {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+}
+
+.poster-items {
+  list-style: none;
+  margin: 2px 0 6px 18px;
+  padding: 4px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.poster-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.poster-items li > .check:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.poster-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Poster: the map is loading */
+.poster-loading {
+  position: absolute;
+  white-space: nowrap;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 2;
+}
+
+.poster-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid rgba(240, 138, 36, 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: poster-spin 0.8s linear infinite;
+}
+
+@keyframes poster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

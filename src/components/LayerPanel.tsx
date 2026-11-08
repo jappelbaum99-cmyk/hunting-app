@@ -80,6 +80,27 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
             ))}
           </div>
 
+          {layers.base === 'satellite' && (
+            <>
+              <label className="layer-row">
+                <span>Close-up photos</span>
+                <select
+                  value={settings.aerialPhotos ?? 'leafOff'}
+                  onChange={(e) => onChangeSettings({ ...settings, aerialPhotos: e.target.value as 'leafOff' | 'leafOn' })}
+                  aria-label="Close-up photos"
+                >
+                  <option value="leafOff">Leaf-off (winter)</option>
+                  <option value="leafOn">Leaf-on (summer)</option>
+                </select>
+              </label>
+              <p className="hint">
+                {(settings.aerialPhotos ?? 'leafOff') === 'leafOff'
+                  ? "Missouri's 6 inch winter photos, where a property's maps are saved; summer photos elsewhere."
+                  : 'Summer NAIP photos with the trees leafed out.'}
+              </p>
+            </>
+          )}
+
           {layers.base !== 'lidar' && (
             <label className="layer-row">
               <span>Lidar shading</span>

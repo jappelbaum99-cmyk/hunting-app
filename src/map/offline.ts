@@ -66,7 +66,7 @@ function layerPlans(layers: MapLayersState, bbox: [number, number, number, numbe
 const toMercX = (lng: number) => (lng * EARTH_HALF) / 180;
 const toMercY = (lat: number) => Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) * (EARTH_HALF / Math.PI);
 
-function tileRange(bbox: [number, number, number, number], z: number) {
+export function tileRange(bbox: [number, number, number, number], z: number) {
   const size = (2 * EARTH_HALF) / 2 ** z;
   const [w, s, e, n] = bbox;
   const x0 = Math.floor((toMercX(w) + EARTH_HALF) / size);
@@ -76,7 +76,7 @@ function tileRange(bbox: [number, number, number, number], z: number) {
   return { x0, x1, y0, y1, size };
 }
 
-function tileUrl(template: string, z: number, x: number, y: number, size: number): string {
+export function tileUrl(template: string, z: number, x: number, y: number, size: number): string {
   const minX = -EARTH_HALF + x * size;
   const maxY = EARTH_HALF - y * size;
   const bbox = `${minX},${maxY - size},${minX + size},${maxY}`;

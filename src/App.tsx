@@ -6,6 +6,7 @@ import { DetailPanel } from '@/components/DetailPanel';
 import { DrawBar, EditBar, LineEditBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
+import { PosterEditor } from '@/components/PosterEditor';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
 import { ReportPanel } from '@/components/ReportPanel';
@@ -48,7 +49,7 @@ import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
-import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, Property, Selection } from '@/types/models';
+import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, PosterSettings, Property, HubSettings, Selection } from '@/types/models';
 
 type EditTarget = 'property' | 'section' | 'area' | 'trail';
 
@@ -139,6 +140,23 @@ export function App() {
   const isStandMarker = (m: MapMarker) => isHuntingSpot(m.type, hub.settings.customPinTypes);
   const mapRef = useRef<MapViewHandle>(null);
   const [layers, setLayers] = useState<MapLayersState>(DEFAULT_LAYERS);
+  // The poster editor is open, framed on what the map showed when it opened.
+  const [posterBounds, setPosterBounds] = useState<[number, number, number, number] | null>(null);
+  // The editor saves its layout as it goes; this keeps the rest of the settings current.
+  const latestSettings = useRef({ settings: null as HubSettings | null, save: null as ((s: HubSettings) => void) | null });
+  latestSettings.current = { settings: hub.settings, save: hub.saveSettings };
+  const savePoster = useCallback((poster: PosterSettings) => {
+    const { settings, save } = latestSettings.current;
+    if (settings && save) save({ ...settings, poster });
+  }, []);
+  // What the poster draws. Saving the poster's own layout doesn't count as a change.
+  const lookKey = JSON.stringify({ ...hub.settings, poster: null, camp: null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const posterSettings = useMemo(() => hub.settings, [lookKey]);
+  const posterData = useMemo(
+    () => ({ properties: hub.properties, sections: hub.sections, areas: hub.areas, trails: hub.trails, markers: hub.markers, settings: posterSettings }),
+    [hub.properties, hub.sections, hub.areas, hub.trails, hub.markers, posterSettings],
+  );
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   const [draftPoints, setDraftPoints] = useState<Position[]>([]);
   // While reshaping: the corners as they are now, and earlier versions for Undo.
@@ -1398,6 +1416,7 @@ export function App() {
         campError={camp.error ?? partnerSync.error}
         onExportMap={() => void exportMap(null)}
         onImportMap={(file) => void importMap(file)}
+        onMakePoster={() => setPosterBounds(mapRef.current?.getBounds() ?? [-91.54, 37.64, -91.53, 37.65])}
         onFieldPin={handleFieldPin}
         onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
         areas={hub.areas}
@@ -1599,6 +1618,15 @@ export function App() {
           />
         )}
         <LayerPanel layers={layers} onChange={setLayers} settings={hub.settings} onChangeSettings={hub.saveSettings} />
+        {posterBounds && (
+          <PosterEditor
+            data={posterData}
+            initial={hub.settings.poster ?? null}
+            startBounds={posterBounds}
+            onSave={savePoster}
+            onClose={() => setPosterBounds(null)}
+          />
+        )}
         {camerasOpen && (
           // Stays mounted (just hidden) while a new camera is pinned, so the import picks up where it was.
           <div className="camera-overlay" hidden={cameraPinName !== null}>

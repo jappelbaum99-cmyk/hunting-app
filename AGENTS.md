@@ -14,7 +14,7 @@ Fenceline (formerly Hunting Hub): a Windows desktop app (Electron + React + Vite
 - Map labels and pins are HTML markers (no glyph/font server needed). Update their classes with `classList`, never `className`, because maplibre adds its own positioning classes.
 - The old name stays in places existing data and updates depend on: `productName` and `appId` in `package.json` (`productName` sets the userData folder holding the detector model and tile cache), the `Documents\Hunting Hub` and `Hunting Hub Photos` folders, file `kind` values, storage keys, the Firebase project and the installer file name. Don't rename these without a migration.
 - Don't scrape the county GIS or onX.
-- Offline map downloads stay property-sized.
+- Offline map downloads stay property-sized. Poster exports (`src/map/poster.ts`) draw from the same tiles on a 2D canvas and are capped at `MAX_POSTER_TILES`; Missouri photos there are saved tiles only.
 - Don't default the photo library to OneDrive.
 - Never bundle or commit the MegaDetector `.onnx` model (AGPL). Each PC downloads it once.
 - In-app updates work through the GitHub download route (0.7.0 to 0.8.0 confirmed on a real PC).

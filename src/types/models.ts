@@ -76,7 +76,14 @@ export interface MarkerStyle {
   size: number;
 }
 
-export type LabelKind = 'pin' | 'property' | 'section' | 'area' | 'trail' | 'hunt';
+// An outline's border pattern and width (map pixels), and how see-through its shading is (0-1).
+export interface OutlineLook {
+  pattern?: LinePattern;
+  width?: number;
+  fillOpacity?: number;
+}
+
+export type LabelKind ='pin' | 'property' | 'section' | 'area' | 'trail' | 'hunt';
 
 // App-wide look, set in Settings. Anything left out uses the built-in default.
 export interface HubSettings {
@@ -87,6 +94,9 @@ export interface HubSettings {
   customAreaTypes: CustomAreaType[];
   customPinTypes: CustomPinType[];
   propertyLineColor: string | null;
+  // How property and section outlines are drawn (see src/lib/styles.ts outlineLook).
+  propertyLook?: OutlineLook | null;
+  sectionLook?: OutlineLook | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
   snapping: { enabled: boolean; distancePx: number };
   // The kinds of names left off the map.
@@ -111,6 +121,53 @@ export interface HubSettings {
   camp?: CampLink | null;
   // Folder where trail camera photos are kept (desktop app).
   photoLibrary?: string | null;
+  // Close-up satellite photos: Missouri's leaf-off winter ones where saved (the
+  // default), or the leaf-on summer NAIP ones everywhere.
+  aerialPhotos?: 'leafOff' | 'leafOn';
+  // The last poster laid out, to pick up where it was left (see src/map/poster.ts).
+  poster?: PosterSettings | null;
+}
+
+export type PosterLabelKind = 'property' | 'section' | 'area' | 'trail' | 'pin';
+
+// A printed map: paper, map look, what's drawn, and where labels were dragged to.
+export interface PosterSettings {
+  // A preset like '24x36', or 'custom'. Sizes are inches, short side first.
+  size: string;
+  widthIn: number;
+  heightIn: number;
+  landscape: boolean;
+  dpi: number;
+  format: 'jpg' | 'png';
+  base: 'satellite' | 'topo' | 'lidar';
+  // Close-up photos on Aerial: Missouri's leaf-off winter ones where saved, or summer NAIP.
+  photos?: 'leafOff' | 'leafOn';
+  lidarStyle: 'stretch' | 'multidirectional' | 'tinted' | 'slope';
+  // Lidar shading over satellite or topo, 0-1.
+  lidarBlend: number;
+  contours: 'off' | '10' | '5' | '2';
+  show: Record<'properties' | 'sections' | 'areas' | 'trails' | 'pins', boolean>;
+  labels: Record<PosterLabelKind, boolean>;
+  // Size of labels: points on paper per pixel on the map.
+  textScale: number;
+  // Size of pins and lines, the same way. Missing means the same as the labels.
+  featureScale?: number;
+  // Size of lines and outlines (from before each kind had its own). Missing means the same as the pins.
+  lineScale?: number;
+  // Each kind of line's size; one left out uses lineScale.
+  lineScales?: Partial<Record<'property' | 'section' | 'area' | 'trail', number>>;
+  // Single properties, areas, pins, trails or sections left off this poster.
+  hiddenIds?: string[];
+  title: string;
+  subtitle: string;
+  northArrow: boolean;
+  scaleBar: boolean;
+  // The frame: its centre in web mercator meters, and meters of ground per inch of paper.
+  center: [number, number] | null;
+  metersPerInch: number | null;
+  // Labels dragged somewhere else: label id -> [lng, lat] of the label's centre.
+  labelAt: Record<string, [number, number]>;
+  hiddenLabelIds: string[];
 }
 
 // A shared camp in Firebase that phones send hunts and pins to (see src/lib/camp.ts).

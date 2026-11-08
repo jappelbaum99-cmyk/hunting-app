@@ -27,6 +27,7 @@ interface SidebarProps {
   // Map files for sharing with someone else's hub.
   onExportMap(): void;
   onImportMap(file: File): void;
+  onMakePoster(): void;
   onFieldPin(id: string, action: 'show' | 'add' | 'dismiss'): void;
   // Walks recorded on phones that haven't been added or dismissed yet.
   newFieldTracks: FieldTrack[];
@@ -432,6 +433,9 @@ export function Sidebar(props: SidebarProps) {
               </button>
               <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
                 Import a map file
+              </button>
+              <button onClick={props.onMakePoster} title="Print the map big: pick a paper size, frame it, move labels, and save a full-size image for a print shop">
+                Make a poster
               </button>
             </div>
             <p className="share-hint">To share one property, open it and press Share.</p>

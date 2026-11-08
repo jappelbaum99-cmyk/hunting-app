@@ -11,7 +11,7 @@ import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
 import { findSnap, type Snap } from '@/lib/snap';
-import { areaTypeInfo, LABEL_KINDS, markerStyle, propertyColor } from '@/lib/styles';
+import { areaTypeInfo, dashFor, LABEL_KINDS, markerStyle, outlineLook, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
   contourTiles,
@@ -40,6 +40,8 @@ export interface MapViewHandle {
   // rightInset: width of whatever panel covers the right side of the map.
   fitTo(geometry: AreaGeometry, rightInset?: number): void;
   flyTo(lng: number, lat: number): void;
+  // What's on screen now, [w, s, e, n].
+  getBounds(): [number, number, number, number] | null;
 }
 
 export type MapInteraction = 'browse' | 'place' | 'draw' | 'align' | 'edit';
@@ -618,6 +620,10 @@ export function MapView(props: MapViewProps) {
       const offset: [number, number] = [(SIDEBAR_INSET - DETAIL_PANEL_INSET) / 2, 0];
       map?.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16), offset, duration: 800 });
     },
+    getBounds() {
+      const b = mapRef.current?.getBounds();
+      return b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : null;
+    },
   }));
 
   // Create the map once.
@@ -740,7 +746,7 @@ export function MapView(props: MapViewProps) {
     const show = (id: string, visible: boolean) => map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     show(LAYER_IDS.satellite, layers.base === 'satellite');
     show(LAYER_IDS.aerial, layers.base === 'satellite');
-    show(LAYER_IDS.aerialMo, layers.base === 'satellite');
+    show(LAYER_IDS.aerialMo, layers.base === 'satellite' && settings.aerialPhotos !== 'leafOn');
     show(LAYER_IDS.topo, layers.base === 'topo');
     show(LAYER_IDS.lidar, layers.base === 'lidar');
     show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0);
@@ -769,7 +775,7 @@ export function MapView(props: MapViewProps) {
     }
     // Contours come back as black lines; lighten them over satellite imagery.
     map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', layers.base === 'satellite' ? 0.85 : 0);
-  }, [layers, readyTick]);
+  }, [layers, settings.aerialPhotos, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property and area shapes.
   const selectedId = selection?.id ?? null;
@@ -826,6 +832,26 @@ export function MapView(props: MapViewProps) {
       return el;
     }, { anchor: 'center' });
   }, [properties, areas, sections, trails, fieldTracks, selectedId, props.joiningTrailId, settings, readyTick]);
+
+  // Property and section borders and shading, as set in Settings.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const prop = outlineLook('property', settings);
+    const sec = outlineLook('section', settings);
+    const cap = (pattern: string) => (pattern === 'dotted' ? 'round' : 'butt');
+    map.setPaintProperty('property-fill', 'fill-opacity', ['case', ['get', 'selected'], Math.min(1, prop.fillOpacity * 2 + 0.02), prop.fillOpacity]);
+    map.setPaintProperty('property-line', 'line-width', ['case', ['get', 'selected'], prop.width + 1, prop.width]);
+    map.setPaintProperty('property-line', 'line-dasharray', dashFor(prop.pattern, 'property'));
+    map.setLayoutProperty('property-line', 'line-cap', cap(prop.pattern));
+    map.setPaintProperty('property-casing', 'line-width', prop.width + 2.5);
+    // A dark edge under a dashed or dotted line would fill in its gaps.
+    map.setPaintProperty('property-casing', 'line-opacity', prop.pattern === 'solid' ? 0.5 : 0);
+    map.setPaintProperty('section-fill', 'fill-opacity', ['case', ['get', 'selected'], Math.min(1, sec.fillOpacity * 2 + 0.06), sec.fillOpacity]);
+    map.setPaintProperty('section-line', 'line-width', ['case', ['get', 'selected'], sec.width + 1, sec.width]);
+    map.setPaintProperty('section-line', 'line-dasharray', dashFor(sec.pattern, 'section'));
+    map.setLayoutProperty('section-line', 'line-cap', cap(sec.pattern));
+  }, [settings.propertyLook, settings.sectionLook, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {
