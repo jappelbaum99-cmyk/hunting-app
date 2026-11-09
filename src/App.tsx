@@ -7,6 +7,9 @@ import { DrawBar, EditBar, LineEditBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LayerPanel } from '@/components/LayerPanel';
 import { PosterEditor } from '@/components/PosterEditor';
+import { SoilTestWindow, type SoilWindowPick } from '@/components/SoilTestWindow';
+import { fieldAroundSpots, sampleRuns } from '@/lib/soil';
+import booleanIntersects from '@turf/boolean-intersects';
 import { MapToolbar } from '@/components/MapToolbar';
 import { OfflineField } from '@/components/OfflineField';
 import { ReportPanel } from '@/components/ReportPanel';
@@ -28,6 +31,7 @@ import { useAutoOffline } from '@/map/useAutoOffline';
 import { imageFileName, loadImageBytes, readImageSize, saveImage } from '@/data/images';
 import { isDesktop } from '@/data/storage';
 import { useForecast } from '@/data/useForecast';
+import { camerasFor, daylightBucks, DEFAULT_RUT_PEAK, FORECAST_USES_LOCAL_DATA, scoreWindow, standOpportunity, summarizeCameras, type Opportunity, type WindowScore } from '@/lib/deerActivity';
 import { useImageUrls } from '@/data/useImageUrls';
 import { placeNotes } from '@/lib/actionBoard';
 import { countShared } from '@/lib/partnerSync';
@@ -140,6 +144,8 @@ export function App() {
   const isStandMarker = (m: MapMarker) => isHuntingSpot(m.type, hub.settings.customPinTypes);
   const mapRef = useRef<MapViewHandle>(null);
   const [layers, setLayers] = useState<MapLayersState>(DEFAULT_LAYERS);
+  // The Soil Tests window is open, showing this test first (or its own pick).
+  const [soilWindow, setSoilWindow] = useState<{ initial: SoilWindowPick | null } | null>(null);
   // The poster editor is open, framed on what the map showed when it opened.
   const [posterBounds, setPosterBounds] = useState<[number, number, number, number] | null>(null);
   // The editor saves its layout as it goes; this keeps the rest of the settings current.
@@ -203,6 +209,11 @@ export function App() {
   const [forecastState, refreshForecast] = useForecast(
     forecastLocation(forecastProperty, hub.properties, hub.markers),
     forecastOpen,
+  );
+  // Trail camera deer visits for the activity score, recounted when photos, pins or the property change.
+  const cameraSummary = useMemo(
+    () => summarizeCameras(hub.photos, camerasFor(hub.markers, forecastPropertyId), Date.now()),
+    [hub.photos, hub.markers, forecastPropertyId],
   );
 
   useEffect(() => {
@@ -852,6 +863,52 @@ export function App() {
     }
   };
 
+  // Soil sample pins from the phone go straight on the map (there can be a dozen
+  // for one field), numbered on from the ones already there.
+  useEffect(() => {
+    const incoming = hub.fieldPins.filter((p) => p.status === 'new' && (p.type === 'soil_sample' || p.soil) && !p.deletedAt);
+    if (!incoming.length) return;
+    const used = new Set(hub.markers.map((m) => m.name));
+    const label = pinTypeInfo('soil_sample').label;
+    let n = 1;
+    const markers: MapMarker[] = [];
+    const pins: FieldPin[] = [];
+    // A field picked on the phone's Soil tab names the cores after it: "Back Field core 3".
+    const nameFor = (pin: FieldPin) => {
+      if (pin.soil) {
+        const test = pin.soil.fieldName ?? `Soil test ${new Date(pin.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        let name = `${test} core ${pin.soil.sample}`;
+        for (let k = 2; used.has(name); k++) name = `${test} core ${pin.soil.sample} (${k})`;
+        return name;
+      }
+      while (used.has(`${label} ${n}`)) n += 1;
+      return `${label} ${n}`;
+    };
+    for (const pin of [...incoming].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      const name = nameFor(pin);
+      used.add(name);
+      const area = pin.soil?.areaId ? hub.areas.find((a) => a.id === pin.soil!.areaId) : undefined;
+      const marker: MapMarker = {
+        ...newRecordFields(),
+        propertyId: propertyContaining(hub.properties, [pin.lng, pin.lat])?.id ?? null,
+        type: 'soil_sample',
+        name,
+        sampleOf: area?.id ?? null,
+        soilRun: pin.soil ? { id: pin.soil.runId, fieldName: pin.soil.fieldName } : null,
+        lng: pin.lng,
+        lat: pin.lat,
+        notes: pin.note,
+        goodWinds: [],
+        // When it was taken, so a soil test can pick up the samples for its date.
+        createdAt: pin.createdAt,
+      };
+      markers.push(marker);
+      pins.push({ ...pin, status: 'added', markerId: marker.id, updatedAt: new Date().toISOString() });
+    }
+    hub.mergeRecords({ markers, fieldPins: pins });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub.fieldPins]);
+
   const handleFieldPin = (id: string, action: 'show' | 'add' | 'dismiss') => {
     const pin = hub.fieldPins.find((p) => p.id === id);
     if (!pin) return;
@@ -1156,6 +1213,20 @@ export function App() {
     ...(selectedStand && ratingHour ? rateStands([selectedStand], ratingHour, sensitiveAreas) : []),
   ].filter((r, i, all) => all.findIndex((o) => o.stand.id === r.stand.id) === i);
 
+  // Deer activity for each morning and evening sit, and how huntable each stand is in the picked one.
+  const forecastSits = forecast ? sitsFor(forecast, now) : [];
+  const activity: Record<string, WindowScore> = {};
+  if (forecast && forecastOpen) {
+    const reports = hub.reports.filter((r) => !forecastPropertyId || r.propertyId === forecastPropertyId);
+    const input = { forecast, sits: forecastSits, cameras: cameraSummary, reports, rutPeak: hub.settings.rutPeak ?? DEFAULT_RUT_PEAK, now, useLocal: FORECAST_USES_LOCAL_DATA };
+    for (const sit of forecastSits) if (sit.id !== 'now') activity[sit.id] = scoreWindow(input, sit);
+  }
+  const pickedSit = forecastSits.find((s) => s.id === forecastSitId);
+  const opportunities: Record<string, Opportunity> = {};
+  if (forecast && pickedSit && activity[pickedSit.id]) {
+    for (const r of ratedStands) opportunities[r.stand.id] = standOpportunity(activity[pickedSit.id], r, forecast, pickedSit);
+  }
+
   let forecastTeaser = 'Wind and stand picks';
   if (forecastState.status === 'loading') forecastTeaser = 'Getting the wind…';
   if (forecast) {
@@ -1189,6 +1260,17 @@ export function App() {
   // The Action Board card's one-liner.
   const boardCount = (status: ActionItem['status']) => hub.actionItems.filter((i) => i.status === status).length;
   const boardTeaser = hub.actionItems.length === boardCount('done') ? 'Ideas and work to do' : `${boardCount('planned')} to do · ${boardCount('idea')} idea${boardCount('idea') === 1 ? '' : 's'}`;
+
+  // A To do card on the Action Board, e.g. a soil test's lime and fertilizer.
+  const addWorkCard = (text: string, propertyId: string | null) =>
+    hub.saveActionItem({ ...newRecordFields(), kind: 'work', text, status: 'planned', lat: null, lng: null, loggedBy: hub.settings.camp?.hunter ?? null, propertyId, source: 'hub', markerId: null });
+
+  // The Soil Tests card's one-liner.
+  const soilRuns = sampleRuns(hub.markers, hub.areas);
+  const soilWaiting = soilRuns.filter((r) => !r.test).length;
+  const soilDone = hub.areas.reduce((n, a) => n + (a.soilTests ?? []).filter((t) => !t.deletedAt).length, 0);
+  const soilTeaser =
+    soilWaiting + soilDone === 0 ? 'Start one on the phone, or add results' : [soilWaiting ? `${soilWaiting} waiting for results` : null, soilDone ? `${soilDone} with results` : null].filter(Boolean).join(' · ');
 
   // The Schedules card's one-liner.
   const schedulePlaces: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
@@ -1260,7 +1342,12 @@ export function App() {
       state={forecastState}
       properties={hub.properties}
       propertyId={forecastPropertyId}
-      sits={forecast ? sitsFor(forecast, now) : []}
+      sits={forecastSits}
+      activity={activity}
+      opportunities={opportunities}
+      evidence={forecast && FORECAST_USES_LOCAL_DATA ? { daylightBucks: daylightBucks(cameraSummary, forecast, now), newest: cameraSummary.newest, taggedOnly: cameraSummary.taggedOnly } : null}
+      rutPeak={hub.settings.rutPeak}
+      onRutPeakChange={(rutPeak) => hub.saveSettings({ ...hub.settings, rutPeak })}
       sitId={forecastSitId}
       selectedTime={forecastTime ?? now}
       ratedStands={ratedStands}
@@ -1535,6 +1622,11 @@ export function App() {
           setSchedulesOpen(false);
           setBoardOpen(true);
         }}
+        soilTeaser={soilTeaser}
+        onOpenSoilTests={() => {
+          if (mode.kind === 'align') return;
+          setSoilWindow({ initial: null });
+        }}
         schedulesTeaser={schedulesTeaser}
         onOpenSchedules={() => {
           if (mode.kind === 'align') return;
@@ -1618,6 +1710,29 @@ export function App() {
           />
         )}
         <LayerPanel layers={layers} onChange={setLayers} settings={hub.settings} onChangeSettings={hub.saveSettings} />
+        {soilWindow && (
+          <SoilTestWindow
+            areas={hub.areas}
+            markers={hub.markers}
+            initial={soilWindow.initial}
+            onSaveArea={hub.saveArea}
+            onAddField={(spots, name) => {
+              const geometry = fieldAroundSpots(spots);
+              const center: [number, number] = [spots.reduce((t, s) => t + s.lng, 0) / spots.length, spots.reduce((t, s) => t + s.lat, 0) / spots.length];
+              const area: MapArea = { ...newRecordFields(), propertyId: propertyContaining(hub.properties, center)?.id ?? null, type: 'food_plot', name, geometry, notes: null };
+              hub.saveArea(area);
+              return area;
+            }}
+            onSaveMarkers={(markers) => markers.length && hub.mergeRecords({ markers })}
+            onAddTask={(text) => addWorkCard(text, null)}
+            onShowOnMap={(geometry, spots) => {
+              setSoilWindow(null);
+              const shape = geometry ?? (spots.length ? fieldAroundSpots(spots) : null);
+              if (shape) mapRef.current?.fitTo(shape, 0);
+            }}
+            onClose={() => setSoilWindow(null)}
+          />
+        )}
         {posterBounds && (
           <PosterEditor
             data={posterData}
@@ -1889,9 +2004,9 @@ export function App() {
           areaTypes={areaTypeList(hub.settings)}
           propertyName={propertyName(record.propertyId)}
           onChange={hub.saveArea}
-          onAddTask={(text) =>
-            hub.saveActionItem({ ...newRecordFields(), kind: 'work', text, status: 'planned', lat: null, lng: null, loggedBy: hub.settings.camp?.hunter ?? null, propertyId: record.propertyId, source: 'hub', markerId: null })
-          }
+          soilSamples={hub.markers.filter((m) => m.type === 'soil_sample' && (m.sampleOf === record.id || (!m.sampleOf && booleanIntersects({ type: 'Point', coordinates: [m.lng, m.lat] }, record.geometry))))}
+          onAddTask={(text) => addWorkCard(text, record.propertyId)}
+          onOpenSoilTests={(testId) => setSoilWindow({ initial: testId ? { kind: 'test', areaId: record.id, testId } : null })}
           onDelete={() => {
             hub.deleteArea(record.id);
             setSelection(null);

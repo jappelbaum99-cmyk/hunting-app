@@ -1229,7 +1229,14 @@ input[type='checkbox'] {
   font-weight: 700;
 }
 
+/* The one-liner under a card's title wraps rather than running past the card. */
+.forecast-card-text .row-detail {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chevron {
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
@@ -4655,4 +4662,544 @@ body.resizing {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Hunt Forecast: the next three days as calendar pages, AM and PM in each */
+.day-pick {
+  display: grid;
+  gap: 8px;
+}
+
+.now-chip {
+  justify-self: start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.now-chip.active {
+  background: var(--accent);
+  color: #1c130d;
+  font-weight: 700;
+}
+
+/* Fixed-size pages in a row that scrolls sideways when they don't all fit. */
+.day-cards {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.day-card {
+  flex: 0 0 104px;
+  width: 104px;
+  scroll-snap-align: start;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--fill);
+  border: 1.5px solid transparent;
+}
+
+.day-card.active {
+  border-color: var(--accent);
+}
+
+.day-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.day-card-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.day-card-date {
+  display: grid;
+  justify-items: end;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.day-card-date small {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.day-card-best {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.day-card-best small {
+  margin-left: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.day-half {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  border-left: 3px solid transparent;
+}
+
+.day-half strong {
+  font-size: 14px;
+}
+
+.day-half:disabled {
+  opacity: 0.4;
+}
+
+.day-half.active {
+  background: var(--accent);
+  color: #1c130d;
+}
+
+.day-half.score-low {
+  border-left-color: #8e8e93;
+}
+.day-half.score-mid {
+  border-left-color: #d9b44a;
+}
+.day-half.score-high {
+  border-left-color: #7bd34f;
+}
+.day-half.score-vhigh {
+  border-left-color: #34c759;
+}
+
+/* The picked sit's deer activity */
+.activity-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--fill);
+  --tone: #d9b44a;
+}
+
+.activity-card.score-low {
+  --tone: #8e8e93;
+}
+.activity-card.score-high {
+  --tone: #7bd34f;
+}
+.activity-card.score-vhigh {
+  --tone: #34c759;
+}
+
+.activity-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activity-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.activity-score {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--tone);
+}
+
+.activity-score small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.activity-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.activity-bar span {
+  display: block;
+  height: 100%;
+  background: var(--tone);
+}
+
+.confidence {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.confidence-high {
+  color: #7bd34f;
+}
+.confidence-medium {
+  color: #d9b44a;
+}
+.confidence-low {
+  color: #f08a80;
+}
+
+.drivers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.drivers li {
+  padding-left: 16px;
+  position: relative;
+}
+
+.drivers li::before {
+  position: absolute;
+  left: 0;
+  font-weight: 800;
+}
+
+.drivers.up li::before {
+  content: '+';
+  color: #7bd34f;
+}
+
+.drivers.down li::before {
+  content: '−';
+  color: #f08a80;
+}
+
+.drivers strong {
+  margin-right: 4px;
+}
+
+.activity-why {
+  display: grid;
+  gap: 6px;
+}
+
+.rut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.activity-note {
+  margin: 0;
+}
+
+/* A stand's Hunting Opportunity score */
+.opportunity {
+  flex-shrink: 0;
+  align-self: center;
+  min-width: 30px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.opportunity.score-low {
+  color: #f08a80;
+}
+.opportunity.score-mid {
+  color: #d9b44a;
+}
+.opportunity.score-high {
+  color: #7bd34f;
+}
+.opportunity.score-vhigh {
+  color: #34c759;
+}
+
+/* Poster: pin type groups and the logo */
+.poster-groups {
+  margin-bottom: 4px;
+  background: rgba(240, 138, 36, 0.08);
+}
+
+.poster-group-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+}
+
+.poster-logo {
+  display: grid;
+  gap: 6px;
+}
+
+.poster-logo-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Soil sample pins waiting for their test's results */
+.soil-samples-waiting {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(160, 103, 58, 0.18);
+  font-size: 12.5px;
+}
+
+/* Soil Tests window: tests on the left, the picked one on the right */
+.soil-window-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 6, 4, 0.6);
+}
+
+.soil-window {
+  width: min(1100px, 100%);
+  height: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-panel);
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.soil-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.soil-window-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.soil-window-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 270px 1fr;
+}
+
+.soil-window-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.soil-list-head {
+  margin: 8px 4px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.soil-list-row {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 10px;
+  background: var(--fill);
+  border: 1.5px solid transparent;
+}
+
+.soil-list-row.active,
+.soil-list-new.active {
+  border-color: var(--accent);
+}
+
+.soil-badge {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(240, 138, 36, 0.2);
+  color: var(--accent);
+}
+
+.soil-list-new {
+  margin-top: 10px;
+  font-size: 13px;
+  border: 1.5px solid transparent;
+}
+
+.soil-window-main {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.soil-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.soil-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.soil-detail-head h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.soil-detail-head p {
+  margin: 2px 0 0;
+}
+
+.soil-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.soil-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  counter-reset: step;
+}
+
+.soil-steps > li {
+  counter-increment: step;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 14px 44px;
+  border-radius: 14px;
+  background: var(--fill);
+  position: relative;
+}
+
+.soil-steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.soil-steps > li.done::before {
+  content: '✓';
+  background: #4c9a4e;
+  color: #fff;
+}
+
+.soil-steps > li.now::before {
+  background: var(--accent);
+  color: #1c130d;
+}
+
+.soil-step-body {
+  display: grid;
+  gap: 10px;
+}
+
+.soil-field-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.soil-field-pick select {
+  flex: 1;
+  min-width: 180px;
+}
+
+.soil-drawing {
+  width: 100%;
+  max-width: 340px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.soil-drawing-field {
+  fill: rgba(123, 211, 79, 0.18);
+  stroke: #7bd34f;
+  stroke-width: 2;
+}
+
+.soil-drawing-spot {
+  fill: #a0673a;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.soil-drawing-num {
+  font-size: 9px;
+  font-weight: 800;
+  fill: #fff;
+}
+
+.soil-history li.current .row-title {
+  color: var(--accent);
+}
+
+.soil-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }

@@ -39,6 +39,7 @@ export type BuiltInMarkerType =
   | 'trail'
   | 'water'
   | 'parking'
+  | 'soil_sample'
   | 'other';
 // A built-in pin type, or the id of a custom type added in Settings.
 export type MarkerType = BuiltInMarkerType | (string & {});
@@ -65,6 +66,10 @@ export interface MapMarker extends Syncable {
   goodWinds: CompassPoint[];
   // Overrides the category color from Settings.
   color?: string | null;
+  // Soil sample pins: the field (area) it was taken in, once known.
+  sampleOf?: string | null;
+  // Soil sample pins from a phone's soil test: which test (all its cores share it) and the field name typed there.
+  soilRun?: { id: string; fieldName: string | null } | null;
 }
 
 export type MarkerShape = 'circle' | 'square' | 'diamond' | 'triangle' | 'pin';
@@ -121,6 +126,10 @@ export interface HubSettings {
   camp?: CampLink | null;
   // Folder where trail camera photos are kept (desktop app).
   photoLibrary?: string | null;
+  // Pin types left off the map, like 'camera' or 'rub'.
+  hiddenPinTypes?: string[];
+  // The local rut's peak breeding date, 'MM-DD', for the deer activity score (Missouri: about Nov 15).
+  rutPeak?: string;
   // Close-up satellite photos: Missouri's leaf-off winter ones where saved (the
   // default), or the leaf-on summer NAIP ones everywhere.
   aerialPhotos?: 'leafOff' | 'leafOn';
@@ -158,6 +167,11 @@ export interface PosterSettings {
   lineScales?: Partial<Record<'property' | 'section' | 'area' | 'trail', number>>;
   // Single properties, areas, pins, trails or sections left off this poster.
   hiddenIds?: string[];
+  // Pin types left off, like 'camera' or 'rub'.
+  hiddenPinTypes?: string[];
+  // Your own logo on the poster: the saved image file (like a map image), which
+  // corner, and how wide in inches.
+  logo?: { file: string; corner: 'tl' | 'tr' | 'bl' | 'br'; widthIn: number } | null;
   title: string;
   subtitle: string;
   northArrow: boolean;
@@ -247,6 +261,8 @@ export interface SoilTest {
   kLbs: number | null;
   // The bagged blend picked to cover them, e.g. 13-13-13.
   blend?: string | null;
+  // The Soil sample pins this test was taken from (dropped on the phone or the map).
+  sampleIds?: string[];
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -501,6 +517,9 @@ export interface FieldPin extends Syncable {
   // Set when this is a new spot for a stand that was moved (the stand's id),
   // rather than a new pin. The hub asks before moving the stand.
   moveStandId?: string | null;
+  // A core from a soil sampling run on the phone's Soil tab: which run and field, and its number.
+  // fieldName is null when the test was started without a field.
+  soil?: { runId: string; areaId: string | null; fieldName: string | null; sample: number } | null;
 }
 
 export type TrailKind = 'deer' | 'path' | 'road' | 'fence' | 'other';

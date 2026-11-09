@@ -22,6 +22,7 @@ export const MARKER_TYPES: Record<BuiltInMarkerType, TypeInfo> = {
   trail: { label: 'Trail', color: '#d4b04a' },
   water: { label: 'Water', color: '#2e86de' },
   parking: { label: 'Parking', color: '#7f8c8d' },
+  soil_sample: { label: 'Soil sample', color: '#a0673a' },
   other: { label: 'Other', color: '#ecf0f1' },
 };
 

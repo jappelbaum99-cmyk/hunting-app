@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { MapLabelToggles } from '@/components/MapLabelToggles';
+import { pinTypeList } from '@/lib/featureTypes';
 import type { HubSettings } from '@/types/models';
 
 import {
@@ -167,6 +168,31 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
             <input type="checkbox" checked={layers.huntSpots} onChange={(e) => set({ huntSpots: e.target.checked })} />
             <span>New spots hunted (not stands)</span>
           </label>
+
+          <details className="layer-labels">
+            <summary>Pins on the map</summary>
+            <div className="label-toggles">
+              <div className="label-toggle-actions">
+                <button onClick={() => onChangeSettings({ ...settings, hiddenPinTypes: [] })}>Show all</button>
+              </div>
+              {pinTypeList(settings.customPinTypes).map((t) => (
+                <label className="check" key={t.id}>
+                  <input
+                    type="checkbox"
+                    checked={!(settings.hiddenPinTypes ?? []).includes(t.id)}
+                    onChange={(e) =>
+                      onChangeSettings({
+                        ...settings,
+                        hiddenPinTypes: e.target.checked ? (settings.hiddenPinTypes ?? []).filter((x) => x !== t.id) : [...(settings.hiddenPinTypes ?? []), t.id],
+                      })
+                    }
+                  />
+                  <span>{t.label}</span>
+                </label>
+              ))}
+              <p className="hint">Turn a whole group off, like trail cameras or rubs. A selected pin still shows.</p>
+            </div>
+          </details>
 
           <details className="layer-labels">
             <summary>Map labels</summary>

@@ -19,7 +19,7 @@ export function useForecast(location: [number, number], active: boolean): [Forec
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: 'loading' });
-    fetchForecast(lat, lng, controller.signal)
+    fetchForecast(lat, lng, controller.signal, undefined, 3)
       .then((forecast) => {
         fetchedAt.current = forecast.fetchedAt;
         setState({ status: 'ready', forecast });

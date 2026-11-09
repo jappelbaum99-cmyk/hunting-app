@@ -102,13 +102,23 @@ export interface Sit {
 
 const HOUR = 3600_000;
 
+// Which of the forecast's days is today: the one whose night-to-night span holds `now`.
+export function todayIndex(forecast: Forecast, now: number): number {
+  const i = forecast.days.findIndex((d) => now < d.sunrise + 17 * HOUR);
+  return i < 0 ? forecast.days.length - 1 : i;
+}
+
 // Morning and evening sits for the forecast days, plus "Now".
 // Morning: an hour before sunrise to 3 hours after, peaking at sunrise.
 // Evening: 3 hours before sunset to 30 minutes after, peaking 1 hour before sunset.
 export function sitsFor(forecast: Forecast, now: number): Sit[] {
   const sits: Sit[] = [{ id: 'now', label: 'Now', start: now, end: now + 4 * HOUR, peak: now }];
   const lastHour = forecast.hours[forecast.hours.length - 1]?.time ?? now;
-  forecast.days.forEach((day, i) => {
+  // The forecast can start a few days back; count from the day we're in.
+  const today = todayIndex(forecast, now);
+  forecast.days.forEach((day, index) => {
+    const i = index - today;
+    if (i < 0) return;
     const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(day.sunrise).toLocaleDateString(undefined, { weekday: 'long' });
     const morning: Sit = {
       id: `${day.date}-am`,

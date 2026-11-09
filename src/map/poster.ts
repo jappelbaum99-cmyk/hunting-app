@@ -314,9 +314,17 @@ export interface PosterData {
 // Leaves out the single things turned off for this poster.
 export function shownData(data: PosterData, p: PosterSettings): PosterData {
   const hidden = new Set(p.hiddenIds ?? []);
-  if (!hidden.size) return data;
+  const hiddenTypes = new Set(p.hiddenPinTypes ?? []);
+  if (!hidden.size && !hiddenTypes.size) return data;
   const keep = <T extends { id: string }>(list: T[]) => list.filter((r) => !hidden.has(r.id));
-  return { ...data, properties: keep(data.properties), sections: keep(data.sections), areas: keep(data.areas), trails: keep(data.trails), markers: keep(data.markers) };
+  return {
+    ...data,
+    properties: keep(data.properties),
+    sections: keep(data.sections),
+    areas: keep(data.areas),
+    trails: keep(data.trails),
+    markers: keep(data.markers).filter((m) => !hiddenTypes.has(m.type)),
+  };
 }
 
 // Size of a map pixel on the poster, in canvas pixels.
@@ -672,7 +680,7 @@ function niceScale(maxFeet: number): { feet: number; label: string } {
   return { feet: pick, label: `${pick.toLocaleString()} ft` };
 }
 
-function drawFurniture(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Frame, sources: string): void {
+function drawFurniture(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Frame, sources: string, logoHeight = 0): void {
   const inch = f.pxPerInch;
   const short = Math.min(f.width, f.height) / inch;
   const margin = 0.5 * inch;
@@ -694,11 +702,13 @@ function drawFurniture(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Fram
     const h = pad * 2 + (p.title.trim() ? titleSize : 0) + (p.subtitle.trim() ? subSize * 1.5 : 0);
     ctx.fillStyle = 'rgba(28, 19, 13, 0.82)';
     ctx.beginPath();
-    ctx.roundRect(margin, margin, w, h, pad * 0.6);
+    // Under the logo when it's in the same corner.
+    const top = p.logo?.corner === 'tl' && logoHeight ? margin + logoHeight + margin * 0.5 : margin;
+    ctx.roundRect(margin, top, w, h, pad * 0.6);
     ctx.fill();
     ctx.fillStyle = '#f08a24';
-    ctx.fillRect(margin, margin + h - pad * 0.18, w, pad * 0.18);
-    let y = margin + pad;
+    ctx.fillRect(margin, top + h - pad * 0.18, w, pad * 0.18);
+    let y = top + pad;
     ctx.textBaseline = 'top';
     if (p.title.trim()) {
       ctx.font = `600 ${titleSize}px ${wordmark}`;
@@ -727,7 +737,7 @@ function drawFurniture(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Fram
     const w = pad * 2 + (p.scaleBar ? barW : 0) + (p.northArrow && p.scaleBar ? pad * 1.5 : 0) + arrowW;
     const h = pad * 2 + size * 1.6;
     const x0 = f.width - margin - w;
-    const y0 = f.height - margin - h;
+    const y0 = f.height - margin - h - (p.logo?.corner === 'br' && logoHeight ? logoHeight + margin * 0.5 : 0);
     ctx.save();
     ctx.fillStyle = 'rgba(28, 19, 13, 0.82)';
     ctx.beginPath();
@@ -804,6 +814,21 @@ export function sourcesText(p: PosterSettings, f: Frame, printMpp = f.mpp): stri
   return `${parts.join(' · ')} · Made with Fenceline`;
 }
 
+// The logo in its corner, clear of the title (top left) and scale box (bottom right).
+function drawLogo(ctx: CanvasRenderingContext2D, logo: NonNullable<PosterSettings['logo']>, image: HTMLImageElement, f: Frame): void {
+  const margin = 0.5 * f.pxPerInch;
+  const w = Math.min(logo.widthIn * f.pxPerInch, f.width * 0.6);
+  const h = (w * image.naturalHeight) / Math.max(1, image.naturalWidth);
+  const x = logo.corner === 'tl' || logo.corner === 'bl' ? margin : f.width - margin - w;
+  const y = logo.corner === 'tl' || logo.corner === 'tr' ? margin : f.height - margin - h;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 0.06 * f.pxPerInch;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, x, y, w, h);
+  ctx.restore();
+}
+
 // ---------- Whole poster ----------
 
 export interface RenderOptions {
@@ -814,6 +839,8 @@ export interface RenderOptions {
   onProgress?: (progress: RenderProgress) => void;
   // The printed poster's mercator meters per pixel, when drawing a preview of it.
   printMpp?: number;
+  // The poster's logo, loaded.
+  logo?: HTMLImageElement | null;
 }
 
 // Draws the poster onto the canvas, which must already be frame-sized. Returns tiles that failed.
@@ -824,7 +851,9 @@ export async function renderPoster(canvas: HTMLCanvasElement, p: PosterSettings,
   drawShapes(ctx, p, f, data);
   drawPins(ctx, p, f, data);
   if (options.labels) await drawLabels(ctx, p, f, posterLabels(data, p));
-  drawFurniture(ctx, p, f, sourcesText(p, f, printMpp));
+  const logoHeight = p.logo && options.logo ? (Math.min(p.logo.widthIn * f.pxPerInch, f.width * 0.6) * options.logo.naturalHeight) / Math.max(1, options.logo.naturalWidth) : 0;
+  drawFurniture(ctx, p, f, sourcesText(p, f, printMpp), logoHeight);
+  if (p.logo && options.logo) drawLogo(ctx, p.logo, options.logo, f);
   return result;
 }
 

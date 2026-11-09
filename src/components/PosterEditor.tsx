@@ -2,9 +2,12 @@ import type { Position } from 'geojson';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import { Icon } from '@/components/Icon';
+import { pinTypeInfo } from '@/lib/featureTypes';
 import { boundsOf } from '@/lib/geo';
+import { categoryStyle } from '@/lib/styles';
 import { iconSvg } from '@/lib/icons';
 import { trailParts } from '@/lib/trails';
+import { IMAGE_ACCEPT, imageFileName, imageUrl, saveImage } from '@/data/images';
 import { CONTOUR_OPTIONS, LIDAR_STYLES } from '@/map/layers';
 import {
   countTiles,
@@ -69,7 +72,7 @@ interface Props {
 // scrolling, move or hide labels, then save it at full size.
 export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Props) {
   const [p, setP] = useState<PosterSettings>(() => {
-    const base = { ...DEFAULT_POSTER, photos: data.settings.aerialPhotos ?? 'leafOff', ...initial, show: { ...DEFAULT_POSTER.show, ...initial?.show }, labels: { ...DEFAULT_POSTER.labels, ...initial?.labels } };
+    const base = { ...DEFAULT_POSTER, photos: data.settings.aerialPhotos ?? 'leafOff', hiddenPinTypes: data.settings.hiddenPinTypes ?? [], ...initial, show: { ...DEFAULT_POSTER.show, ...initial?.show }, labels: { ...DEFAULT_POSTER.labels, ...initial?.labels } };
     if (base.center && base.metersPerInch) return base;
     const bounds = startBounds ?? [-91.54, 37.64, -91.53, 37.65];
     return { ...base, ...fitFrame(bounds, paperSize(base)) };
@@ -87,6 +90,33 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
   }, [p, onSave]);
 
   const set = (patch: Partial<PosterSettings>) => setP((prev) => ({ ...prev, ...patch }));
+
+  // ----- Logo -----
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
+  const logoFile = p.logo?.file ?? null;
+  useEffect(() => {
+    if (!logoFile) {
+      setLogoImage(null);
+      return;
+    }
+    let live = true;
+    imageUrl(logoFile)
+      .then(
+        (url) =>
+          new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+          }),
+      )
+      .then((img) => live && setLogoImage(img))
+      .catch(() => live && setLogoImage(null));
+    return () => {
+      live = false;
+    };
+  }, [logoFile]);
 
   // ----- Preview size -----
   const stageRef = useRef<HTMLDivElement>(null);
@@ -131,6 +161,7 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
           // Pick photos by what the print needs, so the preview shows the same ones.
           printMpp: frameFor(center, metersPerInch, paper, p.dpi).mpp,
           onProgress: ({ done, total }) => setLoading({ done, total }),
+          logo: logoImage,
         });
         const shown = canvasRef.current;
         if (!shown) return;
@@ -154,7 +185,7 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
     };
     // Redraw when the frame or the look changes; labels are drawn separately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewKey, lookKey, data]);
+  }, [viewKey, lookKey, data, logoImage]);
 
   const canvasTransform = drawn
     ? `translate(${(drawn.minX - view.minX) / view.mpp}px, ${(view.maxY - drawn.maxY) / view.mpp}px) scale(${drawn.mpp / view.mpp})`
@@ -218,6 +249,22 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
     Math.max(...points.map((q) => q[0])),
     Math.max(...points.map((q) => q[1])),
   ];
+  // Pins by type (trail cameras, rubs, stands...), for turning a whole group off.
+  const hiddenTypes = new Set(p.hiddenPinTypes ?? []);
+  const togglePinType = (type: string, on: boolean) =>
+    set({ hiddenPinTypes: on ? (p.hiddenPinTypes ?? []).filter((x) => x !== type) : [...(p.hiddenPinTypes ?? []), type] });
+  const pinTypeOf = new Map(data.markers.map((m) => [m.id, m.type as string]));
+  const pinGroups = Object.values(
+    data.markers
+      .filter((m) => inView([m.lng, m.lat, m.lng, m.lat]))
+      .reduce<Record<string, { type: string; label: string; color: string; count: number }>>((groups, m) => {
+        const info = pinTypeInfo(m.type, data.settings.customPinTypes);
+        groups[m.type] ??= { type: m.type, label: info.label, color: categoryStyle(m.type, data.settings).color, count: 0 };
+        groups[m.type].count += 1;
+        return groups;
+      }, {}),
+  ).sort((a, b) => a.label.localeCompare(b.label));
+
   const itemsInView = (kind: keyof PosterSettings['show']): { id: string; name: string }[] => {
     const list =
       kind === 'properties'
@@ -270,6 +317,7 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
         labels: true,
         sharp: true,
         signal: abort.signal,
+        logo: logoImage,
         onProgress: ({ done, total }) => setSaving({ text: `Loading map tiles: ${done.toLocaleString()} of ${total.toLocaleString()}`, abort }),
       });
       if (failed && !window.confirm(`${failed} map tile${failed === 1 ? '' : 's'} didn't load (the USGS server is busy), so ${failed === 1 ? 'a patch' : 'patches'} of the map will be blank. Save anyway? Press Cancel to try again in a minute; the tiles that did load are kept.`)) return;
@@ -538,15 +586,29 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
                   </label>
                   <span className="muted poster-kind-count">{items.length ? `${items.length - hiddenHere}/${items.length}` : 'none'}</span>
                 </summary>
+                {k.show === 'pins' && pinGroups.length > 0 && (
+                  <ul className="poster-items poster-groups">
+                    {pinGroups.map((g) => (
+                      <li key={g.type}>
+                        <label className="check" title="Every pin of this type">
+                          <input type="checkbox" disabled={!p.show.pins} checked={!hiddenTypes.has(g.type)} onChange={(e) => togglePinType(g.type, e.target.checked)} />
+                          <span className="poster-group-dot" style={{ background: g.color }} />
+                          <span className="poster-item-name">{g.label}</span>
+                        </label>
+                        <span className="muted">{g.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {items.length > 0 && (
                   <ul className="poster-items">
                     {items.map((item) => {
-                      const shown = !hiddenIds.has(item.id);
+                      const shown = !hiddenIds.has(item.id) && !(k.show === 'pins' && hiddenTypes.has(pinTypeOf.get(item.id) ?? ''));
                       const labelId = `${k.label}:${item.id}`;
                       return (
                         <li key={item.id}>
                           <label className="check" title="Draw it on the poster">
-                            <input type="checkbox" disabled={!p.show[k.show]} checked={shown} onChange={(e) => toggleItem(item.id, e.target.checked)} />
+                            <input type="checkbox" disabled={!p.show[k.show] || (k.show === 'pins' && hiddenTypes.has(pinTypeOf.get(item.id) ?? ''))} checked={shown} onChange={(e) => toggleItem(item.id, e.target.checked)} />
                             <span className="poster-item-name">{item.name || '(no name)'}</span>
                           </label>
                           <label className="check poster-item-label" title="Show its name">
@@ -593,7 +655,7 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
             </label>
           ))}
           <div className="poster-row">
-            {p.hiddenLabelIds.length + hiddenIds.size > 0 && <button onClick={() => set({ hiddenLabelIds: [], hiddenIds: [] })}>Show everything left off</button>}
+            {p.hiddenLabelIds.length + hiddenIds.size + hiddenTypes.size > 0 && <button onClick={() => set({ hiddenLabelIds: [], hiddenIds: [], hiddenPinTypes: [] })}>Show everything left off</button>}
             {Object.keys(p.labelAt).length > 0 && (
               <button
                 onClick={() => {
@@ -613,6 +675,45 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
           <div className="field-label">Title</div>
           <input type="text" placeholder="Title, e.g. Possum Trot" value={p.title} onChange={(e) => set({ title: e.target.value })} aria-label="Title" />
           <input type="text" placeholder="Second line, e.g. Shannon County, Missouri" value={p.subtitle} onChange={(e) => set({ subtitle: e.target.value })} aria-label="Second line" />
+          <div className="poster-logo">
+            <span className="field-label">Your logo</span>
+            {p.logo ? (
+              <>
+                <div className="poster-row">
+                  {logoImage && <img src={logoImage.src} alt="Your logo" className="poster-logo-thumb" />}
+                  <select value={p.logo.corner} onChange={(e) => set({ logo: { ...p.logo!, corner: e.target.value as 'tl' | 'tr' | 'bl' | 'br' } })} aria-label="Logo corner">
+                    <option value="tl">Top left</option>
+                    <option value="tr">Top right</option>
+                    <option value="bl">Bottom left</option>
+                    <option value="br">Bottom right</option>
+                  </select>
+                  <button onClick={() => set({ logo: null })}>Remove</button>
+                </div>
+                <label className="poster-slider">
+                  <span>Logo width {p.logo.widthIn.toFixed(1)} in</span>
+                  <input type="range" min={0.5} max={Math.max(2, Math.round(paper.w / 2))} step={0.25} value={p.logo.widthIn} onChange={(e) => set({ logo: { ...p.logo!, widthIn: Number(e.target.value) } })} />
+                </label>
+              </>
+            ) : (
+              <button onClick={() => logoInput.current?.click()} title="A PNG with a see-through background looks best">
+                Add a logo
+              </button>
+            )}
+            <input
+              ref={logoInput}
+              type="file"
+              accept={IMAGE_ACCEPT}
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                const fileName = imageFileName(`poster-logo-${crypto.randomUUID()}`, file.name);
+                await saveImage(fileName, file);
+                set({ logo: { file: fileName, corner: 'tr', widthIn: Math.max(1, Math.round(paper.w / 8)) } });
+              }}
+            />
+          </div>
           <label className="check">
             <input type="checkbox" checked={p.northArrow} onChange={(e) => set({ northArrow: e.target.checked })} />
             North arrow

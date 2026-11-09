@@ -20,6 +20,7 @@ import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
 import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
 import { NotesTab } from '@/field/NotesTab';
+import { SoilTab } from '@/field/SoilTab';
 import { useFieldWeather } from '@/field/useFieldWeather';
 import { SentBadge, SentTools, type SentStatus } from '@/field/SentTools';
 import { WalkCard } from '@/field/WalkCard';
@@ -32,6 +33,7 @@ import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntR
 
 type Tab = 'pin' | 'hunt' | 'stands' | 'notes' | 'send';
 
+// Soil samples have their own tab, so they aren't in this list.
 const PIN_TYPES: MarkerType[] = ['stand', 'blind', 'platform', 'camera', 'scrape', 'rub', 'trail', 'water', 'parking', 'other'];
 
 interface Fix {
@@ -147,6 +149,24 @@ export function FieldApp() {
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
 
+  const soilCard = (
+        <SoilTab
+          data={data}
+          fix={gps.fix}
+          gpsError={gps.error}
+          status={statusOf}
+          onStart={(soilRun) => setData((d) => ({ ...d, soilRun }))}
+          onSample={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))}
+          onUndo={(id) => setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== id) }))}
+          onFinish={() => {
+            const count = data.pins.filter((p) => p.soil?.runId === data.soilRun?.id).length;
+            setData((d) => ({ ...d, soilRun: null }));
+            if (count) setMessage(data.camp ? `${count} cores saved. They go to the hub as soon as you have signal; add the lab results there.` : `${count} cores saved. Send them to the hub from the Send tab.`);
+          }}
+          onMessage={setMessage}
+        />
+  );
+
   return (
     <div className="field-app">
       <header className="field-header">
@@ -159,6 +179,7 @@ export function FieldApp() {
 
       <main className="field-main">
         {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
+        {tab === 'pin' && data.soilRun && soilCard}
         {tab === 'pin' && (
           <WalkCard
             walk={data.activeWalk}
@@ -198,7 +219,8 @@ export function FieldApp() {
           onResend={() => resend(data.pins.map((p) => p.id))}
           onClear={() => setData((d) => ({ ...d, pins: d.pins.filter((p) => !d.handled[p.id]) }))}
           onRemove={(id) => setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== id) }))}
-          fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
+          fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins.filter((p) => !p.soil && p.type !== 'soil_sample')} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
+        {tab === 'pin' && !data.soilRun && soilCard}
         {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
           <HuntTab
@@ -261,7 +283,7 @@ export function FieldApp() {
       <nav className="field-tabs">
         {(
           [
-            ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : 'Pin'],
+            ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : data.soilRun ? 'Sampling' : 'Pin'],
             ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
             ['stands', 'stand', 'Stands'],
             ['notes', 'clipboard', 'Notes'],
@@ -301,7 +323,13 @@ function PinTab(props: {
           </button>
         ))}
       </div>
-      <input type="text" placeholder="Note (optional), e.g. big rub line" value={note} onChange={(e) => setNote(e.target.value)} />
+      <input
+        type="text"
+        placeholder="Note (optional), e.g. big rub line"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
       <button
         className="big-button"
         disabled={!fresh}

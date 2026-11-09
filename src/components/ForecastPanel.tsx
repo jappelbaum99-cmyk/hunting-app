@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Icon } from '@/components/Icon';
 
 import { AreaChart } from '@/components/AreaChart';
-import { compassPointOf, RATING_LABELS, type RatedStand, type Sit, type StandRating } from '@/lib/standRating';
+import { DEFAULT_RUT_PEAK, drivers, rutPhase, type Opportunity, type WindowScore } from '@/lib/deerActivity';
+import { compassPointOf, RATING_LABELS, todayIndex, type RatedStand, type Sit, type StandRating } from '@/lib/standRating';
 import { hourAt, hoursBetween, weatherAt, type Forecast, type ForecastHour, formatPressure, inHg, pressureAt } from '@/lib/weather';
 import type { Property } from '@/types/models';
 
@@ -34,6 +35,14 @@ interface ForecastPanelProps {
   onPickStand(id: string): void;
   onRefresh(): void;
   onClose(): void;
+  // Deer activity for each morning and evening sit, by sit id.
+  activity: Record<string, WindowScore>;
+  // Hunting Opportunity for each stand in the picked sit, by stand id.
+  opportunities: Record<string, Opportunity>;
+  // Camera evidence for the activity card.
+  evidence: { daylightBucks: number; newest: number | null; taggedOnly: boolean } | null;
+  rutPeak: string | undefined;
+  onRutPeakChange(peak: string): void;
 }
 
 const HOURS_SHOWN = 36;
@@ -117,13 +126,11 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
 
   return (
     <>
-      <div className="sit-chips">
-        {sits.map((s) => (
-          <button key={s.id} className={s.id === sitId ? 'active' : ''} onClick={() => props.onSitChange(s)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <DayCards forecast={forecast} sits={sits} sitId={sitId} activity={props.activity} onSitChange={props.onSitChange} />
+
+      {sit && props.activity[sit.id] && (
+        <ActivityCard score={props.activity[sit.id]} sit={sit} evidence={props.evidence} rutPeak={props.rutPeak} onRutPeakChange={props.onRutPeakChange} />
+      )}
 
       {sit ? (
         <SitWeather forecast={forecast} sit={sit} selectedTime={selectedTime} onTimeChange={props.onTimeChange} />
@@ -147,7 +154,7 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
         ))}
       </div>
 
-      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} />
+      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} opportunities={props.opportunities} />
 
       <p className="hint forecast-source">
         Forecast from Open-Meteo, updated {updatedMinutes < 1 ? 'just now' : `${updatedMinutes} min ago`}.{' '}
@@ -344,12 +351,14 @@ function StandList({
   onPickStand,
   coneGroups,
   onToggleCones,
+  opportunities,
 }: {
   ratedStands: RatedStand[];
   time: number;
   onPickStand(id: string): void;
   coneGroups: StandRating[];
   onToggleCones(group: StandRating): void;
+  opportunities: Record<string, Opportunity>;
 }) {
   if (ratedStands.length === 0) return <p className="empty">Add stands with their good winds to get recommendations.</p>;
   return (
@@ -382,6 +391,11 @@ function StandList({
                       <span className="row-title">{r.stand.name}</span>
                       <span className="row-detail">{r.reason}</span>
                     </span>
+                    {opportunities[r.stand.id] && (
+                      <span className={`opportunity score-${scoreTone(opportunities[r.stand.id].score)}`} title={`Hunting Opportunity: ${opportunities[r.stand.id].label}${opportunities[r.stand.id].why ? ` (${opportunities[r.stand.id].why})` : ''}`}>
+                        {opportunities[r.stand.id].score}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -390,5 +404,183 @@ function StandList({
         );
       })}
     </>
+  );
+}
+
+// Low, moderate, high or very high, for colors.
+function scoreTone(score: number): string {
+  return score >= 75 ? 'vhigh' : score >= 55 ? 'high' : score >= 35 ? 'mid' : 'low';
+}
+
+const DAYS_SHOWN = 10;
+
+// The next ten days as little calendar pages, each with its morning and evening sit.
+function DayCards({
+  forecast,
+  sits,
+  sitId,
+  activity,
+  onSitChange,
+}: {
+  forecast: Forecast;
+  sits: Sit[];
+  sitId: string | null;
+  activity: Record<string, WindowScore>;
+  onSitChange(sit: Sit): void;
+}) {
+  const now = Date.now();
+  const first = todayIndex(forecast, now);
+  const days = forecast.days.slice(first, first + DAYS_SHOWN);
+  const nowSit = sits.find((s) => s.id === 'now');
+  return (
+    <div className="day-pick">
+      {nowSit && (
+        <button className={`now-chip${sitId === 'now' ? ' active' : ''}`} onClick={() => onSitChange(nowSit)}>
+          Right now
+        </button>
+      )}
+      <div className="day-cards">
+        {days.map((day, i) => {
+          const date = new Date(day.sunrise);
+          const halves = (['am', 'pm'] as const).map((half) => ({ half, sit: sits.find((s) => s.id === `${day.date}-${half}`) ?? null }));
+          const scores = halves.map((h) => (h.sit ? activity[h.sit.id] : undefined)).filter((x): x is WindowScore => Boolean(x));
+          const best = scores.length ? Math.max(...scores.map((x) => x.score)) : null;
+          const picked = halves.some((h) => h.sit?.id === sitId);
+          return (
+            <div key={day.date} className={`day-card${picked ? ' active' : ''}`}>
+              <div className="day-card-head">
+                <span className="day-card-name">{i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString(undefined, { weekday: 'short' })}</span>
+                <span className="day-card-date">
+                  <small>{date.toLocaleDateString(undefined, { month: 'short' })}</small>
+                  {date.getDate()}
+                </span>
+              </div>
+              <div className="day-card-best" title="The day's best window">
+                {best === null ? '–' : best}
+                <small>{best === null ? '' : 'day'}</small>
+              </div>
+              {halves.map(({ half, sit }) => {
+                const score = sit ? activity[sit.id] : undefined;
+                return (
+                  <button
+                    key={half}
+                    className={`day-half${sit && sit.id === sitId ? ' active' : ''}${score ? ` score-${scoreTone(score.score)}` : ''}`}
+                    disabled={!sit}
+                    onClick={() => sit && onSitChange(sit)}
+                    title={sit ? `${sit.label}: ${score ? `deer activity ${score.score} (${score.label})` : ''}` : 'Already past'}
+                  >
+                    <span>{half.toUpperCase()}</span>
+                    <strong>{sit ? (score ? score.score : '·') : 'past'}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// The picked sit's Deer Activity Projection: score, confidence, why, and the rut setting.
+function ActivityCard({
+  score,
+  sit,
+  evidence,
+  rutPeak,
+  onRutPeakChange,
+}: {
+  score: WindowScore;
+  sit: Sit;
+  evidence: { daylightBucks: number; newest: number | null; taggedOnly: boolean } | null;
+  rutPeak: string | undefined;
+  onRutPeakChange(peak: string): void;
+}) {
+  const [editingPeak, setEditingPeak] = useState(false);
+  const peak = rutPeak ?? DEFAULT_RUT_PEAK;
+  const [month, day] = peak.split('-').map(Number);
+  const { up, down } = drivers(score);
+  const phase = rutPhase(sit.peak, peak);
+  const ageHours = evidence?.newest ? Math.round((Date.now() - evidence.newest) / 3600_000) : null;
+  return (
+    <div className={`activity-card score-${scoreTone(score.score)}`}>
+      <div className="activity-head">
+        <div>
+          <div className="activity-title">Deer activity · {sit.label}</div>
+          <div className="activity-score">
+            {score.score}
+            <small> / 100 · {score.label}</small>
+          </div>
+        </div>
+        <span className={`confidence confidence-${score.confidence.toLowerCase()}`} title={score.confidenceWhy}>
+          {score.confidence} confidence
+        </span>
+      </div>
+      <div className="activity-bar">
+        <span style={{ width: `${score.score}%` }} />
+      </div>
+
+      <div className="activity-why">
+        {up.length > 0 && (
+          <ul className="drivers up">
+            {up.map((p) => (
+              <li key={p.part}>
+                <strong>{p.name}</strong> {p.why}
+              </li>
+            ))}
+          </ul>
+        )}
+        {down.length > 0 && (
+          <ul className="drivers down">
+            {down.map((p) => (
+              <li key={p.part}>
+                <strong>{p.name}</strong> {p.why}
+              </li>
+            ))}
+          </ul>
+        )}
+        {score.missing.map((m) => (
+          <p key={m.name} className="hint">
+            <strong>{m.name}</strong> left out: {m.why}
+          </p>
+        ))}
+      </div>
+
+      {evidence && evidence.newest !== null && (
+        <p className="hint">
+          {evidence.daylightBucks > 0 ? `Your cameras caught ${evidence.daylightBucks} daylight buck visit${evidence.daylightBucks === 1 ? '' : 's'} in the last 48 hours. ` : ''}
+          Newest camera photo: {ageHours! < 1 ? 'under an hour' : ageHours! < 48 ? `${ageHours} hours` : `${Math.round(ageHours! / 24)} days`} old.
+          {!evidence.taggedOnly && ' No photos tagged as deer yet, so animal photos are counted.'}
+        </p>
+      )}
+
+      <div className="rut-row">
+        <span>
+          {phase.name} · rut peak {MONTHS[month - 1]} {day}
+        </span>
+        {editingPeak ? (
+          <input
+            type="date"
+            aria-label="Rut peak date"
+            defaultValue={`${new Date().getFullYear()}-${peak}`}
+            onChange={(e) => {
+              if (e.target.value) {
+                onRutPeakChange(e.target.value.slice(5));
+                setEditingPeak(false);
+              }
+            }}
+            onBlur={() => setEditingPeak(false)}
+            autoFocus
+          />
+        ) : (
+          <button className="link" onClick={() => setEditingPeak(true)} title="The local peak of breeding; the score's season curve centers on it">
+            Change
+          </button>
+        )}
+      </div>
+      <p className="hint activity-note">An estimate of how active deer are likely to be, not the chance of seeing one. It uses the internet weather forecast and the rut date only, not your cameras or hunt logs. Stand numbers below are Hunting Opportunity: activity plus wind, scent and conditions at that stand.</p>
+    </div>
   );
 }

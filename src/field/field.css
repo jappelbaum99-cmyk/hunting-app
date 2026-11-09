@@ -363,8 +363,8 @@ textarea {
   bottom: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: rgba(28, 19, 13, 0.95);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--border);
@@ -375,10 +375,14 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 4px;
+  min-width: 0;
+  padding: 6px 2px;
   background: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .field-tabs button .icon-wrap {
@@ -1197,4 +1201,52 @@ textarea {
 
 .move-pending {
   margin: 8px 0 0;
+}
+
+/* Soil tab: a sampling run */
+.soil-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+.soil-count strong {
+  font-size: 44px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.soil-count span {
+  color: var(--muted);
+}
+
+.soil-finish {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.soil-tips {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.soil-howto {
+  margin-top: 12px;
+}
+
+.soil-howto summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.soil-howto .soil-tips {
+  margin-top: 8px;
 }

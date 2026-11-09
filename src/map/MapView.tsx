@@ -857,8 +857,10 @@ export function MapView(props: MapViewProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
+    // Pin types turned off in Choose Map stay hidden, unless it's the selected pin.
+    const hiddenTypes = settings.hiddenPinTypes ?? [];
     const wanted = new Map(
-      markers.map((m) => [
+      markers.filter((m) => m.id === selectedId || !hiddenTypes.includes(m.type)).map((m) => [
         m.id,
         { id: m.id, name: m.name, selected: m.id === selectedId, noLabel: settings.hiddenTypeLabels.includes(`pin:${m.type}`), style: markerStyle(m, settings), at: [m.lng, m.lat] as [number, number] },
       ]),

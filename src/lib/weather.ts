@@ -32,7 +32,8 @@ export interface Forecast {
   days: ForecastDay[];
 }
 
-const FORECAST_DAYS = 4;
+// Today and the next 10 days (Open-Meteo goes to 16).
+const FORECAST_DAYS = 11;
 
 interface OpenMeteoResponse {
   utc_offset_seconds: number;
@@ -59,6 +60,9 @@ export async function fetchForecast(
   lng: number,
   signal?: AbortSignal,
   days?: { start: string; end: string },
+  // With the next few days: this many past days too (the deer activity score
+  // compares the forecast with the last few days' temperatures).
+  pastDays = 0,
 ): Promise<Forecast> {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
@@ -85,6 +89,7 @@ export async function fetchForecast(
     params.set('end_date', days.end);
   } else {
     params.set('forecast_days', String(FORECAST_DAYS));
+    if (pastDays > 0) params.set('past_days', String(pastDays));
   }
   const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal });
   if (!response.ok) throw new Error(`Weather service answered ${response.status}`);

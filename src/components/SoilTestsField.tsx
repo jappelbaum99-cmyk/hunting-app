@@ -23,12 +23,12 @@ import {
   testSummary,
   workText,
 } from '@/lib/soil';
-import type { MapArea, SoilTest } from '@/types/models';
+import type { MapArea, MapMarker, SoilTest } from '@/types/models';
 
 // The boxes of the form, as typed.
 const NUMBER_FIELDS = ['ph', 'bufferPh', 'p', 'k', 'ca', 'mg', 'om', 'cec', 'lime', 'limeEnm', 'nLbs', 'pLbs', 'kLbs'] as const;
 type NumberField = (typeof NUMBER_FIELDS)[number];
-type Draft = Record<NumberField, string> & {
+export type Draft = Record<NumberField, string> & {
   id: string | null;
   date: string;
   lab: string;
@@ -38,7 +38,7 @@ type Draft = Record<NumberField, string> & {
   notes: string;
 };
 
-const blankDraft = (): Draft => ({
+export const blankDraft = (): Draft => ({
   ...(Object.fromEntries(NUMBER_FIELDS.map((f) => [f, ''])) as Record<NumberField, string>),
   id: null,
   date: todayDate(),
@@ -49,7 +49,7 @@ const blankDraft = (): Draft => ({
   notes: '',
 });
 
-const draftOf = (t: SoilTest): Draft => ({
+export const draftOf = (t: SoilTest): Draft => ({
   ...(Object.fromEntries(NUMBER_FIELDS.map((f) => [f, t[f] == null ? '' : String(t[f])])) as Record<NumberField, string>),
   id: t.id,
   date: t.date,
@@ -65,9 +65,65 @@ const toNumber = (s: string): number | null => {
   return s.trim() === '' || !Number.isFinite(n) ? null : n;
 };
 
+// Saves the typed-in results to the field: the test (taking these sample spots
+// if it's new), its plot log entry, the retest reminder, and the Action Board text
+// for the work, when asked for.
+export function applyDraft(
+  record: MapArea,
+  draft: Draft,
+  opts: { sampleIds: string[]; addCard: boolean; addRetest: boolean },
+): { area: MapArea; test: SoilTest; cardText: string | null } {
+  const tests = soilTests(record);
+  const existing = tests.find((t) => t.id === draft.id);
+  const now = new Date().toISOString();
+  const numbers = Object.fromEntries(NUMBER_FIELDS.map((f) => [f, toNumber(draft[f])])) as Record<NumberField, number | null>;
+  const test: SoilTest = {
+    ...numbers,
+    id: existing?.id ?? crypto.randomUUID(),
+    date: draft.date,
+    lab: draft.lab.trim() || null,
+    crop: draft.crop.trim() || null,
+    units: draft.units,
+    limeUnits: draft.limeUnits,
+    notes: draft.notes.trim() || null,
+    blend: existing?.blend ?? null,
+    sampleIds: existing ? (existing.sampleIds ?? opts.sampleIds) : opts.sampleIds,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  if (!test.blend || !planBlend(test, test.blend, 1)) test.blend = bestBlend(test);
+
+  let next = saveSoilTest(record, test);
+  next = saveEntry(next, logEntryForTest(test, record.log?.find((e) => e.id === test.id)));
+  // The retest clock starts from the newest test.
+  const retest = retestSchedule(record);
+  if (retest) {
+    if (!retest.lastDone || test.date > retest.lastDone) next = { ...next, schedules: (next.schedules ?? []).map((sc) => (sc.id === retest.id ? { ...sc, lastDone: test.date } : sc)) };
+  } else if (!existing && opts.addRetest) {
+    next = { ...next, schedules: [...(next.schedules ?? []), newRetestSchedule(test.date)] };
+  }
+  const cardText = !existing && opts.addCard ? workText(record.name || 'Field', test, acresOf(record.geometry), test.blend ?? null) : null;
+  return { area: next, test, cardText };
+}
+
 // A food plot's soil tests: the newest one with what to buy for this plot, older
 // ones for comparing, and a form for typing in the lab's report.
-export function SoilTestsField({ record, onChange, onAddTask }: { record: MapArea; onChange(a: MapArea): void; onAddTask(text: string): void }) {
+export function SoilTestsField({
+  record,
+  onChange,
+  onAddTask,
+  samples,
+  onOpenWindow,
+}: {
+  record: MapArea;
+  onChange(a: MapArea): void;
+  onAddTask(text: string): void;
+  // Soil sample pins inside this field.
+  samples: MapMarker[];
+  // Opens the Soil Tests window, on this test if given.
+  onOpenWindow?: (testId: string | null) => void;
+}) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [addCard, setAddCard] = useState(true);
   const [addRetest, setAddRetest] = useState(true);
@@ -75,41 +131,20 @@ export function SoilTestsField({ record, onChange, onAddTask }: { record: MapAre
   const latest = tests[0];
   const acres = acresOf(record.geometry);
   const retest = retestSchedule(record);
+  // Sample spots not tied to a test yet: they go with the next one saved.
+  const linked = new Set(tests.flatMap((t) => t.sampleIds ?? []));
+  const waiting = samples.filter((s) => !linked.has(s.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const sampleDate = (m: MapMarker) => {
+    const d = new Date(m.createdAt);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
   const save = () => {
     if (!draft || !draft.date) return;
     const existing = tests.find((t) => t.id === draft.id);
-    const now = new Date().toISOString();
-    const numbers = Object.fromEntries(NUMBER_FIELDS.map((f) => [f, toNumber(draft[f])])) as Record<NumberField, number | null>;
-    const test: SoilTest = {
-      ...numbers,
-      id: existing?.id ?? crypto.randomUUID(),
-      date: draft.date,
-      lab: draft.lab.trim() || null,
-      crop: draft.crop.trim() || null,
-      units: draft.units,
-      limeUnits: draft.limeUnits,
-      notes: draft.notes.trim() || null,
-      blend: existing?.blend ?? null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      deletedAt: null,
-    };
-    if (!test.blend || !planBlend(test, test.blend, 1)) test.blend = bestBlend(test);
-
-    let next = saveSoilTest(record, test);
-    next = saveEntry(next, logEntryForTest(test, record.log?.find((e) => e.id === test.id)));
-    // The retest clock starts from the newest test.
-    if (retest) {
-      if (!retest.lastDone || test.date > retest.lastDone) next = { ...next, schedules: (next.schedules ?? []).map((s) => (s.id === retest.id ? { ...s, lastDone: test.date } : s)) };
-    } else if (!existing && addRetest) {
-      next = { ...next, schedules: [...(next.schedules ?? []), newRetestSchedule(test.date)] };
-    }
-    onChange(next);
-    if (!existing && addCard) {
-      const text = workText(record.name || 'Food plot', test, acres, test.blend ?? null);
-      if (text) onAddTask(text);
-    }
+    const { area, cardText } = applyDraft(record, draft, { sampleIds: existing ? (existing.sampleIds ?? []) : waiting.map((m) => m.id), addCard, addRetest });
+    onChange(area);
+    if (cardText) onAddTask(cardText);
     setDraft(null);
   };
 
@@ -123,7 +158,21 @@ export function SoilTestsField({ record, onChange, onAddTask }: { record: MapAre
 
   return (
     <div className="field">
-      <div className="field-label">Soil test</div>
+      <div className="field-label soil-field-label">
+        <span>Soil test</span>
+        {onOpenWindow && (
+          <button className="link" onClick={() => onOpenWindow(latest?.id ?? null)} title="Every soil test in one window, with the sample spots">
+            Open in Soil Tests
+          </button>
+        )}
+      </div>
+
+      {waiting.length > 0 && (
+        <p className="soil-samples-waiting">
+          <strong>{waiting.length} sample spot{waiting.length === 1 ? '' : 's'}</strong> on the map, taken {formatPlotDate(sampleDate(waiting[0]))}
+          {sampleDate(waiting[0]) !== sampleDate(waiting[waiting.length - 1]) ? ` to ${formatPlotDate(sampleDate(waiting[waiting.length - 1]))}` : ''}. When the lab results come back, press <strong>Add soil test results</strong> and they go with it.
+        </p>
+      )}
 
       {latest && !draft && <LatestTest test={latest} acres={acres} onBlend={(blend) => onChange(saveSoilTest(record, { ...latest, blend, updatedAt: new Date().toISOString() }))} />}
 
@@ -159,7 +208,7 @@ export function SoilTestsField({ record, onChange, onAddTask }: { record: MapAre
         />
       ) : (
         <div className="soil-actions">
-          <button className="schedule-add" onClick={() => setDraft(blankDraft())}>
+          <button className="schedule-add" onClick={() => setDraft({ ...blankDraft(), date: waiting.length ? sampleDate(waiting[waiting.length - 1]) : todayDate() })}>
             + Add soil test results
           </button>
           {latest && tests.length === 1 && (
@@ -181,7 +230,7 @@ export function SoilTestsField({ record, onChange, onAddTask }: { record: MapAre
   );
 }
 
-function LatestTest({ test, acres, onBlend }: { test: SoilTest; acres: number; onBlend(blend: string): void }) {
+export function LatestTest({ test, acres, onBlend }: { test: SoilTest; acres: number; onBlend(blend: string): void }) {
   const rating = test.ph != null ? phRating(test.ph) : null;
   const lime = limeFor(test, acres);
   const blend = test.blend ?? bestBlend(test);
@@ -204,7 +253,9 @@ function LatestTest({ test, acres, onBlend }: { test: SoilTest; acres: number; o
         )}
         <span className="soil-meta">
           <span className="row-title">{formatPlotDate(test.date)}</span>
-          <span className="row-detail">{[test.lab, test.crop && `for ${test.crop}`].filter(Boolean).join(' · ') || 'Latest test'}</span>
+          <span className="row-detail">
+            {[test.lab, test.crop && `for ${test.crop}`, test.sampleIds?.length ? `from ${test.sampleIds.length} sample spot${test.sampleIds.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ') || 'Latest test'}
+          </span>
         </span>
       </div>
 
@@ -298,7 +349,7 @@ interface FormProps {
   onRemove?: () => void;
 }
 
-function SoilForm({ draft, setDraft, isNew, hasRetest, addCard, setAddCard, addRetest, setAddRetest, onSave, onCancel, onRemove }: FormProps) {
+export function SoilForm({ draft, setDraft, isNew, hasRetest, addCard, setAddCard, addRetest, setAddRetest, onSave, onCancel, onRemove }: FormProps) {
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const num = (field: NumberField, label: string, step = 'any') => (
     <label className="soil-input">

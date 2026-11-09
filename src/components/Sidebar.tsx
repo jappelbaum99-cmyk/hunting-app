@@ -55,6 +55,8 @@ interface SidebarProps {
   // One-line summary for the Schedules card, e.g. "5 coming up · 1 overdue".
   schedulesTeaser: string;
   onOpenSchedules(): void;
+  soilTeaser: string;
+  onOpenSoilTests(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -228,6 +230,21 @@ export function Sidebar(props: SidebarProps) {
             <span className="forecast-card-text">
               <span className="row-title">Schedules</span>
               <span className="row-detail">{props.schedulesTeaser}</span>
+            </span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        )}
+
+        {needle === '' && (
+          <button className="forecast-card summary-card" onClick={props.onOpenSoilTests}>
+            <span className="forecast-card-icon" aria-hidden>
+              <Icon name="wheat" size={20} />
+            </span>
+            <span className="forecast-card-text">
+              <span className="row-title">Soil Tests</span>
+              <span className="row-detail">{props.soilTeaser}</span>
             </span>
             <span className="chevron" aria-hidden>
               ›

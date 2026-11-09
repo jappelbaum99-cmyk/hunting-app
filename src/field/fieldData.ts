@@ -1,6 +1,7 @@
 // What the phone keeps: its own pins and hunt reports, plus the stands sent
 // over from the hub. Stored in the phone browser, so it all works with no signal.
 import type { CampPlot } from '@/lib/actionBoard';
+import type { SoilRun } from '@/field/SoilTab';
 import type { CampLink, CompassPoint, CustomPinType, FieldNote, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 export interface FieldStand {
@@ -36,6 +37,8 @@ export interface FieldData {
   // Notes the hub doesn't have yet, and the food plots as last seen.
   notes: FieldNote[];
   plots: CampPlot[];
+  // The soil sampling run going on now (Soil tab).
+  soilRun?: SoilRun | null;
 }
 
 const KEY = 'hunting-hub-field';

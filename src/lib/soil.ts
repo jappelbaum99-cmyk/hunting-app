@@ -1,5 +1,8 @@
 // Food plot soil tests: the lab's numbers, typed in, and what they mean to buy.
-import type { MapArea, PlotEntry, SoilTest, WorkSchedule } from '@/types/models';
+import booleanIntersects from '@turf/boolean-intersects';
+import type { Polygon } from 'geojson';
+
+import type { MapArea, MapMarker, PlotEntry, SoilTest, WorkSchedule } from '@/types/models';
 
 export const LIME_BAG_LB = 40;
 export const FERTILIZER_BAG_LB = 50;
@@ -158,4 +161,98 @@ export function workText(plotName: string, test: SoilTest, acres: number, blend:
     plan ? `${Math.round(plan.pounds).toLocaleString()} lb ${plan.blend} (${plan.bags} bags)` : null,
   ].filter(Boolean);
   return parts.length ? `${plotName}: ${parts.join(', ')}` : null;
+}
+
+// ---------- Soil tests taken in the field (groups of sample spots) ----------
+
+
+export interface SampleRun {
+  // The phone's test id, or for spots dropped on the hub, the field and day.
+  key: string;
+  // The field typed or picked on the phone, if any.
+  fieldName: string | null;
+  // The field (area) it belongs to, once known.
+  areaId: string | null;
+  spots: MapMarker[];
+  firstAt: string;
+  lastAt: string;
+  // The test made from it, once results are in.
+  test: { areaId: string; testId: string } | null;
+}
+
+const dayOf = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Every soil test taken in the field: sample spots grouped by the phone's test,
+// or (dropped on the hub) by field and day, with the test they went into.
+export function sampleRuns(markers: MapMarker[], areas: MapArea[]): SampleRun[] {
+  const spots = markers.filter((m) => m.type === 'soil_sample' && !m.deletedAt);
+  const areaOf = (m: MapMarker) =>
+    m.sampleOf ?? areas.find((a) => !a.deletedAt && booleanIntersects({ type: 'Point', coordinates: [m.lng, m.lat] }, a.geometry))?.id ?? null;
+  const testOf = new Map<string, { areaId: string; testId: string }>();
+  for (const area of areas) for (const t of soilTests(area)) for (const id of t.sampleIds ?? []) testOf.set(id, { areaId: area.id, testId: t.id });
+  const runs = new Map<string, SampleRun>();
+  for (const m of spots) {
+    const areaId = areaOf(m);
+    const key = m.soilRun?.id ?? `hub:${areaId ?? 'none'}:${dayOf(m.createdAt)}`;
+    let run = runs.get(key);
+    if (!run) {
+      run = { key, fieldName: m.soilRun?.fieldName ?? null, areaId, spots: [], firstAt: m.createdAt, lastAt: m.createdAt, test: null };
+      runs.set(key, run);
+    }
+    run.spots.push(m);
+    run.areaId ??= areaId;
+    if (m.createdAt < run.firstAt) run.firstAt = m.createdAt;
+    if (m.createdAt > run.lastAt) run.lastAt = m.createdAt;
+    run.test ??= testOf.get(m.id) ?? null;
+  }
+  return [...runs.values()].map((r) => ({ ...r, spots: r.spots.sort((a, b) => a.createdAt.localeCompare(b.createdAt)) })).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+}
+
+export const runName = (run: Pick<SampleRun, 'fieldName' | 'firstAt'>, areaName?: string | null) =>
+  areaName || run.fieldName || `Soil test ${new Date(run.firstAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+
+// A field outline drawn around sample spots: the outside points, pushed out a
+// little so the spots sit inside. Too few spots make a small square.
+export function fieldAroundSpots(spots: { lng: number; lat: number }[]): Polygon {
+  const lat0 = spots.reduce((t, s) => t + s.lat, 0) / spots.length;
+  const lng0 = spots.reduce((t, s) => t + s.lng, 0) / spots.length;
+  const mPerLat = 111_320;
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180);
+  const pts = spots.map((s) => ({ x: (s.lng - lng0) * mPerLng, y: (s.lat - lat0) * mPerLat }));
+  const back = (p: { x: number; y: number }): [number, number] => [lng0 + p.x / mPerLng, lat0 + p.y / mPerLat];
+  // Monotone chain hull.
+  const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: { x: number; y: number }[] = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: { x: number; y: number }[] = [];
+  for (const p of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  const hull = [...lower.slice(0, -1), ...upper.slice(0, -1)];
+  const PAD = 15;
+  if (hull.length < 3) {
+    const half = 25;
+    const ring = [
+      { x: -half, y: -half },
+      { x: half, y: -half },
+      { x: half, y: half },
+      { x: -half, y: half },
+    ].map((p) => ({ x: p.x + (pts[0]?.x ?? 0), y: p.y + (pts[0]?.y ?? 0) }));
+    return { type: 'Polygon', coordinates: [[...ring, ring[0]].map(back)] };
+  }
+  const cx = hull.reduce((t, p) => t + p.x, 0) / hull.length;
+  const cy = hull.reduce((t, p) => t + p.y, 0) / hull.length;
+  const grown = hull.map((p) => {
+    const d = Math.hypot(p.x - cx, p.y - cy) || 1;
+    return { x: p.x + ((p.x - cx) / d) * PAD, y: p.y + ((p.y - cy) / d) * PAD };
+  });
+  return { type: 'Polygon', coordinates: [[...grown, grown[0]].map(back)] };
 }
