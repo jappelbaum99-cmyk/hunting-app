@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { thermalSummary, type ThermalState } from '@/lib/thermals';
 import { Icon } from '@/components/Icon';
 
 import { AreaChart } from '@/components/AreaChart';
@@ -28,6 +29,10 @@ interface ForecastPanelProps {
   onToggleCones(group: StandRating): void;
   // Every group's cones on at once, or all off.
   onSetConeGroups(groups: StandRating[]): void;
+  // Thermals at the picked time, and whether their scent paths show on the map.
+  thermal: ThermalState | null;
+  showThermals: boolean;
+  onToggleThermals(): void;
   onPropertyChange(id: string | null): void;
   onSitChange(sit: Sit): void;
   // Slider moved within the current sit. Must be a stable function.
@@ -155,6 +160,8 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
           </button>
         ))}
       </div>
+
+      {props.thermal && <ThermalCard thermal={props.thermal} show={props.showThermals} onToggle={props.onToggleThermals} />}
 
       <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} onSetConeGroups={props.onSetConeGroups} opportunities={props.opportunities} />
 
@@ -397,6 +404,7 @@ function StandList({
                     <span className="rated-text">
                       <span className="row-title">{r.stand.name}</span>
                       <span className="row-detail">{r.reason}</span>
+                      {r.thermal && !r.reason.startsWith('Thermals') && <span className="row-detail thermal-note">{r.thermal.reason}</span>}
                     </span>
                     {opportunities[r.stand.id] && (
                       <span className={`opportunity score-${scoreTone(opportunities[r.stand.id].score)}`} title={`Hunting Opportunity: ${opportunities[r.stand.id].label}${opportunities[r.stand.id].why ? ` (${opportunities[r.stand.id].why})` : ''}`}>
@@ -605,5 +613,31 @@ function AllConesToggle({ ratedStands, coneGroups, onSetConeGroups }: { ratedSta
     >
       All cones
     </button>
+  );
+}
+
+// Which way thermals run at the picked time, and a switch for their scent paths on the map.
+function ThermalCard({ thermal, show, onToggle }: { thermal: ThermalState; show: boolean; onToggle(): void }) {
+  const advice =
+    thermal.phase === 'switching'
+      ? 'Air is changing direction; scent swirls around the stand for a while.'
+      : thermal.strength === 'weak'
+        ? 'The wind is carrying most of the scent; thermals only bend it.'
+        : thermal.phase === 'falling'
+          ? 'Scent sinks and drains downhill into draws and bottoms. Hunt above where deer travel.'
+          : 'Scent rises up the slopes toward the ridges. Hunt below where deer travel.';
+  return (
+    <section className={`sidebar-section thermal-card thermal-${thermal.phase}`}>
+      <div className="thermal-head">
+        <h2>Thermals</h2>
+        <button className={`cone-toggle thermal-toggle${show ? ' on' : ''}`} aria-pressed={show} onClick={onToggle} title="Show where thermals carry scent from stands with a cone on the map">
+          Show paths
+        </button>
+      </div>
+      <p className="thermal-now">{thermalSummary(thermal)}</p>
+      <p className="hint">
+        {advice} Strength here is for open ground; a stand tucked below a ridge or in a hollow out of the wind feels thermals more, and its note says so. Paths show for stands with a scent cone.
+      </p>
+    </section>
   );
 }

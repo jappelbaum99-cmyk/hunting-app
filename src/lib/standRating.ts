@@ -6,6 +6,7 @@ import type { Polygon } from 'geojson';
 import { scentCone } from '@/lib/scent';
 import { COMPASS_POINTS, type CompassPoint, type MapArea, type MapMarker } from '@/types/models';
 import type { Forecast, ForecastHour } from '@/lib/weather';
+import type { StandThermal } from '@/lib/thermals';
 
 export type StandRating = 'good' | 'ok' | 'bad' | 'unset';
 
@@ -16,6 +17,8 @@ export interface RatedStand {
   cone: Polygon;
   // Names of bedding areas / sanctuaries the scent drifts into.
   scentInto: string[];
+  // Where thermals take the scent, once lidar elevation has loaded.
+  thermal?: StandThermal;
 }
 
 

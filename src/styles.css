@@ -5381,3 +5381,45 @@ body.resizing {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Hunt Forecast › Thermals */
+.thermal-card {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+  border-left: 3px solid #b0b0c8;
+}
+
+.thermal-card.thermal-falling {
+  border-left-color: #8e9cff;
+}
+
+.thermal-card.thermal-rising {
+  border-left-color: #c38bff;
+}
+
+.thermal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.thermal-head h2 {
+  margin: 0;
+}
+
+.thermal-now {
+  margin: 6px 0 2px;
+  font-weight: 600;
+}
+
+.cone-toggle.thermal-toggle.on {
+  background: #8e7cff;
+  border-color: #8e7cff;
+}
+
+.row-detail.thermal-note {
+  color: #b9b3ff;
+}

@@ -112,6 +112,8 @@ interface MapViewProps {
   huntSpots: HuntSpotView[];
   // Shown as an arrow on the compass when known.
   windFromDeg: number | null;
+  // Where thermals carry scent from stands with a cone: stand outward, [lng, lat].
+  thermalPaths: { id: string; phase: 'falling' | 'rising' | 'switching'; points: [number, number][] }[];
   selection: Selection | null;
   interaction: MapInteraction;
   draftPoints: Position[];
@@ -268,6 +270,28 @@ function addFeatureLayers(map: maplibregl.Map): void {
     type: 'fill',
     source: 'scent',
     paint: { 'fill-color': ['get', 'color'], 'fill-opacity': CONE_LAYER_OPACITY, 'fill-antialias': true },
+  });
+  // Thermal scent paths: a wide soft glow with a fainter core, so it reads as
+  // air drifting over the ground rather than a hard line.
+  map.addSource('thermal', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'thermal-glow',
+    type: 'line',
+    source: 'thermal',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-opacity': 0.28,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 13, 8, 17, 26],
+      'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 5, 17, 14],
+    },
+  });
+  map.addLayer({
+    id: 'thermal-core',
+    type: 'line',
+    source: 'thermal',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-opacity': 0.45, 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 17, 2.5], 'line-blur': 0.8 },
   });
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
@@ -519,6 +543,52 @@ const STREAK_PIECES = [
   { from: 0.35, to: 0.75, opacity: 0.55, weight: 0.9 },
   { from: 0.7, to: 1, opacity: 0.9, weight: 1 },
 ];
+
+// Thermal paths: cool violet when falling (downhill), warm violet when rising.
+const THERMAL_COLORS = { falling: '#8e9cff', rising: '#c38bff', switching: '#b0b0c8' } as const;
+const THERMAL_STREAK_COLOR = '#f1ecff';
+const THERMAL_STREAKS = 3;
+const THERMAL_PERIOD_MS = 7000;
+// A streak's length as a share of the path.
+const THERMAL_STREAK_LENGTH = 0.14;
+
+type ThermalPathView = MapViewProps['thermalPaths'][number];
+
+// Streaks gliding along each thermal path, the same soft style as the cones.
+function thermalStreakFeatures(paths: ThermalPathView[], now: number | null): FeatureCollection['features'] {
+  const features: FeatureCollection['features'] = [];
+  for (const path of paths) {
+    const pts = path.points;
+    if (pts.length < 2) continue;
+    const cosLat = Math.cos((pts[0][1] * Math.PI) / 180);
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot((pts[i][0] - pts[i - 1][0]) * cosLat, pts[i][1] - pts[i - 1][1]));
+    const total = cum[cum.length - 1];
+    if (total === 0) continue;
+    // The point a share t (0-1) of the way along the path.
+    const at = (t: number): Position => {
+      const d = Math.max(0, Math.min(1, t)) * total;
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const span = cum[i] - cum[i - 1] || 1;
+      const k = (d - cum[i - 1]) / span;
+      return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * k, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * k];
+    };
+    for (let n = 0; n < THERMAL_STREAKS; n++) {
+      const progress = now === null ? (n + 0.5) / THERMAL_STREAKS : (now / THERMAL_PERIOD_MS + n / THERMAL_STREAKS) % 1;
+      const head = 0.06 + progress * 0.94;
+      const tail = head - THERMAL_STREAK_LENGTH;
+      const fade = now === null ? 0.6 : Math.sin(progress * Math.PI);
+      if (fade <= 0.02 || tail <= 0) continue;
+      for (const piece of STREAK_PIECES) {
+        const coords: Position[] = [];
+        for (let k = 0; k <= 4; k++) coords.push(at(tail + (head - tail) * (piece.from + ((piece.to - piece.from) * k) / 4)));
+        features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { opacity: piece.opacity * fade * 0.9, weight: piece.weight, color: THERMAL_STREAK_COLOR } });
+      }
+    }
+  }
+  return features;
+}
 
 function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now: number | null): FeatureCollection {
   const features: FeatureCollection['features'] = [];
@@ -1085,6 +1155,21 @@ export function MapView(props: MapViewProps) {
     });
   }, [scentCones, readyTick]);
 
+  // Thermal scent paths.
+  const { thermalPaths } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    map.getSource<GeoJSONSource>('thermal')?.setData({
+      type: 'FeatureCollection',
+      features: thermalPaths.map((p) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'LineString' as const, coordinates: p.points },
+        properties: { id: p.id, color: THERMAL_COLORS[p.phase] },
+      })),
+    });
+  }, [thermalPaths, readyTick]);
+
   // Deer sightings.
   const { sightings } = props;
   useEffect(() => {
@@ -1112,6 +1197,8 @@ export function MapView(props: MapViewProps) {
   // stays light on the PC; with "reduce motion" on, the streaks hold still.
   const conesRef = useRef(scentCones);
   conesRef.current = scentCones;
+  const thermalRef = useRef(props.thermalPaths);
+  thermalRef.current = props.thermalPaths;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
@@ -1122,8 +1209,9 @@ export function MapView(props: MapViewProps) {
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
       const cones = conesRef.current;
+      const thermals = thermalRef.current;
       // Nothing to animate: clear once, then idle.
-      if (cones.length === 0) {
+      if (cones.length === 0 && thermals.length === 0) {
         if (shown > 0) map.getSource<GeoJSONSource>('scent-arrows')?.setData(EMPTY);
         shown = 0;
         return;
@@ -1131,8 +1219,10 @@ export function MapView(props: MapViewProps) {
       // Still arrows only need to follow the slider, so update them less often.
       if (now - last < (reduceMotion ? 250 : 33)) return;
       last = now;
-      shown = cones.length;
-      map.getSource<GeoJSONSource>('scent-arrows')?.setData(scentArrowFeatures(cones, reduceMotion ? null : now));
+      shown = cones.length + thermals.length;
+      const flow = scentArrowFeatures(cones, reduceMotion ? null : now);
+      flow.features.push(...thermalStreakFeatures(thermals, reduceMotion ? null : now));
+      map.getSource<GeoJSONSource>('scent-arrows')?.setData(flow);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);

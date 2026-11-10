@@ -15,6 +15,12 @@ export interface ForecastHour {
   humidity: number;
   cloudCover: number;
   pressureHpa: number;
+  // Sunshine reaching flat ground, W/m², averaged over the hour before: all of
+  // it, the direct beam, and the part scattered by cloud and sky. Missing from
+  // forecasts saved before these were fetched.
+  sunWm2?: number;
+  directWm2?: number;
+  diffuseWm2?: number;
 }
 
 export interface ForecastDay {
@@ -48,6 +54,9 @@ interface OpenMeteoResponse {
     relative_humidity_2m: number[];
     cloud_cover: number[];
     pressure_msl: number[];
+    shortwave_radiation?: (number | null)[];
+    direct_radiation?: (number | null)[];
+    diffuse_radiation?: (number | null)[];
   };
   daily: { time: string[]; sunrise: string[]; sunset: string[] };
 }
@@ -77,6 +86,10 @@ export async function fetchForecast(
       'relative_humidity_2m',
       'cloud_cover',
       'pressure_msl',
+      // Sunshine, for when slopes warm enough to turn thermals uphill.
+      'shortwave_radiation',
+      'direct_radiation',
+      'diffuse_radiation',
     ].join(','),
     daily: 'sunrise,sunset',
     wind_speed_unit: 'mph',
@@ -115,6 +128,9 @@ export async function fetchForecast(
       humidity: h.relative_humidity_2m[i],
       cloudCover: h.cloud_cover[i],
       pressureHpa: h.pressure_msl[i],
+      sunWm2: h.shortwave_radiation?.[i] ?? undefined,
+      directWm2: h.direct_radiation?.[i] ?? undefined,
+      diffuseWm2: h.diffuse_radiation?.[i] ?? undefined,
     })),
     days: data.daily.time.map((date, i) => ({
       date,
@@ -160,6 +176,9 @@ export function weatherAt(forecast: Forecast, time: number): ForecastHour {
     humidity: mix(a.humidity, b.humidity),
     cloudCover: mix(a.cloudCover, b.cloudCover),
     pressureHpa: mix(a.pressureHpa, b.pressureHpa),
+    sunWm2: a.sunWm2 !== undefined && b.sunWm2 !== undefined ? mix(a.sunWm2, b.sunWm2) : undefined,
+    directWm2: a.directWm2 !== undefined && b.directWm2 !== undefined ? mix(a.directWm2, b.directWm2) : undefined,
+    diffuseWm2: a.diffuseWm2 !== undefined && b.diffuseWm2 !== undefined ? mix(a.diffuseWm2, b.diffuseWm2) : undefined,
   };
 }
 

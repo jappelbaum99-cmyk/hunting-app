@@ -141,6 +141,19 @@ async function fetchImage(url: string, signal: AbortSignal): Promise<ArrayBuffer
   }
 }
 
+// A USGS tile's bytes with the same short retries the map uses (and, on the
+// desktop, the same saved copy on disk). Used for elevation outside the map.
+export async function fetchTileBytes(url: string, signal: AbortSignal = new AbortController().signal): Promise<ArrayBuffer> {
+  const normalized = normalizeTileUrl(url);
+  for (let attempt = 0; ; attempt++) {
+    const result = await fetchImage(normalized, signal);
+    if (typeof result !== 'string') return result;
+    if (attempt >= RETRY_DELAYS_MS.length) throw new Error(`USGS tile failed (${result}): ${normalized}`);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    signal.throwIfAborted();
+  }
+}
+
 let setUp = false;
 
 export function setUpMapLibre(): void {

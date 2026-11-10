@@ -52,10 +52,15 @@ import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/sta
 import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
+import { thermalAt, withThermals } from '@/lib/thermals';
+import { elevationAt, loadElevationAround } from '@/map/elevation';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
 import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, PosterSettings, Property, HubSettings, Selection } from '@/types/models';
+
+// How far around each stand lidar elevation is loaded for thermal paths, meters.
+const THERMAL_RADIUS_M = 400;
 
 type EditTarget = 'property' | 'section' | 'area' | 'trail';
 
@@ -176,6 +181,10 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   // Forecast rating groups whose stands show scent cones on the map.
   const [coneGroups, setConeGroups] = useState<StandRating[]>([]);
+  // Thermal scent paths on the map (Hunt Forecast), and a tick bumped when
+  // lidar elevation around the stands has loaded, so paths get drawn.
+  const [showThermals, setShowThermals] = useState(true);
+  const [elevationTick, setElevationTick] = useState(0);
   const [dataPath, setDataPath] = useState<string | null>(null);
   const [alignDraft, setAlignDraft] = useState<AlignDraft | null>(null);
   // The picked file for a new map image; it's only written to disk on Save.
@@ -1163,6 +1172,18 @@ export function App() {
   if (hub.loadError) {
     return <div className="fatal">Could not read your hub data: {hub.loadError}</div>;
   }
+  // Lidar elevation around the stands, for thermal paths. Fetched (or read
+  // from the saved maps) once per stand spot; the paths redraw when it lands.
+  const thermalSpots = hub.loaded && (forecastOpen || selection?.kind === 'marker')
+    ? hub.markers.filter(isStandMarker).map((m) => [m.lng, m.lat] as [number, number])
+    : [];
+  const thermalSpotsKey = thermalSpots.map((p) => p.join(',')).join(';');
+  useEffect(() => {
+    if (thermalSpots.length === 0) return;
+    // Already-loaded tiles resolve at once; either way the paths redraw after.
+    void loadElevationAround(thermalSpots, THERMAL_RADIUS_M).then(() => setElevationTick((n) => n + 1));
+  }, [thermalSpotsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!hub.loaded) return <div className="fatal">Loading…</div>;
 
   const propertyName = (id: string | null) => hub.properties.find((p) => p.id === id)?.name ?? null;
@@ -1209,14 +1230,23 @@ export function App() {
   const forecastStands = hub.markers.filter((m) => isStand(m) && (!forecastProperty || m.propertyId === forecastProperty.id));
   // Blended, not snapped to the hour, so cones glide as the sit slider moves.
   const ratingHour = forecast ? weatherAt(forecast, forecastTime ?? now) : null;
-  const ratedStands = ratingHour ? rateStands(forecastStands, ratingHour, sensitiveAreas) : [];
+  // Thermals at the picked time: which way they run and how much they lead the wind.
+  // On flat open ground, for the Thermals card; each stand gets its own from its slope.
+  const thermal = forecast ? thermalAt(forecast, forecastTime ?? now) : null;
+  const thermalInto = (path: [number, number][]) =>
+    sensitiveAreas.filter((a) => booleanIntersects({ type: 'LineString', coordinates: path }, a.geometry)).map((a) => a.name);
+  // elevationTick: re-rate once lidar elevation around the stands arrives.
+  void elevationTick;
+  const rateWithThermals = (stands: typeof forecastStands) =>
+    ratingHour ? withThermals(rateStands(stands, ratingHour, sensitiveAreas), forecast, forecastTime ?? now, elevationAt, thermalInto) : [];
+  const ratedStands = rateWithThermals(forecastStands);
   const standRatings: Record<string, StandRating> | null =
     forecastOpen && ratingHour ? Object.fromEntries(ratedStands.map((r) => [r.stand.id, r.rating])) : null;
   // Scent cones: the stand you clicked, plus any rating groups switched on in the forecast.
   const selectedStand = selection?.kind === 'marker' ? hub.markers.find((m) => m.id === selection.id && isStand(m)) : undefined;
   const coneStands = [
     ...(forecastOpen ? ratedStands.filter((r) => coneGroups.includes(r.rating)) : []),
-    ...(selectedStand && ratingHour ? rateStands([selectedStand], ratingHour, sensitiveAreas) : []),
+    ...(selectedStand && ratingHour ? rateWithThermals([selectedStand]) : []),
   ].filter((r, i, all) => all.findIndex((o) => o.stand.id === r.stand.id) === i);
 
   // Deer activity for each morning and evening sit, and how huntable each stand is in the picked one.
@@ -1395,6 +1425,9 @@ export function App() {
       coneGroups={coneGroups}
       onToggleCones={(group) => setConeGroups((g) => (g.includes(group) ? g.filter((x) => x !== group) : [...g, group]))}
       onSetConeGroups={setConeGroups}
+      thermal={thermal}
+      showThermals={showThermals}
+      onToggleThermals={() => setShowThermals((v) => !v)}
       onPropertyChange={setForecastPropertyId}
       onSitChange={(sit) => {
         setForecastSitId(sit.id);
@@ -1737,6 +1770,7 @@ export function App() {
           standRatings={standRatings}
           unlockedPinId={unlockedPinId}
           scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
+          thermalPaths={showThermals && thermal ? coneStands.flatMap((r) => (r.thermal?.path ? [{ id: r.stand.id, phase: thermal.phase, points: r.thermal.path }] : [])) : []}
           sightings={sightingViews}
           huntSpots={huntSpotViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
