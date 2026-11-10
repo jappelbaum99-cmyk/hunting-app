@@ -1,4 +1,4 @@
-import { useRef, type MouseEvent, type CSSProperties } from 'react';
+import { useEffect, useRef, type MouseEvent, type CSSProperties } from 'react';
 
 import { IMAGE_ACCEPT } from '@/data/images';
 import { AreaBadge } from '@/components/AreaBadge';
@@ -27,6 +27,29 @@ export function MapToolbar(props: MapToolbarProps) {
   const { disabled, onDrawProperty, onDrawSection, onDrawArea, onPlaceMarker, onImport, onAddImage } = props;
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+
+  // An open menu closes when you click anywhere else (the sidebar, the map, a
+  // panel) or press Esc. Capture phase, so the map's own click handling can't
+  // swallow it first.
+  useEffect(() => {
+    const closeAll = (except: Element | null) => {
+      for (const menu of toolbar.current?.querySelectorAll('details[open]') ?? []) if (menu !== except) menu.removeAttribute('open');
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      closeAll(target?.closest('.map-toolbar details') ?? null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeAll(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   // Closes the <details> dropdown after picking an option.
   const pick = (event: MouseEvent, action: () => void) => {
@@ -35,7 +58,7 @@ export function MapToolbar(props: MapToolbarProps) {
   };
 
   return (
-    <div className="map-toolbar">
+    <div className="map-toolbar" ref={toolbar}>
       {/* Everything for getting a property line onto the map. Sharing a name
           means only one of these menus is open at a time. */}
       <details className="dropdown" name="map-menu">

@@ -23,6 +23,7 @@ import {
   type MapLayersState,
 } from '@/map/layers';
 import { lineMidpoint, trailParts, trailStyle, unpackPoints } from '@/lib/trails';
+import { declutterLabels } from '@/map/labelCollisions';
 import type { AreaGeometry, DeerKind, FieldTrack, HubSettings, MapArea, MapMarker, MapTrail, Property, Section, Selection } from '@/types/models';
 
 export const DEFAULT_CENTER: [number, number] = [-91.536, 37.6456]; // Salem, MO
@@ -266,7 +267,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'scent-fill',
     type: 'fill',
     source: 'scent',
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'band'], 1, 0.1, 2, 0.13, 0.18] },
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': CONE_LAYER_OPACITY, 'fill-antialias': true },
   });
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
@@ -318,22 +319,21 @@ function addFeatureLayers(map: maplibregl.Map): void {
     });
   }
 
-  // Arrows drifting downwind inside each cone (moved by the animation in MapView).
-  map.addImage('wind-chevron', windChevronImage(), { pixelRatio: 2, sdf: true });
+  // Wind streaks flowing downwind inside each cone (moved by the animation in
+  // MapView): soft, blurred lines that fade in, drift with a gentle sway and
+  // fade out, brighter at the head so the direction reads without arrows.
   map.addSource('scent-arrows', { type: 'geojson', data: EMPTY });
   map.addLayer({
     id: 'scent-arrows',
-    type: 'symbol',
+    type: 'line',
     source: 'scent-arrows',
-    layout: {
-      'icon-image': 'wind-chevron',
-      'icon-rotate': ['get', 'bearing'],
-      'icon-rotation-alignment': 'map',
-      'icon-allow-overlap': true,
-      'icon-ignore-placement': true,
-      'icon-size': 1.6,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-opacity': ['get', 'opacity'],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 13, ['*', 1.6, ['get', 'weight']], 17, ['*', 3, ['get', 'weight']]],
+      'line-blur': 1.2,
     },
-    paint: { 'icon-opacity': ['get', 'opacity'], 'icon-color': ['get', 'color'], 'icon-halo-color': 'rgba(10, 20, 35, 0.55)', 'icon-halo-width': 1.2 },
   });
   map.addLayer({
     id: 'edit-fill',
@@ -456,37 +456,25 @@ function pillImage(color: string, moving: boolean): ImageData {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-// A chevron pointing up (north); the layer rotates it downwind and tints it
-// the cone's color (it's a signed-distance icon). Drawn on a canvas so no icon
-// files or sprite server are needed.
-function windChevronImage(): ImageData {
-  const size = 40;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(10, 26);
-  ctx.lineTo(20, 14);
-  ctx.lineTo(30, 26);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 4.5;
-  ctx.stroke();
-  return ctx.getImageData(0, 0, size, size);
-}
+// Scent cone colors, matching the stand's rating: green good, yellow maybe,
+// red bad (wrong wind, or scent into bedding), gray when no winds are set.
+const CONE_COLORS: Record<StandRating, string> = { good: '#34c759', ok: '#ffcc00', bad: '#ff453a', unset: '#8e8e93' };
+// The wind streaks inside: a pale tint of the same color, so they read as light moving over it.
+const STREAK_COLORS: Record<StandRating, string> = { good: '#dcf8e3', ok: '#fff4c2', bad: '#ffd6d2', unset: '#ececf0' };
 
-// Scent cone colors: blue, or red for a stand whose scent reaches bedding.
 function coneColor(rating: StandRating): string {
-  return rating === 'bad' ? '#ff453a' : '#3987e5';
+  return CONE_COLORS[rating];
 }
 
-// Widths of the stacked wedges in each cone, widest first.
-const CONE_BANDS = [1, 2 / 3, 1 / 3];
+// Each cone is drawn as thin stacked layers, widest and longest first. Every
+// layer has the same low opacity, so the shading deepens smoothly toward the
+// middle and fades softly at the sides and far end, with no hard steps.
+const CONE_BANDS = Array.from({ length: 9 }, (_, i) => ({ width: 1 - i * 0.105, length: 1 - i * 0.045 }));
+const CONE_LAYER_OPACITY = 0.055;
 
-// The same cone, narrowed around its middle (1 = unchanged).
-function narrowCone(cone: Polygon, factor: number): Polygon {
-  if (factor === 1) return cone;
+// The same cone, narrowed around its middle and shortened (1 = unchanged).
+function narrowCone(cone: Polygon, factor: number, lengthFactor = 1): Polygon {
+  if (factor === 1 && lengthFactor === 1) return cone;
   const ring = cone.coordinates[0];
   const origin = ring[0];
   const cosLat = Math.cos((origin[1] * Math.PI) / 180);
@@ -500,16 +488,37 @@ function narrowCone(cone: Polygon, factor: number): Polygon {
     let delta = bearing - mid;
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     const b = mid + delta * factor;
-    return [origin[0] + (Math.sin(b) * dist) / cosLat, origin[1] + Math.cos(b) * dist];
+    const d = dist * lengthFactor;
+    return [origin[0] + (Math.sin(b) * d) / cosLat, origin[1] + Math.cos(b) * d];
   });
   return { type: 'Polygon', coordinates: [[origin, ...narrowed, origin]] };
 }
 
 // Where the drifting arrows are at time `now`: a few lanes across each cone,
 // each with arrows staggered along it, moving from the stand out to the tip.
-const ARROW_LANES = [-0.55, 0, 0.55];
-const ARROWS_PER_LANE = 2;
-const ARROW_PERIOD_MS = 3200;
+// Wind streaks in each cone: where across the cone each one runs (-1 left
+// edge, 1 right), and how far along its trip it starts, so they don't move in step.
+const STREAKS = [
+  { lane: -0.62, offset: 0.0 },
+  { lane: 0.08, offset: 0.13 },
+  { lane: 0.55, offset: 0.27 },
+  { lane: -0.3, offset: 0.41 },
+  { lane: 0.32, offset: 0.58 },
+  { lane: -0.05, offset: 0.72 },
+  { lane: 0.7, offset: 0.86 },
+];
+// One trip from near the stand to the far end of the cone.
+const STREAK_PERIOD_MS = 5200;
+// A streak's length, as a share of the cone's length.
+const STREAK_LENGTH = 0.16;
+// How far a streak sways side to side, as a share of the cone's width there.
+const STREAK_SWAY = 0.1;
+// Tail to head: each piece a bit brighter and thicker, so streaks taper.
+const STREAK_PIECES = [
+  { from: 0, to: 0.4, opacity: 0.25, weight: 0.7 },
+  { from: 0.35, to: 0.75, opacity: 0.55, weight: 0.9 },
+  { from: 0.7, to: 1, opacity: 0.9, weight: 1 },
+];
 
 function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now: number | null): FeatureCollection {
   const features: FeatureCollection['features'] = [];
@@ -519,24 +528,50 @@ function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now
     // Ring is: origin, arc points (left to right), origin.
     const arc = ring.slice(1, -1);
     if (arc.length < 3) continue;
-    const mid = (arc.length - 1) / 2;
-    ARROW_LANES.forEach((lane, laneIndex) => {
-      const tip = arc[Math.round(mid + lane * mid)];
-      const cosLat = Math.cos((origin[1] * Math.PI) / 180);
-      const bearing = (Math.atan2((tip[0] - origin[0]) * cosLat, tip[1] - origin[1]) * 180) / Math.PI;
-      for (let k = 0; k < ARROWS_PER_LANE; k++) {
-        // Still arrows (reduced motion) sit at fixed spots along the lane.
-        const phase =
-          now === null
-            ? (k + 1) / (ARROWS_PER_LANE + 1)
-            : (now / ARROW_PERIOD_MS + k / ARROWS_PER_LANE + laneIndex * 0.17) % 1;
-        // Keep arrows off the stand itself and fade them in and out at the ends.
-        const t = 0.12 + phase * 0.8;
-        const opacity = now === null ? 0.7 : Math.sin(phase * Math.PI) * 0.85;
+    const cosLat = Math.cos((origin[1] * Math.PI) / 180);
+    // Work in flat x/y (x squeezed by latitude) so sway is the same both ways.
+    const toXY = (p: Position) => [(p[0] - origin[0]) * cosLat, p[1] - origin[1]];
+    const toLngLat = (x: number, y: number): Position => [origin[0] + x / cosLat, origin[1] + y];
+    const left = toXY(arc[0]);
+    const right = toXY(arc[arc.length - 1]);
+    const mid = toXY(arc[Math.floor(arc.length / 2)]);
+    const length = Math.hypot(mid[0], mid[1]);
+    if (length === 0) continue;
+    // Down the cone, and across it (to the right).
+    const along = [mid[0] / length, mid[1] / length];
+    const across = [along[1], -along[0]];
+    // Half the cone's width at its far end.
+    const halfWidth = Math.abs((right[0] - left[0]) * across[0] + (right[1] - left[1]) * across[1]) / 2;
+    // A pale tint of the cone, so streaks read as light moving over it.
+    const color = STREAK_COLORS[rating];
+
+    // A point at distance t (0 stand, 1 far end) along a lane, swaying gently.
+    const pointAt = (lane: number, t: number, seed: number, phase: number): Position => {
+      const sway = Math.sin((t * 2.2 + seed) * Math.PI * 2 + phase) * STREAK_SWAY;
+      const side = (lane + sway) * halfWidth * t;
+      return toLngLat(along[0] * length * t + across[0] * side, along[1] * length * t + across[1] * side);
+    };
+
+    STREAKS.forEach(({ lane, offset }, i) => {
+      // Still streaks (reduced motion) sit at fixed spots and don't sway.
+      const progress = now === null ? (i + 0.5) / STREAKS.length : (now / STREAK_PERIOD_MS + offset) % 1;
+      const phase = now === null ? 0 : (now / 2600) % (Math.PI * 2);
+      // Keep off the stand itself; fade in and out at the ends of the trip.
+      const head = 0.14 + progress * (0.98 - 0.14);
+      const tail = head - STREAK_LENGTH;
+      const fade = now === null ? 0.7 : Math.sin(progress * Math.PI);
+      if (fade <= 0.02 || tail <= 0.04) return;
+      for (const piece of STREAK_PIECES) {
+        const coords: Position[] = [];
+        const steps = 4;
+        for (let k = 0; k <= steps; k++) {
+          const t = tail + (head - tail) * (piece.from + ((piece.to - piece.from) * k) / steps);
+          coords.push(pointAt(lane, t, offset * 3, phase));
+        }
         features.push({
           type: 'Feature',
-          geometry: { type: 'Point', coordinates: [origin[0] + (tip[0] - origin[0]) * t, origin[1] + (tip[1] - origin[1]) * t] },
-          properties: { bearing, opacity, color: coneColor(rating) },
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { opacity: piece.opacity * fade, weight: piece.weight, color },
         });
       }
     });
@@ -594,6 +629,8 @@ export function MapView(props: MapViewProps) {
   const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10' });
   const markerElements = useRef(new Map<string, maplibregl.Marker>());
   const labelElements = useRef(new Map<string, maplibregl.Marker>());
+  // Hides names that would overlap; set up with the map.
+  const declutter = useRef<() => void>(() => undefined);
   const spotElements = useRef(new Map<string, maplibregl.Marker>());
   const editHandles = useRef(new Map<string, maplibregl.Marker>());
   const alignElements = useRef(new Map<string, maplibregl.Marker>());
@@ -659,6 +696,23 @@ export function MapView(props: MapViewProps) {
       setReadyTick((t) => t + 1);
     });
     map.on('moveend', () => saveCamera(map));
+
+    // Names that would land on each other: checked once a frame at most while
+    // the map moves (a few times a second), and again when it stops.
+    let frame = 0;
+    let lastRun = 0;
+    const runDeclutter = () => {
+      frame = 0;
+      lastRun = performance.now();
+      declutterLabels(map.getContainer());
+    };
+    declutter.current = () => {
+      if (!frame) frame = requestAnimationFrame(runDeclutter);
+    };
+    map.on('move', () => {
+      if (performance.now() - lastRun > 120) declutter.current();
+    });
+    map.on('moveend', () => declutter.current());
 
     // While drawing, a point near an existing line lands exactly on it.
     const snapAt = (point: { x: number; y: number }): Snap | null => {
@@ -734,10 +788,15 @@ export function MapView(props: MapViewProps) {
       alignById.clear();
       urlsById.clear();
       readyRef.current = false;
+      cancelAnimationFrame(frame);
+      declutter.current = () => undefined;
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  // Names and pins may have changed; keep them from piling up.
+  useEffect(() => declutter.current());
 
   // Base map and overlays.
   useEffect(() => {
@@ -775,6 +834,7 @@ export function MapView(props: MapViewProps) {
     }
     // Contours come back as black lines; lighten them over satellite imagery.
     map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', layers.base === 'satellite' ? 0.85 : 0);
+    map.setPaintProperty(LAYER_IDS.contours, 'raster-opacity', layers.contourOpacity);
   }, [layers, settings.aerialPhotos, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property and area shapes.
@@ -846,11 +906,14 @@ export function MapView(props: MapViewProps) {
     map.setLayoutProperty('property-line', 'line-cap', cap(prop.pattern));
     map.setPaintProperty('property-casing', 'line-width', prop.width + 2.5);
     // A dark edge under a dashed or dotted line would fill in its gaps.
-    map.setPaintProperty('property-casing', 'line-opacity', prop.pattern === 'solid' ? 0.5 : 0);
+    map.setPaintProperty('property-casing', 'line-opacity', prop.pattern === 'solid' ? 0.5 * prop.lineOpacity : 0);
+    // A selected outline stays fully visible however faint the rest are.
+    map.setPaintProperty('property-line', 'line-opacity', ['case', ['get', 'selected'], 1, prop.lineOpacity]);
     map.setPaintProperty('section-fill', 'fill-opacity', ['case', ['get', 'selected'], Math.min(1, sec.fillOpacity * 2 + 0.06), sec.fillOpacity]);
     map.setPaintProperty('section-line', 'line-width', ['case', ['get', 'selected'], sec.width + 1, sec.width]);
     map.setPaintProperty('section-line', 'line-dasharray', dashFor(sec.pattern, 'section'));
     map.setLayoutProperty('section-line', 'line-cap', cap(sec.pattern));
+    map.setPaintProperty('section-line', 'line-opacity', ['case', ['get', 'selected'], 1, sec.lineOpacity]);
   }, [settings.propertyLook, settings.sectionLook, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Point markers (stands, cameras, ...) as draggable HTML pins.
@@ -1005,7 +1068,7 @@ export function MapView(props: MapViewProps) {
     );
   }, [alignMarkers, readyTick]);
 
-  // Scent cones: blue, or red when the scent reaches bedding (or the wind is wrong).
+  // Scent cones in the stand's rating color: green good, yellow maybe, red bad.
   const { scentCones } = props;
   useEffect(() => {
     const map = mapRef.current;
@@ -1013,9 +1076,9 @@ export function MapView(props: MapViewProps) {
     map.getSource<GeoJSONSource>('scent')?.setData({
       type: 'FeatureCollection',
       features: scentCones.flatMap((c) =>
-        CONE_BANDS.map((width, i) => ({
+        CONE_BANDS.map(({ width, length }, i) => ({
           type: 'Feature' as const,
-          geometry: narrowCone(c.cone, width),
+          geometry: narrowCone(c.cone, width, length),
           properties: { id: c.id, band: i + 1, color: coneColor(c.rating) },
         })),
       ),
@@ -1044,9 +1107,9 @@ export function MapView(props: MapViewProps) {
     });
   }, [sightings, readyTick]);
 
-  // Drifting arrows: one animation loop for the map's life, reading the
-  // latest cones from a ref. About 20 updates a second is smooth enough and
-  // light on the PC; with "reduce motion" on, the arrows hold still.
+  // Flowing wind streaks: one animation loop for the map's life, reading the
+  // latest cones from a ref. About 30 updates a second keeps the flow smooth and
+  // stays light on the PC; with "reduce motion" on, the streaks hold still.
   const conesRef = useRef(scentCones);
   conesRef.current = scentCones;
   useEffect(() => {
@@ -1066,7 +1129,7 @@ export function MapView(props: MapViewProps) {
         return;
       }
       // Still arrows only need to follow the slider, so update them less often.
-      if (now - last < (reduceMotion ? 250 : 50)) return;
+      if (now - last < (reduceMotion ? 250 : 33)) return;
       last = now;
       shown = cones.length;
       map.getSource<GeoJSONSource>('scent-arrows')?.setData(scentArrowFeatures(cones, reduceMotion ? null : now));

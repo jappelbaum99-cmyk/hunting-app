@@ -566,6 +566,12 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
               ))}
             </select>
           </label>
+          {p.contours !== 'off' && (
+            <label className="poster-slider">
+              <span>Contour strength {Math.round((p.contourOpacity ?? 1) * 100)}%</span>
+              <input type="range" min={0.1} max={1} step={0.05} value={p.contourOpacity ?? 1} onChange={(e) => set({ contourOpacity: Number(e.target.value) })} />
+            </label>
+          )}
         </div>
 
         <div className="poster-group">

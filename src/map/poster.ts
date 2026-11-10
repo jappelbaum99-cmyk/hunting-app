@@ -149,7 +149,7 @@ function tileLayers(p: PosterSettings, mpp: number): TileLayer[] {
   if (p.base === 'lidar') layers.push({ template: lidar, tileSize: 512, minZoom: 7, maxZoom: 18, opacity: 1 });
   else if (p.lidarBlend > 0) layers.push({ template: lidar, tileSize: 512, minZoom: 7, maxZoom: 18, opacity: p.lidarBlend });
   const contours = contourTiles(p.contours);
-  if (contours && zoom >= 12) layers.push({ template: contours[0].replace(/^retry:\/\//, ''), tileSize: 512, minZoom: 12, maxZoom: 18, opacity: 1, lighten: p.base === 'satellite' });
+  if (contours && zoom >= 12) layers.push({ template: contours[0].replace(/^retry:\/\//, ''), tileSize: 512, minZoom: 12, maxZoom: 18, opacity: p.contourOpacity ?? 1, lighten: p.base === 'satellite' });
   return layers;
 }
 
@@ -387,11 +387,13 @@ function drawShapes(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Frame, 
       const w = look.width * su;
       ctx.lineCap = look.pattern === 'dotted' ? 'round' : 'butt';
       ctx.setLineDash(dashes(look.pattern, 'section', w));
-      ctx.strokeStyle = 'rgba(247, 239, 230, 0.9)';
+      ctx.globalAlpha = look.lineOpacity;
+      ctx.strokeStyle = '#f7efe6';
       ctx.lineWidth = w;
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.lineCap = 'butt';
+      ctx.globalAlpha = 1;
     }
   }
   if (p.show.areas) {
@@ -416,12 +418,12 @@ function drawShapes(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Frame, 
       ctx.fillStyle = color;
       ctx.fill('evenodd');
       if (look.pattern === 'solid') {
-        ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = 0.5 * look.lineOpacity;
         ctx.strokeStyle = '#000';
         ctx.lineWidth = (look.width + 2.5) * pu;
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = look.lineOpacity;
       const w = look.width * pu;
       ctx.lineCap = look.pattern === 'dotted' ? 'round' : 'butt';
       ctx.setLineDash(dashes(look.pattern, 'property', w));
@@ -430,6 +432,7 @@ function drawShapes(ctx: CanvasRenderingContext2D, p: PosterSettings, f: Frame, 
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.lineCap = 'butt';
+      ctx.globalAlpha = 1;
     }
   }
   if (p.show.trails) {

@@ -94,6 +94,8 @@ export function Sidebar(props: SidebarProps) {
   const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
   const [folded, setFolded] = useState(loadFolded);
+  const MAP_ELEMENTS = 'Map Elements';
+  const IMPORT_EXPORT = 'Import/Export';
   const fold = (title: string) => {
     const next = folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title];
     setFolded(next);
@@ -117,6 +119,9 @@ export function Sidebar(props: SidebarProps) {
   const shownOverlays = matches(overlays);
   const shownSections = matches(props.sections);
   const shownTrails = matches(props.trails);
+  // The Map Elements banner: how many things are listed under it, and whether it's open. Searching always opens it.
+  const elementCount = stands.length + shownProperties.length + shownSections.length + shownAreas.length + otherPins.length + shownTrails.length + shownOverlays.length;
+  const elementsOpen = needle !== '' || !folded.includes(MAP_ELEMENTS);
 
   const nothingFound =
     needle !== '' &&
@@ -188,83 +193,74 @@ export function Sidebar(props: SidebarProps) {
           </div>
         )}
 
+        {/* The tool cards, evenly spaced, with Summary first. */}
         {needle === '' && (
-          <button className="forecast-card camera-card" onClick={props.onOpenCameras}>
-            <span className="forecast-card-icon" aria-hidden>
-              <Icon name="camera" size={20} />
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Trail Cameras</span>
-              <span className="row-detail">{props.cameraTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-        )}
-
-        {needle === '' && (
-          <button className="forecast-card" onClick={props.onOpenForecast}>
-            <span className="forecast-card-icon" aria-hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M3 8h11a3 3 0 1 0-3-3" />
-                <path d="M3 12h15a3 3 0 1 1-3 3" />
-                <path d="M3 16h7" />
-              </svg>
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Hunt Forecast</span>
-              <span className="row-detail">{props.forecastTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-        )}
-
-        {needle === '' && (
-          <button className="forecast-card summary-card" onClick={props.onOpenSummary}>
-            <span className="forecast-card-icon" aria-hidden>
-              <Icon name="chart" size={20} />
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Summary</span>
-              <span className="row-detail">{props.summaryTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-        )}
-
-        {needle === '' && (
-          <button className="forecast-card summary-card" onClick={props.onOpenBoard}>
-            <span className="forecast-card-icon" aria-hidden>
-              <Icon name="clipboard" size={20} />
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Action Board</span>
-              <span className="row-detail">{props.boardTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-        )}
-
-        {needle === '' && (
-          <button className="forecast-card summary-card" onClick={props.onOpenLand}>
-            <span className="forecast-card-icon" aria-hidden>
-              <Icon name="wheat" size={20} />
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Land Management</span>
-              <span className="row-detail">{props.landTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
+          <div className="sidebar-cards">
+            <button className="forecast-card summary-card" onClick={props.onOpenSummary}>
+              <span className="forecast-card-icon" aria-hidden>
+                <Icon name="chart" size={20} />
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Summary</span>
+                <span className="row-detail">{props.summaryTeaser}</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+            <button className="forecast-card camera-card" onClick={props.onOpenCameras}>
+              <span className="forecast-card-icon" aria-hidden>
+                <Icon name="camera" size={20} />
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Trail Cameras</span>
+                <span className="row-detail">{props.cameraTeaser}</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+            <button className="forecast-card" onClick={props.onOpenForecast}>
+              <span className="forecast-card-icon" aria-hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M3 8h11a3 3 0 1 0-3-3" />
+                  <path d="M3 12h15a3 3 0 1 1-3 3" />
+                  <path d="M3 16h7" />
+                </svg>
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Hunt Forecast</span>
+                <span className="row-detail">{props.forecastTeaser}</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+            <button className="forecast-card summary-card" onClick={props.onOpenBoard}>
+              <span className="forecast-card-icon" aria-hidden>
+                <Icon name="clipboard" size={20} />
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Action Board</span>
+                <span className="row-detail">{props.boardTeaser}</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+            <button className="forecast-card summary-card" onClick={props.onOpenLand}>
+              <span className="forecast-card-icon" aria-hidden>
+                <Icon name="wheat" size={20} />
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Land Management</span>
+                <span className="row-detail">{props.landTeaser}</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+          </div>
         )}
 
         {nothingFound && <p className="empty">Nothing matches “{query.trim()}”.</p>}
@@ -365,112 +361,135 @@ export function Sidebar(props: SidebarProps) {
           />
         )}
 
-        <Section title="Hunting Locations" folded={folded} onFold={fold} count={stands.length} searching={needle !== ''} empty="Add a stand, blind or platform from Add pin.">
-          {stands.map((m) => (
-            <Row
-              key={m.id}
-              selected={isSelected('marker', m.id)}
-              onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
-              title={m.name}
-              detail={m.goodWinds.length ? m.goodWinds.join(' ') : 'no winds set'}
-            />
-          ))}
-        </Section>
+        {/* Everything drawn or placed on the map, under one banner that folds them all away. */}
+        <div className="map-elements">
+          <button className="map-elements-banner" onClick={() => fold(MAP_ELEMENTS)} aria-expanded={elementsOpen}>
+            <span>Map Elements</span>
+            <span className="count">{elementCount}</span>
+            <span className={`chevron${elementsOpen ? ' open' : ''}`} aria-hidden>
+              ▾
+            </span>
+          </button>
+          {elementsOpen && (
+            <>
+              <Section title="Hunting Locations" folded={folded} onFold={fold} count={stands.length} searching={needle !== ''} empty="Add a stand, blind or platform from Add pin.">
+                {stands.map((m) => (
+                  <Row
+                    key={m.id}
+                    selected={isSelected('marker', m.id)}
+                    onClick={() => onPick({ kind: 'marker', id: m.id })}
+                    swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
+                    title={m.name}
+                    detail={m.goodWinds.length ? m.goodWinds.join(' ') : 'no winds set'}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Properties" folded={folded} onFold={fold} count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
-          {shownProperties.map((p) => (
-            <Row
-              key={p.id}
-              selected={isSelected('property', p.id)}
-              onClick={() => onPick({ kind: 'property', id: p.id })}
-              swatch={<span className="swatch outline" style={{ '--line': propertyColor(p, props.settings) } as CSSProperties} />}
-              title={p.name}
-              detail={formatAcres(acresOf(p.boundary))}
-            />
-          ))}
-        </Section>
+              <Section title="Properties" folded={folded} onFold={fold} count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
+                {shownProperties.map((p) => (
+                  <Row
+                    key={p.id}
+                    selected={isSelected('property', p.id)}
+                    onClick={() => onPick({ kind: 'property', id: p.id })}
+                    swatch={<span className="swatch outline" style={{ '--line': propertyColor(p, props.settings) } as CSSProperties} />}
+                    title={p.name}
+                    detail={formatAcres(acresOf(p.boundary))}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Sections" folded={folded} onFold={fold} count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
-          {shownSections.map((s) => (
-            <Row
-              key={s.id}
-              selected={isSelected('section', s.id)}
-              onClick={() => onPick({ kind: 'section', id: s.id })}
-              swatch={<span className="swatch section" />}
-              title={s.name}
-              detail={`${formatAcres(acresOf(s.geometry))} · ${planSummary(s.id)}`}
-            />
-          ))}
-        </Section>
+              <Section title="Sections" folded={folded} onFold={fold} count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
+                {shownSections.map((s) => (
+                  <Row
+                    key={s.id}
+                    selected={isSelected('section', s.id)}
+                    onClick={() => onPick({ kind: 'section', id: s.id })}
+                    swatch={<span className="swatch section" />}
+                    title={s.name}
+                    detail={`${formatAcres(acresOf(s.geometry))} · ${planSummary(s.id)}`}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Areas" folded={folded} onFold={fold} count={shownAreas.length} searching={needle !== ''} empty="Draw food plots, bedding and sanctuaries.">
-          {shownAreas.map((a) => (
-            <Row
-              key={a.id}
-              selected={isSelected('area', a.id)}
-              onClick={() => onPick({ kind: 'area', id: a.id })}
-              swatch={<AreaBadge type={areaTypeInfo(a.type, props.settings)} />}
-              title={a.name}
-              detail={a.planted ? `${a.planted} · ${formatAcres(acresOf(a.geometry))}` : formatAcres(acresOf(a.geometry))}
-            />
-          ))}
-        </Section>
+              <Section title="Areas" folded={folded} onFold={fold} count={shownAreas.length} searching={needle !== ''} empty="Draw food plots, bedding and sanctuaries.">
+                {shownAreas.map((a) => (
+                  <Row
+                    key={a.id}
+                    selected={isSelected('area', a.id)}
+                    onClick={() => onPick({ kind: 'area', id: a.id })}
+                    swatch={<AreaBadge type={areaTypeInfo(a.type, props.settings)} />}
+                    title={a.name}
+                    detail={a.planted ? `${a.planted} · ${formatAcres(acresOf(a.geometry))}` : formatAcres(acresOf(a.geometry))}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Other Pins" folded={folded} onFold={fold} count={otherPins.length} searching={needle !== ''} empty="Cameras, scrapes, rubs, water and parking.">
-          {otherPins.map((m) => (
-            <Row
-              key={m.id}
-              selected={isSelected('marker', m.id)}
-              onClick={() => onPick({ kind: 'marker', id: m.id })}
-              swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
-              title={m.name}
-              detail={pinTypeInfo(m.type, props.settings.customPinTypes).label}
-            />
-          ))}
-        </Section>
+              <Section title="Other Pins" folded={folded} onFold={fold} count={otherPins.length} searching={needle !== ''} empty="Cameras, scrapes, rubs, water and parking.">
+                {otherPins.map((m) => (
+                  <Row
+                    key={m.id}
+                    selected={isSelected('marker', m.id)}
+                    onClick={() => onPick({ kind: 'marker', id: m.id })}
+                    swatch={<span className="swatch" style={{ background: markerStyle(m, props.settings).color }} />}
+                    title={m.name}
+                    detail={pinTypeInfo(m.type, props.settings.customPinTypes).label}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Trails" folded={folded} onFold={fold} count={shownTrails.length} searching={needle !== ''} empty="Draw deer trails, paths, roads and fence lines, or walk one with the phone.">
-          {shownTrails.map((t) => (
-            <Row
-              key={t.id}
-              selected={isSelected('trail', t.id)}
-              onClick={() => onPick({ kind: 'trail', id: t.id })}
-              swatch={<span className={`swatch line ${trailStyle(t, props.settings.trailStyles).pattern}`} style={{ '--line': trailStyle(t, props.settings.trailStyles).color, borderTopWidth: Math.max(2, trailStyle(t, props.settings.trailStyles).px) } as CSSProperties} />}
-              title={t.name}
-              detail={`${trailKindInfo(t.kind).label} · ${formatDistance(trailLengthM(t))}`}
-            />
-          ))}
-        </Section>
+              <Section title="Trails" folded={folded} onFold={fold} count={shownTrails.length} searching={needle !== ''} empty="Draw deer trails, paths, roads and fence lines, or walk one with the phone.">
+                {shownTrails.map((t) => (
+                  <Row
+                    key={t.id}
+                    selected={isSelected('trail', t.id)}
+                    onClick={() => onPick({ kind: 'trail', id: t.id })}
+                    swatch={<span className={`swatch line ${trailStyle(t, props.settings.trailStyles).pattern}`} style={{ '--line': trailStyle(t, props.settings.trailStyles).color, borderTopWidth: Math.max(2, trailStyle(t, props.settings.trailStyles).px) } as CSSProperties} />}
+                    title={t.name}
+                    detail={`${trailKindInfo(t.kind).label} · ${formatDistance(trailLengthM(t))}`}
+                  />
+                ))}
+              </Section>
 
-        <Section title="Map Images" folded={folded} onFold={fold} count={shownOverlays.length} searching={needle !== ''} empty="Lay a parcel map screenshot over the map to trace from.">
-          {shownOverlays.map((o) => (
-            <Row
-              key={o.id}
-              selected={isSelected('overlay', o.id)}
-              onClick={() => onPick({ kind: 'overlay', id: o.id })}
-              swatch={<span className="swatch image" />}
-              title={o.name}
-              detail={o.visible ? `${Math.round(o.opacity * 100)}%` : 'hidden'}
-            />
-          ))}
-        </Section>
+              <Section title="Map Images" folded={folded} onFold={fold} count={shownOverlays.length} searching={needle !== ''} empty="Lay a parcel map screenshot over the map to trace from.">
+                {shownOverlays.map((o) => (
+                  <Row
+                    key={o.id}
+                    selected={isSelected('overlay', o.id)}
+                    onClick={() => onPick({ kind: 'overlay', id: o.id })}
+                    swatch={<span className="swatch image" />}
+                    title={o.name}
+                    detail={o.visible ? `${Math.round(o.opacity * 100)}%` : 'hidden'}
+                  />
+                ))}
+              </Section>
+            </>
+          )}
+        </div>
 
         {needle === '' && (
           <section className="sidebar-section">
-            <h2>Share</h2>
-            <div className="phone-buttons">
-              <button onClick={props.onExportMap} title="Save every property, pin, area, plan, hunt and map image as one file to send">
-                Export whole map
-              </button>
-              <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
-                Import a map file
-              </button>
-              <button onClick={props.onMakePoster} title="Print the map big: pick a paper size, frame it, move labels, and save a full-size image for a print shop">
-                Make a poster
-              </button>
-            </div>
-            <p className="share-hint">To share one property, open it and press Share.</p>
+            <button className="section-toggle" onClick={() => fold(IMPORT_EXPORT)} aria-expanded={!folded.includes(IMPORT_EXPORT)}>
+              <h2>Import/Export</h2>
+              <span className={`chevron${folded.includes(IMPORT_EXPORT) ? '' : ' open'}`} aria-hidden>
+                ▾
+              </span>
+            </button>
+            {!folded.includes(IMPORT_EXPORT) && (
+              <>
+                <div className="phone-buttons">
+                  <button onClick={props.onExportMap} title="Save every property, pin, area, plan, hunt and map image as one file to send">
+                    Export whole map
+                  </button>
+                  <button onClick={() => mapInput.current?.click()} title="Bring in a map file someone sent you. Anything already here is kept unless theirs is newer.">
+                    Import a map file
+                  </button>
+                  <button onClick={props.onMakePoster} title="Print the map big: pick a paper size, frame it, move labels, and save a full-size image for a print shop">
+                    Make a poster
+                  </button>
+                </div>
+                <p className="share-hint">To share one property, open it and press Share.</p>
+              </>
+            )}
             <input
               ref={mapInput}
               type="file"

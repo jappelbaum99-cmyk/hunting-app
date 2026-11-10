@@ -1394,6 +1394,7 @@ export function App() {
       ratedStands={ratedStands}
       coneGroups={coneGroups}
       onToggleCones={(group) => setConeGroups((g) => (g.includes(group) ? g.filter((x) => x !== group) : [...g, group]))}
+      onSetConeGroups={setConeGroups}
       onPropertyChange={setForecastPropertyId}
       onSitChange={(sit) => {
         setForecastSitId(sit.id);
@@ -1715,11 +1716,12 @@ export function App() {
         <MapView
           ref={mapRef}
           layers={layers}
-          properties={hub.properties}
-          areas={hub.areas}
+          // The shape being edited is drawn only as its edit copy, so the old line doesn't linger.
+          properties={hub.properties.filter((p) => p.id !== editing?.id)}
+          areas={hub.areas.filter((x) => x.id !== editing?.id)}
           markers={hub.markers}
-          sections={hub.sections}
-          trails={hub.trails}
+          sections={hub.sections.filter((x) => x.id !== editing?.id)}
+          trails={hub.trails.filter((t) => t.id !== editing?.id)}
           fieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
           draftLine={mode.kind === 'draw' && mode.target === 'trail'}
           editShape={editRings && mode.kind === 'edit' ? { rings: editRings, closed: mode.target !== 'trail', color: editColor } : null}

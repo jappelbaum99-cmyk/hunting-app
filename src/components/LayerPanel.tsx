@@ -139,7 +139,22 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
               ))}
             </select>
           </label>
-          {layers.contours !== 'off' && <p className="hint">Contours show when zoomed in close.</p>}
+          {layers.contours !== 'off' && (
+            <>
+              <label className="layer-row">
+                <span>Contour strength {Math.round(layers.contourOpacity * 100)}%</span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={layers.contourOpacity}
+                  onChange={(e) => set({ contourOpacity: Number(e.target.value) })}
+                />
+              </label>
+              <p className="hint">Contours show when zoomed in close.</p>
+            </>
+          )}
 
           <label className="check">
             <input type="checkbox" checked={layers.terrain} onChange={(e) => set({ terrain: e.target.checked })} />

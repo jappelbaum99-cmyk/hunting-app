@@ -26,6 +26,8 @@ interface ForecastPanelProps {
   // Rating groups whose cones are shown on the map.
   coneGroups: StandRating[];
   onToggleCones(group: StandRating): void;
+  // Every group's cones on at once, or all off.
+  onSetConeGroups(groups: StandRating[]): void;
   onPropertyChange(id: string | null): void;
   onSitChange(sit: Sit): void;
   // Slider moved within the current sit. Must be a stable function.
@@ -154,7 +156,7 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
         ))}
       </div>
 
-      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} opportunities={props.opportunities} />
+      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} onSetConeGroups={props.onSetConeGroups} opportunities={props.opportunities} />
 
       <p className="hint forecast-source">
         Forecast from Open-Meteo, updated {updatedMinutes < 1 ? 'just now' : `${updatedMinutes} min ago`}.{' '}
@@ -351,6 +353,7 @@ function StandList({
   onPickStand,
   coneGroups,
   onToggleCones,
+  onSetConeGroups,
   opportunities,
 }: {
   ratedStands: RatedStand[];
@@ -358,12 +361,16 @@ function StandList({
   onPickStand(id: string): void;
   coneGroups: StandRating[];
   onToggleCones(group: StandRating): void;
+  onSetConeGroups(groups: StandRating[]): void;
   opportunities: Record<string, Opportunity>;
 }) {
   if (ratedStands.length === 0) return <p className="empty">Add stands with their good winds to get recommendations.</p>;
   return (
     <>
-      <p className="hint stands-at">Stand picks for {formatClock(time)}. Click a stand to see its scent cone, or turn on Cones for a group.</p>
+      <div className="stands-at-row">
+        <p className="hint stands-at">Stand picks for {formatClock(time)}. Click a stand to see its scent cone, or turn on Cones for a group.</p>
+        <AllConesToggle ratedStands={ratedStands} coneGroups={coneGroups} onSetConeGroups={onSetConeGroups} />
+      </div>
       {GROUPS.map((group) => {
         const items = ratedStands.filter((r) => r.rating === group);
         if (items.length === 0) return null;
@@ -582,5 +589,21 @@ function ActivityCard({
       </div>
       <p className="hint activity-note">An estimate of how active deer are likely to be, not the chance of seeing one. It uses the internet weather forecast and the rut date only, not your cameras or hunt logs. Stand numbers below are Hunting Opportunity: activity plus wind, scent and conditions at that stand.</p>
     </div>
+  );
+}
+
+// Every stand's scent cone on the map at once, or all of them off.
+function AllConesToggle({ ratedStands, coneGroups, onSetConeGroups }: { ratedStands: RatedStand[]; coneGroups: StandRating[]; onSetConeGroups(groups: StandRating[]): void }) {
+  const present = GROUPS.filter((g) => ratedStands.some((r) => r.rating === g));
+  const allOn = present.length > 0 && present.every((g) => coneGroups.includes(g));
+  return (
+    <button
+      className={`cone-toggle all-cones${allOn ? ' on' : ''}`}
+      aria-pressed={allOn}
+      onClick={() => onSetConeGroups(allOn ? [] : present)}
+      title={allOn ? 'Hide every scent cone' : 'Show the scent cone for every stand'}
+    >
+      All cones
+    </button>
   );
 }

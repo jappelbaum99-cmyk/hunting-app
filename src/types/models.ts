@@ -85,6 +85,8 @@ export interface MarkerStyle {
 export interface OutlineLook {
   pattern?: LinePattern;
   width?: number;
+  // How solid the border line is, 0-1.
+  lineOpacity?: number;
   fillOpacity?: number;
 }
 
@@ -155,6 +157,8 @@ export interface PosterSettings {
   // Lidar shading over satellite or topo, 0-1.
   lidarBlend: number;
   contours: 'off' | '10' | '5' | '2';
+  // How strongly contour lines show, 0-1. Missing means full strength.
+  contourOpacity?: number;
   show: Record<'properties' | 'sections' | 'areas' | 'trails' | 'pins', boolean>;
   labels: Record<PosterLabelKind, boolean>;
   // Size of labels: points on paper per pixel on the map.

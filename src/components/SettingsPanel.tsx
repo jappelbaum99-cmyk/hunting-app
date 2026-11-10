@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { AreaBadge } from '@/components/AreaBadge';
 import { CampSettings, type CampPartners } from '@/components/CampSettings';
@@ -150,9 +150,16 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         <MapLabelToggles settings={settings} onChange={onChange} />
       </section>
 
-      <section className="sidebar-section">
-        <h2>Pins</h2>
-        <p className="hint">Each type's color, shape and size, or add your own types. Slide size all the way down for a tiny dot. A single stand or pin can still get its own color.</p>
+      <section className="sidebar-section look-defaults">
+        <h2>Default looks</h2>
+        <p className="hint">
+          These set how each kind of thing looks everywhere on the map and on posters. To change just one pin, area, trail or property, open it and change it there; that
+          one keeps its own look.
+        </p>
+      </section>
+
+      <SettingsGroup title="Pins" summary={`${pinTypeList(settings.customPinTypes).length} types`}>
+        <p className="hint">Each pin type's color, shape and size, or add your own types. Slide size all the way down for a tiny dot.</p>
         <ul className="settings-list">
           {pinTypeList(settings.customPinTypes).map(({ id: type, label, custom }) => {
             const style = categoryStyle(type, settings);
@@ -236,11 +243,10 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         >
           + Add pin type
         </button>
-      </section>
+      </SettingsGroup>
 
-      <section className="sidebar-section">
-        <h2>Trails</h2>
-        <p className="hint">The color, pattern, thickness and outline for each type of trail. A single trail can still have its own.</p>
+      <SettingsGroup title="Trails" summary={`${Object.keys(TRAIL_KINDS).length} types`}>
+        <p className="hint">The color, pattern, thickness and outline for each type of trail.</p>
         <ul className="settings-list">
           {(Object.keys(TRAIL_KINDS) as TrailKind[]).map((kind) => {
             const style = trailTypeStyle(kind, settings.trailStyles);
@@ -283,11 +289,10 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
             Back to the built-in looks
           </button>
         )}
-      </section>
+      </SettingsGroup>
 
-      <section className="sidebar-section">
-        <h2>Areas</h2>
-        <p className="hint">Change any area type's color and icon, or add your own types.</p>
+      <SettingsGroup title="Areas" summary={`${areaTypeList(settings).length} types`}>
+        <p className="hint">Each area type's color and icon, or add your own types.</p>
         <ul className="settings-list">
           {areaTypeList(settings).map((type) => (
             <li key={type.id} className="pin-setting">
@@ -360,10 +365,9 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         >
           + Add area type
         </button>
-      </section>
+      </SettingsGroup>
 
-      <section className="sidebar-section">
-        <h2>Property lines</h2>
+      <SettingsGroup title="Property lines">
         <ul className="settings-list">
           <li className="setting-row">
             <span className="swatch outline" style={{ '--line': propertyColor(null, settings) } as CSSProperties} />
@@ -378,12 +382,11 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
           </li>
         </ul>
         <OutlineControls kind="property" settings={settings} onChange={onChange} />
-      </section>
+      </SettingsGroup>
 
-      <section className="sidebar-section">
-        <h2>Section lines</h2>
+      <SettingsGroup title="Section lines">
         <OutlineControls kind="section" settings={settings} onChange={onChange} />
-      </section>
+      </SettingsGroup>
 
       <button
         className="reset-look"
@@ -402,7 +405,43 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
   );
 }
 
-// Border pattern and width, and how strong the shading inside is, for property or section outlines.
+const OPEN_GROUPS_KEY = 'hunting-hub-settings-open';
+
+// A Settings group that folds open from its heading. Shut by default, so the
+// look settings don't make one long list; which are open is remembered.
+function SettingsGroup({ title, summary, children }: { title: string; summary?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return (JSON.parse(localStorage.getItem(OPEN_GROUPS_KEY) ?? '[]') as string[]).includes(title);
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      const list = (JSON.parse(localStorage.getItem(OPEN_GROUPS_KEY) ?? '[]') as string[]).filter((t) => t !== title);
+      localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(open ? list : [...list, title]));
+    } catch {
+      // Only a convenience.
+    }
+  };
+  return (
+    <section className="sidebar-section settings-group">
+      <button className="section-toggle" onClick={toggle} aria-expanded={open}>
+        <h2>
+          {title} {summary && <span className="count">{summary}</span>}
+        </h2>
+        <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && <div className="settings-group-body">{children}</div>}
+    </section>
+  );
+}
+
+// Border pattern, width and opacity, and how strong the shading inside is, for property or section outlines.
 function OutlineControls({ kind, settings, onChange }: { kind: 'property' | 'section'; settings: HubSettings; onChange(s: HubSettings): void }) {
   const look = outlineLook(kind, settings);
   const key = kind === 'property' ? 'propertyLook' : 'sectionLook';
@@ -423,6 +462,11 @@ function OutlineControls({ kind, settings, onChange }: { kind: 'property' | 'sec
         <span>Width</span>
         <input type="range" min={1} max={8} step={0.5} value={look.width} onChange={(e) => set({ width: Number(e.target.value) })} aria-label={`${kind} border width`} />
         <span className="muted">{look.width} px</span>
+      </label>
+      <label className="outline-row">
+        <span>Line</span>
+        <input type="range" min={0.1} max={1} step={0.05} value={look.lineOpacity} onChange={(e) => set({ lineOpacity: Number(e.target.value) })} aria-label={`${kind} border opacity`} />
+        <span className="muted">{Math.round(look.lineOpacity * 100)}%</span>
       </label>
       <label className="outline-row">
         <span>Shading</span>

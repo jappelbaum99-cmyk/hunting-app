@@ -16,6 +16,8 @@ export interface MapLayersState {
   // Lidar shading blended over satellite/topo, 0-1. The lidar base map ignores it.
   lidarBlend: number;
   contours: ContourInterval;
+  // How strongly contour lines show, 0-1.
+  contourOpacity: number;
   // Deer sighting arrows from hunt reports.
   sightings: boolean;
   // New spots hunted from (trees, climbers) that aren't stands.
@@ -31,6 +33,7 @@ export const DEFAULT_LAYERS: MapLayersState = {
   lidarStyle: 'stretch',
   lidarBlend: 0,
   contours: 'off',
+  contourOpacity: 1,
   sightings: false,
   huntSpots: false,
   terrain: false,

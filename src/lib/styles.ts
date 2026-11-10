@@ -100,8 +100,8 @@ export function areaColor(type: AreaType, settings: HubSettings): string {
 }
 
 export const OUTLINE_DEFAULTS: Record<'property' | 'section', Required<OutlineLook>> = {
-  property: { pattern: 'solid', width: 2.5, fillOpacity: 0.08 },
-  section: { pattern: 'dashed', width: 2, fillOpacity: 0.05 },
+  property: { pattern: 'solid', width: 2.5, lineOpacity: 1, fillOpacity: 0.08 },
+  section: { pattern: 'dashed', width: 2, lineOpacity: 0.9, fillOpacity: 0.05 },
 };
 
 // How property or section outlines look: Settings, else the defaults.

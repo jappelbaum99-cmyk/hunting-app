@@ -5247,3 +5247,137 @@ body.resizing {
 .camp-nudge button {
   justify-self: start;
 }
+
+/* Settings › Default looks: each kind folds open on its own. */
+.look-defaults {
+  padding-bottom: 0;
+}
+
+.settings-group .count {
+  font-weight: 400;
+}
+
+.settings-group-body {
+  padding-top: 4px;
+}
+
+/* A name that would sit on a more important name or a pin (src/map/labelCollisions.ts).
+   Hidden but still laid out, so it can be measured again as the map moves. */
+.label-collided {
+  visibility: hidden;
+}
+
+/* Sidebar › Map Elements: one banner over every list of things on the map. */
+.map-elements {
+  margin-top: 18px;
+  /* Same space below as between the headings above it (padding, so it's added to the next margin rather than merged with it). */
+  padding-bottom: 6px;
+}
+
+.map-elements-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  margin: 8px 0 0;
+  border: none;
+  background: none;
+  color: inherit;
+  /* Same as the other sidebar headings, like Hunt Reports. */
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.map-elements-banner > span:first-child {
+  flex: 1;
+  margin-left: 8px;
+}
+
+.map-elements-banner .count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.map-elements-banner .chevron {
+  margin: 0 10px 0 2px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+
+.map-elements-banner .chevron.open {
+  transform: none;
+}
+
+/* The lists sit a little in from the Map Elements heading, so they read as under it. */
+.map-elements > .sidebar-section {
+  margin-left: 12px;
+}
+
+/* Sidebar tool cards (Summary, Trail Cameras, Hunt Forecast...): one even gap between them. */
+.sidebar-cards {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sidebar-cards .forecast-card {
+  margin-top: 0;
+}
+
+/* Hunt Forecast: the stand picks line with the All cones switch beside it. */
+.stands-at-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stands-at-row .stands-at {
+  flex: 1;
+}
+
+.cone-toggle.all-cones {
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+/* Hunt Reports rows: the stand on top, time, hunter and what was seen under it,
+   wrapping inside the row instead of running past it. */
+.hunt-day .row,
+.live-hunts .row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 1px;
+}
+
+.hunt-day .row > :first-child,
+.live-hunts .row > :first-child {
+  grid-row: span 2;
+  align-self: center;
+}
+
+.hunt-day .row .row-title,
+.live-hunts .row .row-title {
+  grid-column: 2;
+}
+
+.hunt-day .row .row-detail,
+.live-hunts .row .row-detail {
+  grid-column: 2;
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Elsewhere a long detail trims itself rather than squeezing the name out. */
+.row > .row-detail {
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
