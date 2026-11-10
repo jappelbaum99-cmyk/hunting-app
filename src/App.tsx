@@ -16,9 +16,12 @@ import { ReportPanel } from '@/components/ReportPanel';
 import { base64ToBytes, bytesToBase64, MAP_FILE_KIND, mapFileName, parseMapFile, pickRecords, type MapFile } from '@/lib/mapFile';
 import { PHONE_FILE_KIND, shareJsonFile, STANDS_FILE_KIND, type PhoneFile, type StandsFile } from '@/field/fieldData';
 import { SectionPanel } from '@/components/SectionPanel';
+import { PlanEditor } from '@/components/PlanEditor';
+import { AreaPlansPanel } from '@/components/AreaPlansPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ActionBoardPanel } from '@/components/ActionBoardPanel';
-import { SchedulesPanel } from '@/components/SchedulesPanel';
+import { ComingUpList, comingUpRows } from '@/components/SchedulesPanel';
+import { LandManagementPanel } from '@/components/LandManagementPanel';
 import { SummaryPanel } from '@/components/SummaryPanel';
 import { CameraPhotosInfo } from '@/components/CameraPhotosInfo';
 import { CameraView } from '@/components/CameraView';
@@ -37,15 +40,14 @@ import { placeNotes } from '@/lib/actionBoard';
 import { countShared } from '@/lib/partnerSync';
 import { combineLines, cutParts, feetToMeters, joinParts, nearestLine, overlaps, removeFromParts } from '@/lib/combineTrails';
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
-import { dueCards, isOverdue, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
-import { upcomingRows } from '@/lib/upcoming';
+import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
 import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { formatDistance, lineBounds, lineLengthM, metersBetween, TRAIL_KINDS, trailParts, trailStyle, trailTypeStyle, unpackPoints, withParts } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
-import { newPlan } from '@/lib/plans';
+import { newPlan, placeOfPlan, plansFor, type PlanPlace } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
@@ -185,7 +187,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [schedulesOpen, setSchedulesOpen] = useState(false);
+  // Land Management (soil tests and the land tools to come).
+  const [landOpen, setLandOpen] = useState(false);
   // The pin unlocked to be moved. It locks again once it's no longer selected.
   const [unlockedPinId, setUnlockedPinId] = useState<string | null>(null);
   // What the last Combine changed, so it can be undone.
@@ -200,7 +203,10 @@ export function App() {
   // null = now.
   const [forecastTime, setForecastTime] = useState<number | null>(null);
   // The plan open in a section's panel.
-  const [openPlan, setOpenPlan] = useState<{ sectionId: string; planId: string } | null>(null);
+  // The plan shown in the detail panel; it stays open only while its section or area is selected.
+  const [openPlan, setOpenPlan] = useState<{ place: PlanPlace; planId: string } | null>(null);
+  // Land Management › Area Plans.
+  const [plansOpen, setPlansOpen] = useState(false);
   // Report id -> weather lookup state ('loading' or an error message).
   const [weatherStatus, setWeatherStatus] = useState<Record<string, string>>({});
   // The picked sit ('now', '2026-11-02-am', ...), or null for a single picked hour.
@@ -1257,9 +1263,50 @@ export function App() {
     .filter(Boolean)
     .join(' · ');
 
+  // Scheduled work and dated plans still ahead, for the Action Board's Coming up list.
+  const schedulePlaces: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
+  const comingUp = comingUpRows(schedulePlaces, hub.plans, hub.actionItems, hub.settings.scheduleOrder);
+
   // The Action Board card's one-liner.
   const boardCount = (status: ActionItem['status']) => hub.actionItems.filter((i) => i.status === status).length;
-  const boardTeaser = hub.actionItems.length === boardCount('done') ? 'Ideas and work to do' : `${boardCount('planned')} to do · ${boardCount('idea')} idea${boardCount('idea') === 1 ? '' : 's'}`;
+  const boardTeaser =
+    hub.actionItems.length === boardCount('done') && comingUp.length === 0
+      ? 'Ideas, work to do and schedules'
+      : [`${boardCount('planned')} to do`, comingUp.length ? `${comingUp.length} coming up` : null, `${boardCount('idea')} idea${boardCount('idea') === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+
+  // What the camp is waiting on, shown at the top of the sidebar: approving a
+  // partner, being approved, or turning on map sharing to get the shared map.
+  const campLink = hub.settings.camp ?? null;
+  const partnerAsks = Object.values(camp.info?.partnerRequests ?? {});
+  const campNudge: { text: string; button: string } | null = !campLink
+    ? null
+    : camp.manager && partnerAsks.length > 0
+      ? { text: `${partnerAsks.join(', ')} ${partnerAsks.length === 1 ? 'wants' : 'want'} to be a partner in ${campLink.name}.`, button: 'Approve in Settings' }
+      : camp.manager && !campLink.sharing
+        ? { text: `You're a partner in ${campLink.name}. Turn on map sharing to get the shared property lines, sections and plans.`, button: 'Turn on map sharing' }
+        : !camp.manager && camp.uid !== null && !!camp.info?.partnerRequests[camp.uid]
+          ? { text: `Waiting for a partner in ${campLink.name} to approve this PC. Then the shared map comes in.`, button: 'Camp settings' }
+          : !camp.manager && camp.info !== null && !campLink.isOwner
+            ? { text: `To get ${campLink.name}'s shared map, ask to be a partner.`, button: 'Ask in Settings' }
+            : null;
+
+  // A new plan for a section or area, opened in the detail panel.
+  const addPlan = (place: PlanPlace, kind: Parameters<typeof newPlan>[1]) => {
+    const plan = newPlan(place, kind, newRecordFields());
+    hub.savePlan(plan);
+    openPlanOnMap(plan);
+  };
+  // Shows a plan: selects its section or area, zooms there and opens the plan.
+  const openPlanOnMap = (plan: Parameters<typeof placeOfPlan>[0]) => {
+    const place = placeOfPlan(plan);
+    if (!place) return;
+    const next: Selection = { kind: place.kind, id: place.id };
+    setSelection(next);
+    zoomTo(next);
+    setOpenPlan({ place, planId: plan.id });
+  };
+  const openPlanCount = hub.plans.filter((p) => !p.deletedAt && p.status !== 'done' && placeOfPlan(p)).length;
+  const plansTeaser = openPlanCount === 0 ? 'Burn, timber and habitat plans' : `${openPlanCount} open plan${openPlanCount === 1 ? '' : 's'}`;
 
   // A To do card on the Action Board, e.g. a soil test's lime and fertilizer.
   const addWorkCard = (text: string, propertyId: string | null) =>
@@ -1271,12 +1318,6 @@ export function App() {
   const soilDone = hub.areas.reduce((n, a) => n + (a.soilTests ?? []).filter((t) => !t.deletedAt).length, 0);
   const soilTeaser =
     soilWaiting + soilDone === 0 ? 'Start one on the phone, or add results' : [soilWaiting ? `${soilWaiting} waiting for results` : null, soilDone ? `${soilDone} with results` : null].filter(Boolean).join(' · ');
-
-  // The Schedules card's one-liner.
-  const schedulePlaces: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
-  const upcoming = upcomingRows(schedulePlaces, hub.plans, todayDate());
-  const overdueCount = upcoming.filter((r) => isOverdue(r.end, todayDate())).length;
-  const schedulesTeaser = upcoming.length === 0 ? 'Everything you have planned' : `${upcoming.length} coming up${overdueCount ? ` · ${overdueCount} overdue` : ''}`;
 
   // Marking a scheduled card done starts the schedule's next cycle and, on a
   // food plot, logs the work. Taking it back out of Done undoes both.
@@ -1501,6 +1542,7 @@ export function App() {
         onResizeEnd={saveSidebarWidth}
         camp={hub.settings.camp ?? null}
         campError={camp.error ?? partnerSync.error}
+        campNudge={campNudge}
         onExportMap={() => void exportMap(null)}
         onImportMap={(file) => void importMap(file)}
         onMakePoster={() => setPosterBounds(mapRef.current?.getBounds() ?? [-91.54, 37.64, -91.53, 37.65])}
@@ -1569,30 +1611,49 @@ export function App() {
                 setSelection({ kind: 'marker', id });
                 zoomTo({ kind: 'marker', id });
               }}
+              comingUpCount={comingUp.length}
+              comingUp={
+                <ComingUpList
+                  items={hub.actionItems}
+                  places={schedulePlaces}
+                  plans={hub.plans}
+                  order={hub.settings.scheduleOrder}
+                  onOrderChange={(scheduleOrder) => hub.saveSettings({ ...hub.settings, scheduleOrder })}
+                  onSaveSchedules={(place, schedules) => {
+                    const area = place.kind === 'area' ? hub.areas.find((a) => a.id === place.id) : undefined;
+                    const section = place.kind === 'section' ? hub.sections.find((s) => s.id === place.id) : undefined;
+                    if (area) hub.saveArea({ ...area, schedules });
+                    if (section) hub.saveSection({ ...section, schedules });
+                  }}
+                  onSavePlan={hub.savePlan}
+                  onRemovePlan={hub.deletePlan}
+                  onOpenPlace={(place) => {
+                    const next: Selection = { kind: place.kind, id: place.id };
+                    setSelection(next);
+                    zoomTo(next);
+                  }}
+                />
+              }
               closed={hub.settings.boardClosed ?? ['done']}
               onClosedChange={(boardClosed) => hub.saveSettings({ ...hub.settings, boardClosed })}
               onClose={() => setBoardOpen(false)}
             />
-          ) : schedulesOpen ? (
-            <SchedulesPanel
-              places={schedulePlaces}
+          ) : landOpen && plansOpen ? (
+            <AreaPlansPanel
+              sections={hub.sections}
+              areas={hub.areas}
               plans={hub.plans}
-              order={hub.settings.scheduleOrder}
-              onOrderChange={(scheduleOrder) => hub.saveSettings({ ...hub.settings, scheduleOrder })}
-              onSaveSchedules={(place, schedules) => {
-                const area = place.kind === 'area' ? hub.areas.find((a) => a.id === place.id) : undefined;
-                const section = place.kind === 'section' ? hub.sections.find((s) => s.id === place.id) : undefined;
-                if (area) hub.saveArea({ ...area, schedules });
-                if (section) hub.saveSection({ ...section, schedules });
-              }}
-              onSavePlan={hub.savePlan}
-              onRemovePlan={hub.deletePlan}
-              onOpenPlace={(place) => {
-                const next: Selection = { kind: place.kind, id: place.id };
-                setSelection(next);
-                zoomTo(next);
-              }}
-              onClose={() => setSchedulesOpen(false)}
+              onAddPlan={addPlan}
+              onOpenPlan={openPlanOnMap}
+              onClose={() => setPlansOpen(false)}
+            />
+          ) : landOpen ? (
+            <LandManagementPanel
+              soilTeaser={soilTeaser}
+              onOpenSoilTests={() => setSoilWindow({ initial: null })}
+              plansTeaser={plansTeaser}
+              onOpenPlans={() => setPlansOpen(true)}
+              onClose={() => setLandOpen(false)}
             />
           ) : (
             forecastView
@@ -1611,7 +1672,7 @@ export function App() {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
           setBoardOpen(false);
-          setSchedulesOpen(false);
+          setLandOpen(false);
           setSummaryOpen(true);
         }}
         boardTeaser={boardTeaser}
@@ -1619,21 +1680,17 @@ export function App() {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
           setSummaryOpen(false);
-          setSchedulesOpen(false);
+          setLandOpen(false);
           setBoardOpen(true);
         }}
-        soilTeaser={soilTeaser}
-        onOpenSoilTests={() => {
-          if (mode.kind === 'align') return;
-          setSoilWindow({ initial: null });
-        }}
-        schedulesTeaser={schedulesTeaser}
-        onOpenSchedules={() => {
+        landTeaser={soilWaiting + soilDone === 0 ? 'Soil tests and area plans' : `Soil tests: ${soilTeaser}`}
+        onOpenLand={() => {
           if (mode.kind === 'align') return;
           setForecastOpen(false);
           setSummaryOpen(false);
           setBoardOpen(false);
-          setSchedulesOpen(true);
+          setPlansOpen(false);
+          setLandOpen(true);
         }}
         onOpenForecast={() => {
           if (mode.kind === 'align') return;
@@ -1641,7 +1698,7 @@ export function App() {
           setForecastSitId('now');
           setSummaryOpen(false);
           setBoardOpen(false);
-          setSchedulesOpen(false);
+          setLandOpen(false);
           setForecastOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(!settingsOpen)}
@@ -1874,6 +1931,24 @@ export function App() {
       onZoom: () => zoomTo(selection),
       onClose: () => setSelection(null),
     };
+    if (openPlan && openPlan.place.kind === selection.kind && openPlan.place.id === selection.id) {
+      const plan = hub.plans.find((p) => p.id === openPlan.planId && !p.deletedAt);
+      const place = selection.kind === 'section' ? hub.sections.find((r) => r.id === selection.id) : hub.areas.find((r) => r.id === selection.id);
+      if (plan && place) {
+        return (
+          <PlanEditor
+            plan={plan}
+            placeName={place.name || (selection.kind === 'section' ? 'Section' : 'Area')}
+            placeLabel={selection.kind}
+            forecast={forecast}
+            onChange={hub.savePlan}
+            onDelete={hub.deletePlan}
+            onBack={() => setOpenPlan(null)}
+            {...common}
+          />
+        );
+      }
+    }
     if (selection.kind === 'report') {
       const record = hub.reports.find((r) => r.id === selection.id);
       if (!record) return null;
@@ -1898,29 +1973,19 @@ export function App() {
     if (selection.kind === 'section') {
       const record = hub.sections.find((r) => r.id === selection.id);
       if (!record) return null;
-      // A plan only stays open while its own section is selected.
-      const planId = openPlan?.sectionId === record.id ? openPlan.planId : null;
       return (
         <SectionPanel
           section={record}
           onEditShape={() => startEdit('section', record.id)}
-          plans={hub.plans.filter((p) => p.sectionId === record.id)}
+          plans={plansFor(hub.plans, { kind: 'section', id: record.id })}
           propertyName={propertyName(record.propertyId)}
-          forecast={forecast}
-          openPlanId={planId}
           onChange={hub.saveSection}
           onDelete={() => {
             hub.deleteSection(record.id);
             setSelection(null);
           }}
-          onAddPlan={(kind) => {
-            const plan = newPlan(record.id, kind, newRecordFields());
-            hub.savePlan(plan);
-            setOpenPlan({ sectionId: record.id, planId: plan.id });
-          }}
-          onOpenPlan={(id) => setOpenPlan(id ? { sectionId: record.id, planId: id } : null)}
-          onChangePlan={hub.savePlan}
-          onDeletePlan={hub.deletePlan}
+          onAddPlan={(kind) => addPlan({ kind: 'section', id: record.id }, kind)}
+          onOpenPlan={(id) => setOpenPlan({ place: { kind: 'section', id: record.id }, planId: id })}
           {...common}
         />
       );
@@ -2007,6 +2072,9 @@ export function App() {
           soilSamples={hub.markers.filter((m) => m.type === 'soil_sample' && (m.sampleOf === record.id || (!m.sampleOf && booleanIntersects({ type: 'Point', coordinates: [m.lng, m.lat] }, record.geometry))))}
           onAddTask={(text) => addWorkCard(text, record.propertyId)}
           onOpenSoilTests={(testId) => setSoilWindow({ initial: testId ? { kind: 'test', areaId: record.id, testId } : null })}
+          plans={plansFor(hub.plans, { kind: 'area', id: record.id })}
+          onAddPlan={(kind) => addPlan({ kind: 'area', id: record.id }, kind)}
+          onOpenPlan={(id) => setOpenPlan({ place: { kind: 'area', id: record.id }, planId: id })}
           onDelete={() => {
             hub.deleteArea(record.id);
             setSelection(null);

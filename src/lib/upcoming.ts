@@ -1,5 +1,5 @@
-// Everything scheduled, for the Schedules tab: repeating work on areas and
-// sections, and section plans with a date. Soonest first until it's put in
+// Everything scheduled, for the Action Board's Coming up list: repeating work on areas and
+// sections, and section and area plans with a date. Soonest first until it's put in
 // another order; that order is a list of row keys kept in this hub's settings.
 import { formatPlotDate } from '@/lib/plotLog';
 import { cadenceLabel, comingUp, windowLabel, scheduleTitle, type SchedulePlace } from '@/lib/schedules';
@@ -47,7 +47,7 @@ export function upcomingRows(places: SchedulePlace[], plans: Plan[], today: stri
   const planned: UpcomingRow[] = [];
   for (const plan of plans) {
     const date = plan.targetDate ?? plan.burn?.windowStart ?? null;
-    const place = places.find((p) => p.kind === 'section' && p.id === plan.sectionId);
+    const place = places.find((p) => (p.kind === 'section' ? p.id === plan.sectionId : p.id === plan.areaId));
     if (!date || !place || plan.deletedAt || plan.status === 'done') continue;
     planned.push({
       type: 'plan',

@@ -119,8 +119,8 @@ export interface HubSettings {
   offlineAuto?: boolean;
   offlineRadiusM?: number;
   // Action Board lists folded shut. Missing means only Done is shut.
-  boardClosed?: BoardStatus[];
-  // The order chosen on the Schedules tab, as row keys. Empty means soonest first.
+  boardClosed?: BoardFold[];
+  // The order chosen for the Action Board's Coming up list, as row keys. Empty means soonest first.
   scheduleOrder: string[];
   // The camp this hub gets phone hunts and pins from, if any.
   camp?: CampLink | null;
@@ -324,6 +324,8 @@ export interface PlotEntry {
 
 export type NoteKind = 'stand' | 'work' | 'thought';
 export type BoardStatus = 'idea' | 'planned' | 'done';
+// The Action Board's foldable lists: one per status, plus scheduled work coming up.
+export type BoardFold = BoardStatus | 'coming';
 
 // A note written on the phone. It lands on the Action Board, or in a food plot's
 // log when `plot` is set (see src/lib/actionBoard.ts).
@@ -421,8 +423,10 @@ export interface TimberDetails {
   estimatedIncome: number | null;
 }
 
+// A plan belongs to a section or, since 0.13.1, an area (exactly one is set).
 export interface Plan extends Syncable {
-  sectionId: string;
+  sectionId: string | null;
+  areaId?: string | null;
   kind: PlanKind;
   title: string;
   status: PlanStatus;

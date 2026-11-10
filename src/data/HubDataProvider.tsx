@@ -168,9 +168,9 @@ export function HubDataProvider({ children }: { children: ReactNode }) {
           next.sections = next.sections.map(unlink);
           next.trails = next.trails.map(unlink);
         }
-        if (collection === 'sections') {
-          // A section's plans go with it.
-          next.plans = next.plans.map((p) => (p.sectionId === id && !p.deletedAt ? { ...p, deletedAt: at, updatedAt: at } : p));
+        if (collection === 'sections' || collection === 'areas') {
+          // A section's or area's plans go with it.
+          next.plans = next.plans.map((p) => ((p.sectionId === id || p.areaId === id) && !p.deletedAt ? { ...p, deletedAt: at, updatedAt: at } : p));
         }
         return next;
       });

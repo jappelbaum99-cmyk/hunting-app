@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { BOARD_LISTS, BOARD_STATUSES, NOTE_KINDS } from '@/lib/actionBoard';
 import { todayDate } from '@/lib/plotLog';
 import { isOverdue } from '@/lib/schedules';
-import type { ActionItem, BoardStatus, NoteKind } from '@/types/models';
+import type { ActionItem, BoardFold, BoardStatus, NoteKind } from '@/types/models';
 
 interface ActionBoardPanelProps {
   items: ActionItem[];
@@ -17,16 +17,21 @@ interface ActionBoardPanelProps {
   onOpenStand(id: string): void;
   // Opens the area or section a scheduled card belongs to.
   onOpenPlace(item: ActionItem): void;
+  // Scheduled work still ahead (ComingUpList), shown between To do and Ideas.
+  comingUp: ReactNode;
+  comingUpCount: number;
   // The lists folded shut, kept in this hub's settings.
-  closed: BoardStatus[];
-  onClosedChange(closed: BoardStatus[]): void;
+  closed: BoardFold[];
+  onClosedChange(closed: BoardFold[]): void;
   onClose(): void;
 }
 
 const STATUSES = Object.keys(BOARD_STATUSES) as BoardStatus[];
+const FOLDS: BoardFold[] = [...STATUSES, 'coming'];
 const KINDS = Object.keys(NOTE_KINDS) as NoteKind[];
 
-// Notes from phones and ideas added here, moved along from idea to to do to done.
+// All the work in one place: notes from phones and ideas added here, moved along
+// from idea to to do to done, and scheduled work coming up.
 export function ActionBoardPanel(props: ActionBoardPanelProps) {
   const [kind, setKind] = useState<NoteKind>('work');
   const [text, setText] = useState('');
@@ -42,11 +47,11 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
   };
 
   // Each list folds open or shut from its heading; the header button does them all.
-  const shown = STATUSES.filter((s) => props.items.some((i) => i.status === s));
-  const isOpen = (status: BoardStatus) => !props.closed.includes(status);
-  const toggle = (status: BoardStatus) => props.onClosedChange(isOpen(status) ? [...props.closed, status] : props.closed.filter((s) => s !== status));
+  const shown: BoardFold[] = [...STATUSES.filter((s) => props.items.some((i) => i.status === s)), 'coming'];
+  const isOpen = (status: BoardFold) => !props.closed.includes(status);
+  const toggle = (status: BoardFold) => props.onClosedChange(isOpen(status) ? [...props.closed, status] : props.closed.filter((s) => s !== status));
   const allOpen = shown.every(isOpen);
-  const listSection = (status: BoardStatus, heading: string, cards: ActionItem[]) => (
+  const fold = (status: BoardFold, heading: string, count: number, body: ReactNode) => (
     <section className="sidebar-section" key={status}>
       <details className="board-fold" open={isOpen(status)}>
         <summary
@@ -56,16 +61,23 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
             toggle(status);
           }}
         >
-          {heading} <span className="muted">· {cards.length}</span>
+          {heading} <span className="muted">· {count}</span>
         </summary>
-        <ul className="board-list">
-          {cards.map((item) => (
-            <BoardCardRow key={item.id} item={item} {...props} />
-          ))}
-        </ul>
+        {body}
       </details>
     </section>
   );
+  const listSection = (status: BoardStatus, heading: string, cards: ActionItem[]) =>
+    fold(
+      status,
+      heading,
+      cards.length,
+      <ul className="board-list">
+        {cards.map((item) => (
+          <BoardCardRow key={item.id} item={item} {...props} />
+        ))}
+      </ul>,
+    );
 
   return (
     <div className="forecast action-board">
@@ -75,7 +87,7 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
         </button>
         <h2>Action Board</h2>
         {shown.length > 1 && (
-          <button className="link board-fold-all" onClick={() => props.onClosedChange(allOpen ? [...STATUSES] : [])}>
+          <button className="link board-fold-all" onClick={() => props.onClosedChange(allOpen ? [...FOLDS] : [])}>
             {allOpen ? 'Collapse all' : 'Expand all'}
           </button>
         )}
@@ -102,7 +114,9 @@ export function ActionBoardPanel(props: ActionBoardPanelProps) {
       {BOARD_LISTS.map(({ status, heading }) => {
         // Overdue work comes first.
         const cards = newestFirst.filter((i) => i.status === status).sort((a, b) => late(a) - late(b));
-        return cards.length === 0 ? null : listSection(status, heading, cards);
+        const list = cards.length === 0 ? null : listSection(status, heading, cards);
+        // Coming up sits right under To do.
+        return status === 'planned' ? [list, fold('coming', 'Coming up', props.comingUpCount, props.comingUp)] : list;
       })}
 
       {done.length > 0 && listSection('done', 'Done', done)}

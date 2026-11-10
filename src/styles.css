@@ -670,19 +670,31 @@ input[type='checkbox'] {
 
 /* Drawing bar and notices (bottom center) */
 
+/* Centered in the open map between the sidebar and the detail panel, and wraps
+   onto more lines rather than sliding under either one. */
 .draw-bar {
   position: absolute;
   bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: calc(var(--sidebar-width) + var(--gap) * 2);
+  right: calc(var(--gap) + 56px);
+  width: fit-content;
+  max-width: calc(100% - var(--sidebar-width) - var(--gap) * 3 - 56px);
+  margin-inline: auto;
   z-index: 3;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 8px 8px 8px 18px;
-  border-radius: 999px;
+  border-radius: 22px;
   box-shadow: var(--shadow-panel);
-  white-space: nowrap;
+}
+
+.app.has-detail .draw-bar,
+.app.has-align .draw-bar {
+  right: calc(var(--detail-width) + var(--gap) * 2);
+  max-width: calc(100% - var(--sidebar-width) - var(--detail-width) - var(--gap) * 4);
 }
 
 .draw-bar button {
@@ -746,10 +758,6 @@ input[type='checkbox'] {
 .draw-bar.line-edit {
   flex-direction: column;
   align-items: stretch;
-  /* Centered on the map beside the sidebar, leaving room for the map buttons. */
-  left: calc(50% + (var(--sidebar-width) + var(--gap)) / 2);
-  width: max-content;
-  max-width: calc(100% - var(--sidebar-width) - var(--gap) * 2 - 120px);
   padding: 10px 12px;
   border-radius: 16px;
   white-space: normal;
@@ -5202,4 +5210,40 @@ body.resizing {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* Land Management › Area Plans */
+.area-plans-heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.area-plans-new {
+  display: grid;
+  gap: 8px;
+}
+
+.area-plans-new select {
+  width: 100%;
+}
+
+.land-panel .plan-list .plan-card .row-detail {
+  white-space: normal;
+}
+
+/* Top-of-sidebar notice for a camp step that's waiting (approve a partner, turn on sharing). */
+.camp-nudge {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c8843a) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8843a) 45%, transparent);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.camp-nudge button {
+  justify-self: start;
 }

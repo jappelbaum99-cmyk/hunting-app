@@ -1170,6 +1170,15 @@ export function MapView(props: MapViewProps) {
     map.getCanvas().style.cursor = interaction === 'browse' ? '' : 'crosshair';
   }, [draftPoints, draftColor, interaction, readyTick]);
 
+  // A quick double click zooms in while browsing. It stays off while drawing,
+  // placing, aligning or editing, where clicks set points.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (interaction === 'browse') map.doubleClickZoom.enable();
+    else map.doubleClickZoom.disable();
+  }, [interaction]);
+
   return (
     <div ref={containerRef} className="map">
       {compassHost &&

@@ -4,14 +4,16 @@ import { Icon } from '@/components/Icon';
 import { ScheduleForm } from '@/components/ScheduleForm';
 import { PLAN_STATUSES } from '@/lib/plans';
 import { todayDate } from '@/lib/plotLog';
-import { isOverdue, type SchedulePlace } from '@/lib/schedules';
+import { isOverdue, nextDue, type SchedulePlace } from '@/lib/schedules';
 import { moveKey, orderRows, upcomingRows, type PlanRow, type UpcomingRow } from '@/lib/upcoming';
-import type { Plan, PlanStatus, WorkSchedule } from '@/types/models';
+import type { ActionItem, Plan, PlanStatus, WorkSchedule } from '@/types/models';
 
 const STATUSES = Object.keys(PLAN_STATUSES) as PlanStatus[];
 
-interface SchedulesPanelProps {
+export interface ComingUpProps {
   places: SchedulePlace[];
+  // Board cards, so work already on To do isn't listed twice.
+  items: ActionItem[];
   plans: Plan[];
   // Row keys in the order they were put in. Empty means soonest first.
   order: string[];
@@ -20,13 +22,20 @@ interface SchedulesPanelProps {
   onSavePlan(plan: Plan): void;
   onRemovePlan(id: string): void;
   onOpenPlace(place: SchedulePlace): void;
-  onClose(): void;
 }
 
-// Everything scheduled in one list: put it in any order, and change or remove each item.
-export function SchedulesPanel(props: SchedulesPanelProps) {
+// Rows still ahead: repeating work not yet on To do, and dated section plans.
+export function comingUpRows(places: SchedulePlace[], plans: Plan[], items: ActionItem[], order: string[], today = todayDate()): UpcomingRow[] {
+  const carded = new Set(items.filter((i) => !i.deletedAt && i.schedule).map((i) => i.id));
+  const rows = upcomingRows(places, plans, today).filter((r) => r.type !== 'schedule' || !carded.has(`schedule-${r.schedule.id}-${nextDue(r.schedule, today).season}`));
+  return orderRows(rows, order);
+}
+
+// The Action Board's Coming up list: everything scheduled, in any order, and
+// each one can be changed or removed. When work comes due it moves to To do.
+export function ComingUpList(props: ComingUpProps) {
   const today = todayDate();
-  const rows = orderRows(upcomingRows(props.places, props.plans, today), props.order);
+  const rows = comingUpRows(props.places, props.plans, props.items, props.order, today);
   const keys = rows.map((r) => r.key);
   const [editing, setEditing] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -49,18 +58,11 @@ export function SchedulesPanel(props: SchedulesPanelProps) {
   };
 
   return (
-    <div className="forecast action-board">
-      <div className="forecast-header">
-        <button className="back" onClick={props.onClose}>
-          ‹ Back
-        </button>
-        <h2>Schedules</h2>
-      </div>
-
+    <>
       {rows.length === 0 ? (
-        <p className="hint board-empty">Nothing scheduled yet. Add a schedule on an area or section, or give a section's plan a date.</p>
+        <p className="hint">Nothing scheduled. Add a schedule on an area or section (burn every 3 years, plant every fall), or give a section's plan a date.</p>
       ) : (
-        <section className="sidebar-section">
+        <>
           <div className="schedules-tools">
             <span className="muted">Drag or use the arrows to change the order.</span>
             {props.order.length > 0 && (
@@ -156,9 +158,9 @@ export function SchedulesPanel(props: SchedulesPanelProps) {
               );
             })}
           </ul>
-        </section>
+        </>
       )}
-    </div>
+    </>
   );
 }
 

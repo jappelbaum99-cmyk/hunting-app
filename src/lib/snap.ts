@@ -161,19 +161,28 @@ export function followNearbyLines(ring: Position[], lines: Position[][], distanc
     let end = i;
     while (end + 1 < ordered.length && sameLine(ordered[end + 1].near, near)) end++;
     let replacement: Position[] | null = null;
-    const last = ordered[end].near;
-    if (near && last) {
+    // Only the stretch between the shape's own corners follows the line. A run
+    // also takes in the first bit of an edge that leaves the line (a section's
+    // dividing line, say); following that would slide the corner where the
+    // divider meets the line sideways, so neighbors stop meeting.
+    let first = i;
+    while (first <= end && !ordered[first].corner) first++;
+    let lastCorner = end;
+    while (lastCorner >= first && !ordered[lastCorner].corner) lastCorner--;
+    const from = first < lastCorner ? ordered[first].near : null;
+    const last = first < lastCorner ? ordered[lastCorner].near : null;
+    if (near && from && last) {
       const { total } = targets[near.line];
       let length = 0;
       let progress = 0;
-      for (let k = i; k < end; k++) {
+      for (let k = first; k < lastCorner; k++) {
         length += gapM(ordered[k].at, ordered[k + 1].at);
         // Each step is short, so a big jump is the line's start/end seam.
         const step = (ordered[k + 1].near as NearLine).along - (ordered[k].near as NearLine).along;
         progress += step > total / 2 ? step - total : step < -total / 2 ? step + total : step;
       }
       // A far longer way along the line means this isn't really following it.
-      if (length >= minLengthM && Math.abs(progress) <= length * 1.5 + 2 * distanceM) replacement = lineBetween(near, last, progress);
+      if (length >= minLengthM && Math.abs(progress) <= length * 1.5 + 2 * distanceM) replacement = lineBetween(from, last, progress);
     }
     if (replacement) {
       next.push(...replacement);

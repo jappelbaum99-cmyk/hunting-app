@@ -79,13 +79,15 @@ export function pickRecords(data: HubData, propertyId: string | null): MapFileRe
     lat <= north + OVERLAY_MARGIN_DEG;
   const markers = data.markers.filter(onProperty);
   const markerIds = new Set(markers.map((m) => m.id));
+  const areas = data.areas.filter(onProperty);
+  const areaIds = new Set(areas.map((a) => a.id));
   return {
     properties: [property],
     markers,
-    areas: data.areas.filter(onProperty),
+    areas,
     overlays: data.overlays.filter((o) => !o.deletedAt && o.controlPoints.some((c) => near(c.map))),
     sections,
-    plans: data.plans.filter((p) => sectionIds.has(p.sectionId)),
+    plans: data.plans.filter((p) => (p.sectionId && sectionIds.has(p.sectionId)) || (p.areaId && areaIds.has(p.areaId))),
     // Hunts at its stands count too, even when the hunt itself wasn't linked.
     reports: data.reports.filter((r) => onProperty(r) || (r.standId !== null && markerIds.has(r.standId))),
     trails: data.trails.filter(onProperty),

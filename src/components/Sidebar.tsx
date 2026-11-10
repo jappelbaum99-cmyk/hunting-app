@@ -24,6 +24,8 @@ interface SidebarProps {
   // The camp phones send hunts and pins to, and the last problem reaching it.
   camp: CampLink | null;
   campError: string | null;
+  // A step the camp is waiting on, e.g. approving a partner or turning on map sharing.
+  campNudge: { text: string; button: string } | null;
   // Map files for sharing with someone else's hub.
   onExportMap(): void;
   onImportMap(file: File): void;
@@ -52,11 +54,9 @@ interface SidebarProps {
   // One-line summary for the Action Board card, e.g. "2 to do · 3 ideas".
   boardTeaser: string;
   onOpenBoard(): void;
-  // One-line summary for the Schedules card, e.g. "5 coming up · 1 overdue".
-  schedulesTeaser: string;
-  onOpenSchedules(): void;
-  soilTeaser: string;
-  onOpenSoilTests(): void;
+  // Land Management card: soil tests and the land tools to come.
+  landTeaser: string;
+  onOpenLand(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -76,12 +76,33 @@ export const SIDEBAR_WIDTH = { default: 300, min: 260, max: 640 };
 // Days of hunts listed before "Show older".
 const DAYS_SHOWN = 7;
 const REPORTS_OPEN_KEY = 'hunting-hub-reports-open';
+// The sidebar lists folded shut on this PC, by title.
+const FOLDED_LISTS_KEY = 'hunting-hub-folded-lists';
+
+function loadFolded(): string[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(FOLDED_LISTS_KEY) ?? '[]') as unknown;
+    return Array.isArray(list) ? list.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
 export function Sidebar(props: SidebarProps) {
   const { properties, areas, markers, overlays, selection, dataPath, onPick, onShowDataFolder } = props;
   const [query, setQuery] = useState('');
+  const [folded, setFolded] = useState(loadFolded);
+  const fold = (title: string) => {
+    const next = folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title];
+    setFolded(next);
+    try {
+      localStorage.setItem(FOLDED_LISTS_KEY, JSON.stringify(next));
+    } catch {
+      // Only a convenience; the lists still work.
+    }
+  };
   const mapInput = useRef<HTMLInputElement>(null);
   const needle = query.trim().toLowerCase();
   const matches = <T extends { name: string }>(list: T[]) =>
@@ -158,6 +179,15 @@ export function Sidebar(props: SidebarProps) {
   function renderLists() {
     return (
       <>
+        {needle === '' && props.campNudge && (
+          <div className="camp-nudge" role="status">
+            <span>{props.campNudge.text}</span>
+            <button className="primary" onClick={props.onOpenSettings}>
+              {props.campNudge.button}
+            </button>
+          </div>
+        )}
+
         {needle === '' && (
           <button className="forecast-card camera-card" onClick={props.onOpenCameras}>
             <span className="forecast-card-icon" aria-hidden>
@@ -223,28 +253,13 @@ export function Sidebar(props: SidebarProps) {
         )}
 
         {needle === '' && (
-          <button className="forecast-card summary-card" onClick={props.onOpenSchedules}>
-            <span className="forecast-card-icon" aria-hidden>
-              <Icon name="check" size={20} />
-            </span>
-            <span className="forecast-card-text">
-              <span className="row-title">Schedules</span>
-              <span className="row-detail">{props.schedulesTeaser}</span>
-            </span>
-            <span className="chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-        )}
-
-        {needle === '' && (
-          <button className="forecast-card summary-card" onClick={props.onOpenSoilTests}>
+          <button className="forecast-card summary-card" onClick={props.onOpenLand}>
             <span className="forecast-card-icon" aria-hidden>
               <Icon name="wheat" size={20} />
             </span>
             <span className="forecast-card-text">
-              <span className="row-title">Soil Tests</span>
-              <span className="row-detail">{props.soilTeaser}</span>
+              <span className="row-title">Land Management</span>
+              <span className="row-detail">{props.landTeaser}</span>
             </span>
             <span className="chevron" aria-hidden>
               ›
@@ -350,7 +365,7 @@ export function Sidebar(props: SidebarProps) {
           />
         )}
 
-        <Section title="Hunting Locations" count={stands.length} searching={needle !== ''} empty="Add a stand, blind or platform from Add pin.">
+        <Section title="Hunting Locations" folded={folded} onFold={fold} count={stands.length} searching={needle !== ''} empty="Add a stand, blind or platform from Add pin.">
           {stands.map((m) => (
             <Row
               key={m.id}
@@ -363,7 +378,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Properties" count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
+        <Section title="Properties" folded={folded} onFold={fold} count={shownProperties.length} searching={needle !== ''} empty="Draw your property line or import a KML file.">
           {shownProperties.map((p) => (
             <Row
               key={p.id}
@@ -376,7 +391,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Sections" count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
+        <Section title="Sections" folded={folded} onFold={fold} count={shownSections.length} searching={needle !== ''} empty="Split a property into named units to plan burns and timber work.">
           {shownSections.map((s) => (
             <Row
               key={s.id}
@@ -389,7 +404,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Areas" count={shownAreas.length} searching={needle !== ''} empty="Draw food plots, bedding and sanctuaries.">
+        <Section title="Areas" folded={folded} onFold={fold} count={shownAreas.length} searching={needle !== ''} empty="Draw food plots, bedding and sanctuaries.">
           {shownAreas.map((a) => (
             <Row
               key={a.id}
@@ -402,7 +417,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Other Pins" count={otherPins.length} searching={needle !== ''} empty="Cameras, scrapes, rubs, water and parking.">
+        <Section title="Other Pins" folded={folded} onFold={fold} count={otherPins.length} searching={needle !== ''} empty="Cameras, scrapes, rubs, water and parking.">
           {otherPins.map((m) => (
             <Row
               key={m.id}
@@ -415,7 +430,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Trails" count={shownTrails.length} searching={needle !== ''} empty="Draw deer trails, paths, roads and fence lines, or walk one with the phone.">
+        <Section title="Trails" folded={folded} onFold={fold} count={shownTrails.length} searching={needle !== ''} empty="Draw deer trails, paths, roads and fence lines, or walk one with the phone.">
           {shownTrails.map((t) => (
             <Row
               key={t.id}
@@ -428,7 +443,7 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </Section>
 
-        <Section title="Map Images" count={shownOverlays.length} searching={needle !== ''} empty="Lay a parcel map screenshot over the map to trace from.">
+        <Section title="Map Images" folded={folded} onFold={fold} count={shownOverlays.length} searching={needle !== ''} empty="Lay a parcel map screenshot over the map to trace from.">
           {shownOverlays.map((o) => (
             <Row
               key={o.id}
@@ -477,20 +492,30 @@ export function Sidebar(props: SidebarProps) {
 interface SectionProps {
   title: string;
   count: number;
+  folded: string[];
+  onFold(title: string): void;
   // While searching, empty sections are hidden instead of showing their hint.
   searching: boolean;
   empty: string;
   children: ReactNode;
 }
 
-function Section({ title, count, searching, empty, children }: SectionProps) {
+// A sidebar list that folds open or shut from its heading. Search results
+// show even in a folded list.
+function Section({ title, count, folded, onFold, searching, empty, children }: SectionProps) {
   if (searching && count === 0) return null;
+  const open = !folded.includes(title) || searching;
   return (
     <section className="sidebar-section">
-      <h2>
-        {title} <span className="count">{count}</span>
-      </h2>
-      {count === 0 ? <p className="empty">{empty}</p> : <ul>{children}</ul>}
+      <button className="section-toggle" onClick={() => onFold(title)} aria-expanded={open}>
+        <h2>
+          {title} <span className="count">{count}</span>
+        </h2>
+        <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && (count === 0 ? <p className="empty">{empty}</p> : <ul>{children}</ul>)}
     </section>
   );
 }

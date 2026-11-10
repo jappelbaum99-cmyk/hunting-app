@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
+import { PlansField } from '@/components/PlanEditor';
 import { SchedulesField } from '@/components/SchedulesField';
 import { SoilTestsField } from '@/components/SoilTestsField';
 
@@ -10,8 +11,7 @@ import { controlPointErrorsFeet } from '@/lib/georef';
 import { entryTitle, formatPlotDate, PLOT_ACTIONS, plotEntries, removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { COLOR_SWATCHES, type AreaTypeView } from '@/lib/styles';
 import { formatDistance, LINE_PATTERNS, LINE_THICKNESS, TRAIL_KINDS, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
-import {
-  COMPASS_POINTS,
+import { COMPASS_POINTS,
   type AreaType,
   type CompassPoint,
   type HubSettings,
@@ -25,8 +25,7 @@ import {
   type PlotAction,
   type PlotEntry,
   type Property,
-  type TrailKind,
-} from '@/types/models';
+  type TrailKind, type Plan, type PlanKind } from '@/types/models';
 
 interface Common {
   propertyName: string | null;
@@ -41,7 +40,7 @@ interface Common {
 
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
-  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[]; onAddTask(text: string): void; soilSamples: MapMarker[]; onOpenSoilTests(testId: string | null): void } & Common)
+  | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[]; onAddTask(text: string): void; soilSamples: MapMarker[]; onOpenSoilTests(testId: string | null): void; plans: Plan[]; onAddPlan(kind: PlanKind): void; onOpenPlan(id: string): void } & Common)
   | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
   | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; trailStyles: HubSettings['trailStyles'] } & Common);
@@ -87,7 +86,7 @@ export function DetailPanel(props: DetailPanelProps) {
             <Field label="Offline maps">{props.offlineField}</Field>
           </>
         )}
-        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} onAddTask={props.onAddTask} soilSamples={props.soilSamples} onOpenSoilTests={props.onOpenSoilTests} />}
+        {props.kind === 'area' && <AreaFields record={props.record} onChange={props.onChange} areaTypes={props.areaTypes} onAddTask={props.onAddTask} soilSamples={props.soilSamples} onOpenSoilTests={props.onOpenSoilTests} plans={props.plans} onAddPlan={props.onAddPlan} onOpenPlan={props.onOpenPlan} />}
         {props.kind === 'marker' && (
           <>
             <MarkerFields record={props.record} onChange={props.onChange} pinTypes={props.pinTypes} unlocked={props.unlocked} onToggleLock={props.onToggleLock} />
@@ -212,6 +211,9 @@ function AreaFields({
   onAddTask,
   soilSamples,
   onOpenSoilTests,
+  plans,
+  onAddPlan,
+  onOpenPlan,
 }: {
   record: MapArea;
   onChange(a: MapArea): void;
@@ -219,6 +221,9 @@ function AreaFields({
   onAddTask(text: string): void;
   soilSamples: MapMarker[];
   onOpenSoilTests(testId: string | null): void;
+  plans: Plan[];
+  onAddPlan(kind: PlanKind): void;
+  onOpenPlan(id: string): void;
 }) {
   // Keep a removed custom type selectable for an area that still uses it.
   const options = areaTypes.some((t) => t.id === record.type) ? areaTypes : [...areaTypes, { id: record.type, label: 'Removed type' }];
@@ -244,6 +249,7 @@ function AreaFields({
       {(isPlotType(record.type, options.find((t) => t.id === record.type)?.label ?? '') || soilSamples.length > 0 || (record.soilTests ?? []).some((t) => !t.deletedAt)) && (
         <SoilTestsField key={`soil-${record.id}`} record={record} onChange={onChange} onAddTask={onAddTask} samples={soilSamples} onOpenWindow={onOpenSoilTests} />
       )}
+      <PlansField plans={plans} placeLabel="area" onAddPlan={onAddPlan} onOpenPlan={onOpenPlan} />
       <SchedulesField key={`schedules-${record.id}`} schedules={record.schedules} onChange={(schedules) => onChange({ ...record, schedules })} />
       <NotesField value={record.notes} onChange={(notes) => onChange({ ...record, notes })} />
     </>

@@ -58,10 +58,26 @@ export const DEFAULT_BURN: BurnDetails = {
   maxHumidity: 55,
 };
 
-export function newPlan(sectionId: string, kind: PlanKind, base: Pick<Plan, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Plan {
+// The section or area a plan is for.
+export interface PlanPlace {
+  kind: 'section' | 'area';
+  id: string;
+}
+
+export function placeOfPlan(plan: Plan): PlanPlace | null {
+  if (plan.sectionId) return { kind: 'section', id: plan.sectionId };
+  if (plan.areaId) return { kind: 'area', id: plan.areaId };
+  return null;
+}
+
+export const plansFor = (plans: Plan[], place: PlanPlace) =>
+  plans.filter((p) => !p.deletedAt && (place.kind === 'section' ? p.sectionId === place.id : p.areaId === place.id));
+
+export function newPlan(place: PlanPlace, kind: PlanKind, base: Pick<Plan, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Plan {
   return {
     ...base,
-    sectionId,
+    sectionId: place.kind === 'section' ? place.id : null,
+    areaId: place.kind === 'area' ? place.id : null,
     kind,
     title: PLAN_KINDS[kind].label,
     status: 'idea',
