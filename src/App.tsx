@@ -52,7 +52,9 @@ import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/sta
 import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
-import { thermalAt, withThermals } from '@/lib/thermals';
+import { terrainAt, thermalAt, thermalDay, withThermals } from '@/lib/thermals';
+import { buildCampMap, packCampMap } from '@/lib/campMap';
+import { ThermalTimeline } from '@/components/ThermalTimeline';
 import { elevationAt, loadElevationAround } from '@/map/elevation';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
@@ -543,6 +545,11 @@ export function App() {
     updatedAt: m.updatedAt,
     deletedAt: m.deletedAt,
   }));
+  // The map the camp's phones draw: boundaries, sections, areas, trails and pins.
+  const campMapText = useMemo(
+    () => packCampMap(buildCampMap({ properties: hub.properties, sections: hub.sections, areas: hub.areas, trails: hub.trails, markers: hub.markers }, hub.settings)),
+    [hub.properties, hub.sections, hub.areas, hub.trails, hub.markers, hub.settings],
+  );
   const camp = useHubCamp(hub.settings.camp ?? null, campStands, ({ reports, pins, tracks, notes }) => {
     const before = new Set(
       [...(hub.allData?.reports ?? []), ...(hub.allData?.fieldPins ?? []), ...(hub.allData?.fieldTracks ?? []), ...(hub.allData?.actionItems ?? []), ...(hub.allData?.areas ?? []).flatMap((a) => a.log ?? [])].map((r) => r.id),
@@ -561,7 +568,7 @@ export function App() {
       freshNotes.length ? `${freshNotes.length} note${freshNotes.length === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     setNotice(`New from camp: ${parts.join(' and ')}${who ? ` from ${who}` : ''}.`);
-  }, hub.settings.customPinTypes, campHandled, campPlots);
+  }, hub.settings.customPinTypes, campHandled, campPlots, hub.loaded ? campMapText : null);
 
   // Every property's maps kept saved on this PC in the background (desktop app).
   const autoOffline = useAutoOffline({ properties: hub.properties, layers, enabled: hub.settings.offlineAuto !== false, radiusM: hub.settings.offlineRadiusM });
@@ -1770,7 +1777,7 @@ export function App() {
           standRatings={standRatings}
           unlockedPinId={unlockedPinId}
           scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
-          thermalPaths={showThermals && thermal ? coneStands.flatMap((r) => (r.thermal?.path ? [{ id: r.stand.id, phase: thermal.phase, points: r.thermal.path }] : [])) : []}
+          thermalPaths={showThermals && thermal ? coneStands.flatMap((r) => (r.thermal?.path ? [{ id: r.stand.id, phase: r.thermal.phase, ends: r.thermal.ends, pull: r.thermal.pull, points: r.thermal.path }] : [])) : []}
           sightings={sightingViews}
           huntSpots={huntSpotViews}
           windFromDeg={ratingHour?.windFromDeg ?? null}
@@ -2129,6 +2136,12 @@ export function App() {
         unlocked={unlockedPinId === record.id}
         onToggleLock={() => setUnlockedPinId(unlockedPinId === record.id ? null : record.id)}
         onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
+        thermals={(() => {
+          // The stand's own thermal day, once the forecast and its lidar are in.
+          if (!isStandMarker(record) || !forecast || elevationAt(record.lng, record.lat) === null) return null;
+          const day = thermalDay(forecast, forecastTime ?? now, terrainAt([record.lng, record.lat], elevationAt));
+          return day ? <ThermalTimeline day={day} time={forecastTime ?? now} /> : null;
+        })()}
         history={
           isStandMarker(record) ? (
             <StandHistory reports={hub.reports.filter((r) => r.standId === record.id)} onPickReport={(id) => setSelection({ kind: 'report', id })} />

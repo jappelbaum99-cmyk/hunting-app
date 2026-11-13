@@ -201,8 +201,16 @@ export async function publishPlots(camp: CampLink, plots: CampPlot[]): Promise<v
   await updateDoc(doc(firebase().db, 'camps', camp.code), { plots, board: deleteField() });
 }
 
+// The camp map for the phones' Map tab, packed as text (src/lib/campMap.ts).
+export async function publishMap(camp: CampLink, mapText: string): Promise<void> {
+  await userId();
+  await updateDoc(doc(firebase().db, 'camps', camp.code), { map: mapText });
+}
+
 export interface CampInfo {
   pinTypes: CustomPinType[];
+  // The camp map as packed text, if a partner's hub has published one.
+  map: string | null;
   handled: Handled;
   plots: CampPlot[];
   ownerUid: string | null;
@@ -225,6 +233,7 @@ export function watchCampInfo(camp: CampLink, onInfo: (info: CampInfo) => void, 
             pinTypes: ((snap.get('pinTypes') as CustomPinType[] | undefined) ?? []).filter((t) => !t.deletedAt),
             handled: (snap.get('handled') as Handled | undefined) ?? {},
             plots: (snap.get('plots') as CampPlot[] | undefined) ?? [],
+            map: (snap.get('map') as string | undefined) ?? null,
             ownerUid: (snap.get('ownerUid') as string | undefined) ?? null,
             partners: (snap.get('partners') as string[] | undefined) ?? [],
             partnerRequests: (snap.get('partnerRequests') as Record<string, string> | undefined) ?? {},

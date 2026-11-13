@@ -179,6 +179,68 @@ export function thermalSummary(state: ThermalState): string {
   return `${PHASE_LABELS[state.phase]}, ${state.strength}${next}`;
 }
 
+// ---------- A stand's thermal day ----------
+
+export interface ThermalDay {
+  // The span shown: from before first light to after dark.
+  start: number;
+  end: number;
+  sunrise: number;
+  sunset: number;
+  segments: { from: number; to: number; phase: ThermalPhase }[];
+  // When this ground turns uphill and back downhill, if it does that day.
+  rise: number | null;
+  fall: number | null;
+  advice: string[];
+}
+
+const OPPOSITE: Record<string, string> = {
+  north: 'south', northeast: 'southwest', east: 'west', southeast: 'northwest',
+  south: 'north', southwest: 'northeast', west: 'east', northwest: 'southeast',
+};
+
+// Rising, falling and switching through the day of `time` on this ground,
+// with plain advice for getting in and out.
+export function thermalDay(forecast: Forecast, time: number, terrain: Terrain | null): ThermalDay | null {
+  const day = forecast.days.find((d) => time >= d.sunrise - 8 * HOUR && time < d.sunset + 8 * HOUR);
+  if (!day) return null;
+  const start = day.sunrise - 1.5 * HOUR;
+  const end = day.sunset + HOUR;
+  const segments: ThermalDay['segments'] = [];
+  for (let t = start; t < end; t += SCAN_STEP) {
+    const phase = phaseFor(sunOnGround(forecast, t, terrain));
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg && lastSeg.phase === phase) lastSeg.to = Math.min(end, t + SCAN_STEP);
+    else segments.push({ from: t, to: Math.min(end, t + SCAN_STEP), phase });
+  }
+  const rising = segments.filter((s) => s.phase === 'rising');
+  const rise = rising[0]?.from ?? null;
+  const fall = rising.length ? rising[rising.length - 1].to : null;
+
+  const sloped = terrain && terrain.slope >= 0.05;
+  const down = sloped ? FACING_WORDS[Math.round(terrain.facingDeg / 45) % 8] : null;
+  const up = down ? OPPOSITE[down] : null;
+  const advice: string[] = [];
+  if (!sloped) {
+    advice.push('Little slope here, so the wind carries your scent more than thermals do.');
+  }
+  if (rise !== null && fall !== null) {
+    advice.push(
+      down
+        ? `Morning: scent drains ${down} (downhill) until about ${clock(rise)}. Be settled in before then; after the switch it lifts ${up}, uphill.`
+        : `Morning: air sinks until about ${clock(rise)}, then rises.`,
+    );
+    advice.push(
+      down
+        ? `Evening: scent rises ${up} until about ${clock(fall)}, then drains ${down} again. Walking out after that, it settles into the low ground ${down} of you.`
+        : `Evening: air rises until about ${clock(fall)}, then sinks again.`,
+    );
+  } else {
+    advice.push(down ? `Too little sun reaches this slope to turn the air uphill that day; scent drains ${down} (downhill) all day.` : 'The air hardly turns uphill that day.');
+  }
+  return { start, end, sunrise: day.sunrise, sunset: day.sunset, segments, rise, fall, advice };
+}
+
 // ---------- The stand's slope ----------
 
 // Slope is read across this span, so it reflects the hillside, not a single bump.
@@ -297,7 +359,12 @@ const SLOPE_SPAN_M = 12;
 // How far the path is followed.
 const MAX_PATH_M = 320;
 // Flatter than this, the slope stops steering the air.
-const FLAT_SLOPE = 0.012;
+const FLAT_SLOPE = 0.025;
+// Scent has settled once it stops getting lower (falling) or higher (rising)
+// by at least this much over this many steps: it pools in the low spot, or
+// tops out, instead of the path wandering over flat ground.
+const SETTLE_STEPS = 5;
+const SETTLE_M = 0.5;
 
 // Traces where scent goes from a stand: down the steepest slope when falling,
 // up it when rising, bent by the wind as much as the wind outweighs the
@@ -326,6 +393,7 @@ export function traceThermalPath(start: [number, number], state: ThermalState, w
   let travelled = 0;
   let ends: ThermalPath['ends'] = 'open';
   let heading: number[] | null = null;
+  const heights: number[] = [startElevation];
   while (travelled < MAX_PATH_M) {
     const h = SLOPE_SPAN_M / 2;
     const east = elev(x + h, y);
@@ -349,10 +417,15 @@ export function traceThermalPath(start: [number, number], state: ThermalState, w
     const ww = 1 - state.pull;
     let dx = tx * tw + wind[0] * ww;
     let dy = ty * tw + wind[1] * ww;
+    // Doubling back means it's reached the bottom (or top) of the slope.
+    if (heading && (dx * heading[0] + dy * heading[1]) / (Math.hypot(dx, dy) || 1) < -0.3) {
+      ends = state.phase === 'falling' ? 'pools' : 'ridge';
+      break;
+    }
     // Ease into turns so the path flows rather than zigzags.
     if (heading) {
-      dx = heading[0] * 0.35 + dx * 0.65;
-      dy = heading[1] * 0.35 + dy * 0.65;
+      dx = heading[0] * 0.5 + dx * 0.5;
+      dy = heading[1] * 0.5 + dy * 0.5;
     }
     const len = Math.hypot(dx, dy);
     if (len < 1e-6) break;
@@ -361,9 +434,27 @@ export function traceThermalPath(start: [number, number], state: ThermalState, w
     y += heading[1] * STEP_M;
     travelled += STEP_M;
     points.push(toLngLat(x, y));
+    const here = elev(x, y);
+    if (here === null) break;
+    heights.push(here);
+    // Settled: hasn't gone further down (or up) lately. Cut the wandering
+    // back to the lowest (or highest) point and end there.
+    if (heights.length > SETTLE_STEPS && sign * (here - heights[heights.length - 1 - SETTLE_STEPS]) < SETTLE_M) {
+      const recent = heights.slice(-SETTLE_STEPS - 1);
+      const best = sign < 0 ? Math.min(...recent) : Math.max(...recent);
+      const keep = heights.length - 1 - SETTLE_STEPS + recent.indexOf(best);
+      points.length = keep + 1;
+      heights.length = keep + 1;
+      ends = state.phase === 'falling' ? 'pools' : 'ridge';
+      break;
+    }
   }
-  if (points.length < 3) return null;
-  const endElevation = elev(x, y) ?? startElevation;
+  // Settled at once (a bench or bowl right at the stand): it pools around the stand.
+  if (points.length < 2) {
+    if (ends === 'open') return null;
+    points.push(points[0]);
+  }
+  const endElevation = heights[heights.length - 1] ?? startElevation;
   return { points, ends, dropM: endElevation - startElevation };
 }
 
@@ -381,6 +472,13 @@ export function thermalReason(state: ThermalState, path: ThermalPath | null): st
   if (state.phase === 'switching') return 'Thermals are switching, so scent may swirl around the stand.';
   if (!path) return state.phase === 'falling' ? 'Thermals are falling, but the ground here is flat.' : 'Thermals are rising, but the ground here is flat.';
   const feet = Math.round(Math.abs(path.dropM) * 3.281);
+  // Barely moved: settles right around the stand.
+  const lengthM = (path.points.length - 1) * STEP_M;
+  if (lengthM <= 3 * STEP_M || feet < 3) {
+    return state.phase === 'falling'
+      ? `Thermals (${state.strength}) let your scent settle and pool right around the stand.`
+      : `Thermals (${state.strength}) hold your scent near the stand; there's little slope above it.`;
+  }
   const where = directionWord(path.points[0], path.points[path.points.length - 1]);
   const verb = state.phase === 'falling' ? `drain your scent ${feet} ft down to the ${where}` : `lift your scent ${feet} ft up to the ${where}`;
   const end = path.ends === 'pools' ? ' and pool there' : path.ends === 'ridge' ? ' onto the high ground' : '';
@@ -391,6 +489,11 @@ export function thermalReason(state: ThermalState, path: ThermalPath | null): st
 
 export interface StandThermal {
   reason: string;
+  // This stand's own phase (its slope's sun), and where its scent ends up.
+  phase: ThermalPhase;
+  ends: ThermalPath['ends'] | null;
+  // How strongly thermals steer the scent here, 0-1 (weaker spreads wider).
+  pull: number;
   // 0 open to the wind, 1 fully sheltered.
   shelter: number;
   path: [number, number][] | null;
@@ -415,7 +518,7 @@ export function withThermals<T extends { stand: { lng: number; lat: number }; ra
   return rated.map((r) => {
     // No lidar here yet (still loading, or offline without saved maps).
     if (elevationAt(r.stand.lng, r.stand.lat) === null) {
-      return { ...r, thermal: { reason: 'Thermals: terrain is still loading (needs internet or saved maps).', shelter: 0, path: null, into: [] } };
+      return { ...r, thermal: { reason: 'Thermals: terrain is still loading (needs internet or saved maps).', shelter: 0, phase: 'switching', ends: null, pull: 0, path: null, into: [] } };
     }
     const start: [number, number] = [r.stand.lng, r.stand.lat];
     // This stand's own timing, from the sun on its slope.
@@ -432,6 +535,9 @@ export function withThermals<T extends { stand: { lng: number; lat: number }; ra
         (local.phase === 'switching' ? '' : shelterNote(shelter, windFromDeg, state.windMph)) +
         slopeTimesNote(forecast, time, terrain),
       shelter: shelter?.amount ?? 0,
+      phase: local.phase,
+      ends: path?.ends ?? null,
+      pull: local.pull,
       path: path?.points ?? null,
       into,
     };

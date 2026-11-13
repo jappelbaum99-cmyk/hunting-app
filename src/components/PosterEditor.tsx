@@ -1,4 +1,5 @@
 import type { Position } from 'geojson';
+import { ContourColorPicker } from '@/components/ContourColorPicker';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import { Icon } from '@/components/Icon';
@@ -571,6 +572,12 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
               <span>Contour strength {Math.round((p.contourOpacity ?? 1) * 100)}%</span>
               <input type="range" min={0.1} max={1} step={0.05} value={p.contourOpacity ?? 1} onChange={(e) => set({ contourOpacity: Number(e.target.value) })} />
             </label>
+          )}
+          {p.contours !== 'off' && (
+            <div className="poster-slider contour-color-row">
+              <span>Contour color</span>
+              <ContourColorPicker value={p.contourColor ?? null} onChange={(contourColor) => set({ contourColor })} />
+            </div>
           )}
         </div>
 

@@ -113,7 +113,7 @@ interface MapViewProps {
   // Shown as an arrow on the compass when known.
   windFromDeg: number | null;
   // Where thermals carry scent from stands with a cone: stand outward, [lng, lat].
-  thermalPaths: { id: string; phase: 'falling' | 'rising' | 'switching'; points: [number, number][] }[];
+  thermalPaths: { id: string; phase: 'falling' | 'rising' | 'switching'; ends: 'pools' | 'ridge' | 'open' | null; pull: number; points: [number, number][] }[];
   selection: Selection | null;
   interaction: MapInteraction;
   draftPoints: Position[];
@@ -274,22 +274,32 @@ function addFeatureLayers(map: maplibregl.Map): void {
   // Thermal scent paths: a wide soft glow with a fainter core, so it reads as
   // air drifting over the ground rather than a hard line.
   map.addSource('thermal', { type: 'geojson', data: EMPTY });
+  // The spread: stacked bands, each narrower, so it's strongest down the
+  // middle and fades softly to its edges, like the cones.
   map.addLayer({
-    id: 'thermal-glow',
-    type: 'line',
+    id: 'thermal-spread',
+    type: 'fill',
     source: 'thermal',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    filter: ['==', ['geometry-type'], 'Polygon'],
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': THERMAL_BAND_OPACITY, 'fill-antialias': true },
+  });
+  map.addLayer({
+    id: 'thermal-pool',
+    type: 'circle',
+    source: 'thermal',
+    filter: ['==', ['geometry-type'], 'Point'],
     paint: {
-      'line-color': ['get', 'color'],
-      'line-opacity': 0.28,
-      'line-width': ['interpolate', ['linear'], ['zoom'], 13, 8, 17, 26],
-      'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 5, 17, 14],
+      'circle-color': ['get', 'color'],
+      'circle-opacity': 0.32,
+      'circle-blur': 0.9,
+      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 13, 6, 17, 60],
     },
   });
   map.addLayer({
     id: 'thermal-core',
     type: 'line',
     source: 'thermal',
+    filter: ['==', ['geometry-type'], 'LineString'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-opacity': 0.45, 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 17, 2.5], 'line-blur': 0.8 },
   });
@@ -545,7 +555,8 @@ const STREAK_PIECES = [
 ];
 
 // Thermal paths: cool violet when falling (downhill), warm violet when rising.
-const THERMAL_COLORS = { falling: '#8e9cff', rising: '#c38bff', switching: '#b0b0c8' } as const;
+// Easy to tell apart on any ground: cool blue as air sinks, warm amber as it rises.
+const THERMAL_COLORS = { falling: '#4fb3ff', rising: '#ffb347', switching: '#c8c8d8' } as const;
 const THERMAL_STREAK_COLOR = '#f1ecff';
 const THERMAL_STREAKS = 3;
 const THERMAL_PERIOD_MS = 7000;
@@ -553,6 +564,42 @@ const THERMAL_PERIOD_MS = 7000;
 const THERMAL_STREAK_LENGTH = 0.14;
 
 type ThermalPathView = MapViewProps['thermalPaths'][number];
+
+// The spread around a thermal path: how much wider it gets per meter it
+// travels (each side), more when thermals only weakly steer the scent.
+const spreadRate = (pull: number) => 0.1 + 0.3 * (1 - Math.max(0, Math.min(1, pull)));
+// Stacked bands as shares of the full spread, and each one's opacity.
+const THERMAL_BANDS = [1, 0.66, 0.33];
+const THERMAL_BAND_OPACITY = 0.12;
+
+// A band around the path that widens with distance: `rate` meters each side
+// per meter along, plus a little at the stand. Null for too short a path.
+function thermalBand(points: [number, number][], rate: number, factor: number): Polygon | null {
+  if (points.length < 2) return null;
+  const lat0 = points[0][1];
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180);
+  const mPerLat = 110_540;
+  const xy = points.map(([lng, lat]) => [(lng - points[0][0]) * mPerLng, (lat - lat0) * mPerLat]);
+  const left: Position[] = [];
+  const right: Position[] = [];
+  let along = 0;
+  for (let i = 0; i < xy.length; i++) {
+    if (i > 0) along += Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]);
+    const a = xy[Math.max(0, i - 1)];
+    const b = xy[Math.min(xy.length - 1, i + 1)];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    // Square to the path.
+    const nx = -(b[1] - a[1]) / len;
+    const ny = (b[0] - a[0]) / len;
+    const half = 3 * factor + along * rate;
+    left.push([points[0][0] + (xy[i][0] + nx * half) / mPerLng, lat0 + (xy[i][1] + ny * half) / mPerLat]);
+    right.push([points[0][0] + (xy[i][0] - nx * half) / mPerLng, lat0 + (xy[i][1] - ny * half) / mPerLat]);
+  }
+  if (along < 1) return null;
+  const ring = [...left, ...right.reverse()];
+  ring.push(ring[0]);
+  return { type: 'Polygon', coordinates: [ring] };
+}
 
 // Streaks gliding along each thermal path, the same soft style as the cones.
 function thermalStreakFeatures(paths: ThermalPathView[], now: number | null): FeatureCollection['features'] {
@@ -696,7 +743,7 @@ export function MapView(props: MapViewProps) {
   // Bumped once the style loads so the data effects below run against a ready map.
   const [readyTick, setReadyTick] = useState(0);
   // Matches the tiles baked into buildBaseStyle().
-  const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10' });
+  const loadedTiles = useRef<{ lidar: string; contours: string }>({ lidar: DEFAULT_LAYERS.lidarStyle, contours: '10:' });
   const markerElements = useRef(new Map<string, maplibregl.Marker>());
   const labelElements = useRef(new Map<string, maplibregl.Marker>());
   // Hides names that would overlap; set up with the map.
@@ -886,10 +933,12 @@ export function MapView(props: MapViewProps) {
       map.getSource<RasterTileSource>('lidar')?.setTiles(lidarStyleTiles(layers.lidarStyle));
     }
 
-    const contours = contourTiles(layers.contours);
+    const contourColor = settings.contourColor ?? null;
+    const contours = contourTiles(layers.contours, contourColor);
     show(LAYER_IDS.contours, contours !== null);
-    if (contours && loadedTiles.current.contours !== layers.contours) {
-      loadedTiles.current.contours = layers.contours;
+    const contourKey = `${layers.contours}:${contourColor ?? ''}`;
+    if (contours && loadedTiles.current.contours !== contourKey) {
+      loadedTiles.current.contours = contourKey;
       map.getSource<RasterTileSource>('contours')?.setTiles(contours);
     }
     // 3D: tilt in when turned on, back to flat when off.
@@ -903,9 +952,12 @@ export function MapView(props: MapViewProps) {
       }
     }
     // Contours come back as black lines; lighten them over satellite imagery.
-    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', layers.base === 'satellite' ? 0.85 : 0);
+    show(LAYER_IDS.slope, layers.slope);
+    map.setPaintProperty(LAYER_IDS.slope, 'raster-opacity', layers.slopeOpacity);
+    // The original black lines are lightened over satellite; a picked color is drawn as is.
+    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', !contourColor && layers.base === 'satellite' ? 0.85 : 0);
     map.setPaintProperty(LAYER_IDS.contours, 'raster-opacity', layers.contourOpacity);
-  }, [layers, settings.aerialPhotos, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layers, settings.aerialPhotos, settings.contourColor, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property and area shapes.
   const selectedId = selection?.id ?? null;
@@ -1162,11 +1214,22 @@ export function MapView(props: MapViewProps) {
     if (!map || !readyRef.current) return;
     map.getSource<GeoJSONSource>('thermal')?.setData({
       type: 'FeatureCollection',
-      features: thermalPaths.map((p) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'LineString' as const, coordinates: p.points },
-        properties: { id: p.id, color: THERMAL_COLORS[p.phase] },
-      })),
+      features: thermalPaths.flatMap((p) => [
+        // The spread, widest first.
+        ...THERMAL_BANDS.flatMap((factor) => {
+          const band = thermalBand(p.points, spreadRate(p.pull) * factor, factor);
+          return band ? [{ type: 'Feature' as const, geometry: band, properties: { id: p.id, color: THERMAL_COLORS[p.phase] } }] : [];
+        }),
+        {
+          type: 'Feature' as const,
+          geometry: { type: 'LineString' as const, coordinates: p.points },
+          properties: { id: p.id, color: THERMAL_COLORS[p.phase] },
+        },
+        // Where scent settles: pools in a low spot, or tops out on high ground.
+        ...(p.ends === 'pools' || p.ends === 'ridge'
+          ? [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: p.points[p.points.length - 1] }, properties: { id: p.id, color: THERMAL_COLORS[p.phase], pool: true } }]
+          : []),
+      ]),
     });
   }, [thermalPaths, readyTick]);
 

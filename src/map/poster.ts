@@ -3,6 +3,7 @@
 // read from the desktop's saved tiles when they're there), then the property
 // lines, areas, trails, pins and labels, a title, north arrow and scale bar.
 // No WebGL, so the image can be far bigger than the screen.
+import { tintedCanvas } from '@/map/tint';
 import type { Position } from 'geojson';
 
 import { boundsOf } from '@/lib/geo';
@@ -127,6 +128,8 @@ interface TileLayer {
   savedOnly?: boolean;
   // Drawn lightened, like contours over satellite on the map.
   lighten?: boolean;
+  // Black lines redrawn in this color (contours).
+  tint?: string | null;
   bounds?: [number, number, number, number];
 }
 
@@ -149,7 +152,7 @@ function tileLayers(p: PosterSettings, mpp: number): TileLayer[] {
   if (p.base === 'lidar') layers.push({ template: lidar, tileSize: 512, minZoom: 7, maxZoom: 18, opacity: 1 });
   else if (p.lidarBlend > 0) layers.push({ template: lidar, tileSize: 512, minZoom: 7, maxZoom: 18, opacity: p.lidarBlend });
   const contours = contourTiles(p.contours);
-  if (contours && zoom >= 12) layers.push({ template: contours[0].replace(/^retry:\/\//, ''), tileSize: 512, minZoom: 12, maxZoom: 18, opacity: p.contourOpacity ?? 1, lighten: p.base === 'satellite' });
+  if (contours && zoom >= 12) layers.push({ template: contours[0].replace(/^retry:\/\//, ''), tileSize: 512, minZoom: 12, maxZoom: 18, opacity: p.contourOpacity ?? 1, lighten: !p.contourColor && p.base === 'satellite', tint: p.contourColor ?? null });
   return layers;
 }
 
@@ -292,7 +295,7 @@ async function drawTiles(
     for (const job of layerJobs) {
       const image = images.get(job);
       // Overlap by a hair so no seam shows between tiles.
-      if (image) ctx.drawImage(image, job.x - 0.25, job.y - 0.25, job.size + 0.5, job.size + 0.5);
+      if (image) ctx.drawImage(layer.tint ? tintedCanvas(image, layer.tint) : image, job.x - 0.25, job.y - 0.25, job.size + 0.5, job.size + 0.5);
       image?.close();
     }
     ctx.restore();

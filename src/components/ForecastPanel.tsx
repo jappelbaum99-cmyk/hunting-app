@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { thermalSummary, type ThermalState } from '@/lib/thermals';
 import { Icon } from '@/components/Icon';
 
@@ -54,8 +54,11 @@ interface ForecastPanelProps {
 
 const HOURS_SHOWN = 36;
 const HOUR = 3600_000;
-const SLIDER_STEP = 15 * 60_000;
-const PLAY_INTERVAL_MS = 350;
+// Play glides through the whole sit in this long, whatever its length.
+const PLAY_DURATION_MS = 14_000;
+// How often play moves the time: about 30 a second keeps the cones and paths
+// fluid without redrawing the map more than it can keep up with.
+const PLAY_FRAME_MS = 33;
 const GROUPS: StandRating[] = ['good', 'ok', 'bad', 'unset'];
 
 // Chart hues, checked for contrast and color-blind separation on the dark panels.
@@ -202,16 +205,41 @@ function SitWeather({
   const pressure = pressureAt(forecast, sit.start);
   const pressureEnd = pressureAt(forecast, sit.end);
 
-  // Play steps the slider through the sit, then stops at the end.
+  // Play glides the time through the sit, then stops at the end. It runs on
+  // the screen's frames and moves by the real time since the last one, so it
+  // keeps an even pace however busy the PC is.
+  const timeRef = useRef(selectedTime);
+  timeRef.current = selectedTime;
   useEffect(() => {
     if (!playing) return;
-    const timer = setInterval(() => {
-      const next = selectedTime + SLIDER_STEP;
-      if (next > sit.end) setPlaying(false);
-      else onTimeChange(next);
-    }, PLAY_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [playing, selectedTime, sit.end, onTimeChange]);
+    const perMs = (sit.end - sit.start) / PLAY_DURATION_MS;
+    let frame = 0;
+    let last = performance.now();
+    let sent = last;
+    let time = timeRef.current;
+    const tick = (now: number) => {
+      time += (now - last) * perMs;
+      last = now;
+      if (time >= sit.end) {
+        onTimeChange(sit.end);
+        setPlaying(false);
+        return;
+      }
+      if (now - sent >= PLAY_FRAME_MS) {
+        sent = now;
+        onTimeChange(time);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, sit.start, sit.end, onTimeChange]);
+
+  // Dragging on any chart moves the time, the same as the slider.
+  const scrub = (time: number) => {
+    setPlaying(false);
+    onTimeChange(Math.min(sit.end, Math.max(sit.start, time)));
+  };
 
   const toChart = (pick: (h: ForecastHour) => number) => hours.map((h) => ({ time: h.time, value: pick(h) }));
 
@@ -258,7 +286,7 @@ function SitWeather({
         </div>
       </dl>
 
-      <AreaChart title="Temperature" points={toChart((h) => h.tempF)} color={TEMP_COLOR} format={(v) => `${Math.round(v)}°F`} markerTime={selectedTime} />
+      <AreaChart title="Temperature" points={toChart((h) => h.tempF)} color={TEMP_COLOR} format={(v) => `${Math.round(v)}°F`} markerTime={selectedTime} onScrub={scrub} />
       <AreaChart
         title="Wind speed"
         points={toChart((h) => h.windMph)}
@@ -266,6 +294,7 @@ function SitWeather({
         format={(v) => `${Math.round(v)} mph`}
         domain={[0, Math.max(10, Math.ceil(Math.max(...hours.map((h) => h.gustMph)) / 5) * 5)]}
         markerTime={selectedTime}
+        onScrub={scrub}
       />
       <div className="wind-track" aria-label="Wind direction through the sit">
         {hours.map((h) => (
@@ -281,6 +310,7 @@ function SitWeather({
         format={(v) => `${Math.round(v)}%`}
         domain={[0, 100]}
         markerTime={selectedTime}
+        onScrub={scrub}
       />
       <AreaChart
         title="Pressure"
@@ -289,6 +319,7 @@ function SitWeather({
         format={(v) => `${v.toFixed(2)} inHg`}
         minPad={0.02}
         markerTime={selectedTime}
+        onScrub={scrub}
       />
 
       <div className="sit-slider">
@@ -307,7 +338,7 @@ function SitWeather({
           type="range"
           min={sit.start}
           max={sit.end}
-          step={SLIDER_STEP}
+          step={60_000}
           value={Math.min(sit.end, Math.max(sit.start, selectedTime))}
           onChange={(e) => {
             setPlaying(false);
@@ -319,7 +350,7 @@ function SitWeather({
       <p className="slider-readout">
         <strong>{formatClock(selectedTime)}</strong> · {compassPointOf(at.windFromDeg)} {Math.round(at.windMph)} mph ·{' '}
         {Math.round(at.tempF)}°F
-        <span className="muted"> · drag to watch the scent cones move</span>
+        <span className="muted"> · drag here or on any chart to move the time</span>
       </p>
     </div>
   );

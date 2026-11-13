@@ -5392,11 +5392,11 @@ body.resizing {
 }
 
 .thermal-card.thermal-falling {
-  border-left-color: #8e9cff;
+  border-left-color: #4fb3ff;
 }
 
 .thermal-card.thermal-rising {
-  border-left-color: #c38bff;
+  border-left-color: #ffb347;
 }
 
 .thermal-head {
@@ -5422,4 +5422,162 @@ body.resizing {
 
 .row-detail.thermal-note {
   color: #b9b3ff;
+}
+
+/* Contour line color: Auto, White, Black, Brown, or any color. */
+.contour-color-row {
+  flex-wrap: wrap;
+}
+
+.contour-colors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contour-swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.contour-swatch.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(240, 138, 36, 0.35);
+}
+
+.contour-swatch.original {
+  width: auto;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.contour-swatch.custom {
+  background: conic-gradient(#ff5f57, #ffcc00, #34c759, #3987e5, #c38bff, #ff5f57);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 0 3px #000;
+}
+
+.contour-swatch.custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Choose map › Slope shading legend */
+.slope-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  margin: 4px 0 2px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.slope-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slope-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Weather charts in a sit: press and drag to move the time. */
+.area-chart svg.scrubbable {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* Stand panel: the thermal day */
+.thermal-bar {
+  position: relative;
+  height: 14px;
+  margin: 4px 0 2px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--fill);
+}
+
+.thermal-bar .thermal-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.thermal-seg.falling {
+  background: #4fb3ff;
+}
+
+.thermal-seg.rising {
+  background: #ffb347;
+}
+
+.thermal-seg.switching {
+  background: repeating-linear-gradient(135deg, #8d8da6 0 4px, #b9b9cc 4px 8px);
+}
+
+.thermal-now-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 3px #000;
+}
+
+.thermal-ticks {
+  position: relative;
+  height: 16px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.thermal-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.thermal-ticks.sun {
+  opacity: 0.8;
+}
+
+.thermal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 2px 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.thermal-legend i {
+  display: inline-block;
+  position: static;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: -1px;
 }

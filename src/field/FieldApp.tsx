@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import {
   appleMapsUrl,
@@ -31,7 +31,13 @@ import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weat
 import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
-type Tab = 'pin' | 'hunt' | 'stands' | 'notes' | 'send';
+type Tab = 'pin' | 'map' | 'hunt' | 'stands' | 'notes' | 'send';
+
+// The map is a big download, so it loads on its own. It's fetched soon after
+// the page opens anyway, so the page saves it for use with no signal.
+const loadMapTab = () => import('@/field/MapTab');
+const MapTab = lazy(loadMapTab);
+if (typeof window !== 'undefined') window.addEventListener('load', () => setTimeout(() => void loadMapTab().catch(() => undefined), 3000));
 
 // Soil samples have their own tab, so they aren't in this list.
 const PIN_TYPES: MarkerType[] = ['stand', 'blind', 'platform', 'camera', 'scrape', 'rub', 'trail', 'water', 'parking', 'other'];
@@ -91,6 +97,11 @@ export function FieldApp() {
   const [data, setData] = useState<FieldData>(loadFieldData);
   // A scanned QR code opens the Camp tab with the code filled in.
   const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : JOIN_CODE ? 'send' : 'pin');
+  // The map stays once opened, so it doesn't reload each visit.
+  const [mapOpened, setMapOpened] = useState(false);
+  useEffect(() => {
+    if (tab === 'map') setMapOpened(true);
+  }, [tab]);
   // Moving stands is off each time the page opens, so a stand can't be moved by a stray tap.
   const [movingStands, setMovingStands] = useState(false);
   const [message, setMessage] = useState<string | null>(() => {
@@ -108,7 +119,7 @@ export function FieldApp() {
   }, [message]);
 
   // GPS runs on the Pin, Hunt and Notes tabs, while moving stands, and the whole time a walk is recorded.
-  const gps = useGps(tab === 'pin' || tab === 'hunt' || tab === 'notes' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
+  const gps = useGps(tab === 'pin' || tab === 'map' || tab === 'hunt' || tab === 'notes' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
   const sync = useCampSync(data, setData);
 
   // While walking, add a point every ~8 m, skipping fixes rougher than 30 m.
@@ -173,7 +184,7 @@ export function FieldApp() {
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
         <h1>Fenceline</h1>
         <span className={`gps-badge${gps.fix ? ' ok' : ''}`}>
-          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'pin' || tab === 'hunt' || tab === 'notes' ? 'Finding GPS…' : 'GPS off'}
+          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'pin' || tab === 'map' || tab === 'hunt' || tab === 'notes' ? 'Finding GPS…' : 'GPS off'}
         </span>
       </header>
 
@@ -275,6 +286,11 @@ export function FieldApp() {
             onMessage={setMessage}
           />
         )}
+        {mapOpened && (
+          <Suspense fallback={tab === 'map' ? <p className="hint">Loading the map…</p> : null}>
+            <MapTab visible={tab === 'map'} data={data} fix={gps.fix} gpsError={gps.error} onData={setData} onMessage={setMessage} />
+          </Suspense>
+        )}
         {tab === 'send' && <SendTab data={data} sync={sync} joinCode={JOIN_CODE} onData={setData} onMessage={setMessage} />}
       </main>
 
@@ -284,6 +300,7 @@ export function FieldApp() {
         {(
           [
             ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : data.soilRun ? 'Sampling' : 'Pin'],
+            ['map', 'map', 'Map'],
             ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
             ['stands', 'stand', 'Stands'],
             ['notes', 'clipboard', 'Notes'],

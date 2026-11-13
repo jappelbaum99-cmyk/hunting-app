@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { SLOPE_CLASSES } from '@/map/slope';
+import { ContourColorPicker } from '@/components/ContourColorPicker';
 import { Icon } from '@/components/Icon';
 import { MapLabelToggles } from '@/components/MapLabelToggles';
 import { pinTypeList } from '@/lib/featureTypes';
@@ -152,7 +154,33 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
                   onChange={(e) => set({ contourOpacity: Number(e.target.value) })}
                 />
               </label>
+              <div className="layer-row contour-color-row">
+                <span>Contour color</span>
+                <ContourColorPicker value={settings.contourColor ?? null} onChange={(contourColor) => onChangeSettings({ ...settings, contourColor })} />
+              </div>
               <p className="hint">Contours show when zoomed in close.</p>
+            </>
+          )}
+
+          <label className="check">
+            <input type="checkbox" checked={layers.slope} onChange={(e) => set({ slope: e.target.checked })} />
+            <span>Slope shading</span>
+          </label>
+          {layers.slope && (
+            <>
+              <label className="layer-row">
+                <span>Slope opacity {Math.round(layers.slopeOpacity * 100)}%</span>
+                <input type="range" min={0.1} max={0.9} step={0.05} value={layers.slopeOpacity} onChange={(e) => set({ slopeOpacity: Number(e.target.value) })} />
+              </label>
+              <ul className="slope-legend">
+                {SLOPE_CLASSES.map((c) => (
+                  <li key={c.label}>
+                    <span className="slope-swatch" style={{ background: c.color }} />
+                    {c.label}
+                  </li>
+                ))}
+              </ul>
+              <p className="hint">Flats and benches (green) are where deer often bed and travel. Shows from zoom 11 in.</p>
             </>
           )}
 

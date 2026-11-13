@@ -135,6 +135,8 @@ export interface HubSettings {
   // Close-up satellite photos: Missouri's leaf-off winter ones where saved (the
   // default), or the leaf-on summer NAIP ones everywhere.
   aerialPhotos?: 'leafOff' | 'leafOn';
+  // Contour line color, e.g. '#8b5a2b'. Missing = the original look (black, lightened over satellite).
+  contourColor?: string | null;
   // The last poster laid out, to pick up where it was left (see src/map/poster.ts).
   poster?: PosterSettings | null;
 }
@@ -159,6 +161,8 @@ export interface PosterSettings {
   contours: 'off' | '10' | '5' | '2';
   // How strongly contour lines show, 0-1. Missing means full strength.
   contourOpacity?: number;
+  // Contour line color on the poster; missing = the original look.
+  contourColor?: string | null;
   show: Record<'properties' | 'sections' | 'areas' | 'trails' | 'pins', boolean>;
   labels: Record<PosterLabelKind, boolean>;
   // Size of labels: points on paper per pixel on the map.

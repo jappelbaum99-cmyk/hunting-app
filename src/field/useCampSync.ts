@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { FieldData } from '@/field/fieldData';
 import { sendHunt, sendNote, sendPin, sendTrack, watchHunts, watchCampInfo, watchStands } from '@/lib/camp';
+import { unpackCampMap } from '@/lib/campMap';
 
 const RETRY_MS = 30_000;
 
@@ -52,12 +53,18 @@ export function useCampSync(data: FieldData, setData: (update: (d: FieldData) =>
   }, [camp?.code]);
 
   // Pin types added in the hub's Settings, which pins, walks and notes the hub has
-  // handled, and the food plots. A note the hub has is done with on this phone.
+  // handled, the food plots and the map. A note the hub has is done with on this phone.
+  const mapText = useRef<string | null>(null);
   useEffect(() => {
     if (!camp) return;
     return watchCampInfo(
       camp,
-      ({ pinTypes, handled, plots }) => setData((d) => ({ ...d, pinTypes, handled, plots, notes: d.notes.filter((n) => !handled[n.id]) })),
+      ({ pinTypes, handled, plots, map }) => {
+        // The map is only unpacked when it changed; a camp without one keeps the last.
+        const fresh = map && map !== mapText.current ? unpackCampMap(map) : null;
+        if (map) mapText.current = map;
+        setData((d) => ({ ...d, pinTypes, handled, plots, notes: d.notes.filter((n) => !handled[n.id]), ...(fresh ? { map: fresh } : {}) }));
+      },
       setError,
     );
   }, [camp?.code]);

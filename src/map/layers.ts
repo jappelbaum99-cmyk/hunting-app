@@ -5,6 +5,8 @@ import type { StyleSpecification } from 'maplibre-gl';
 // bundles it, so hand it the worker's real URL.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { readElevationTiff, toTerrariumPng } from '@/map/terrain';
+import { tintPng } from '@/map/tint';
+import { slopePng } from '@/map/slope';
 
 export type BaseMapId = 'satellite' | 'topo' | 'lidar';
 export type LidarStyleId = 'stretch' | 'multidirectional' | 'tinted' | 'slope';
@@ -16,6 +18,9 @@ export interface MapLayersState {
   // Lidar shading blended over satellite/topo, 0-1. The lidar base map ignores it.
   lidarBlend: number;
   contours: ContourInterval;
+  // Slope shading: ground colored by steepness, and how strongly, 0-1.
+  slope: boolean;
+  slopeOpacity: number;
   // How strongly contour lines show, 0-1.
   contourOpacity: number;
   // Deer sighting arrows from hunt reports.
@@ -33,6 +38,8 @@ export const DEFAULT_LAYERS: MapLayersState = {
   lidarStyle: 'stretch',
   lidarBlend: 0,
   contours: 'off',
+  slope: false,
+  slopeOpacity: 0.45,
   contourOpacity: 1,
   sightings: false,
   huntSpots: false,
@@ -96,6 +103,10 @@ const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-
 const RETRY_PROTOCOL = 'retry';
 // Same retries, then the float elevation TIFF is re-coded for 3D terrain (src/map/terrain.ts).
 const RETRY_DEM_PROTOCOL = 'retry-dem';
+// Same retries, then black lines are redrawn in a color: retry-tint://RRGGBB/<url> (contours).
+const RETRY_TINT_PROTOCOL = 'retry-tint';
+// Same retries, then the elevation TIFF is colored by steepness (src/map/slope.ts).
+const RETRY_SLOPE_PROTOCOL = 'retry-slope';
 // Kept short: MapLibre loads only so many images at once, saved tiles included,
 // so a tile waiting out a busy server holds up tiles that are already on disk.
 // One that gives up is tried again later by retryFailedTiles; meanwhile it shows
@@ -117,6 +128,17 @@ export function normalizeTileUrl(url: string): string {
   return url.replace(/bbox=([-\d.e,]+)/, (_, box: string) => `bbox=${box.split(',').map((n) => Number(n).toFixed(1)).join(',')}`);
 }
 
+// Tiles saved in a plain browser (the phone page's offline maps). The desktop
+// app keeps its own on disk instead.
+export interface BrowserTileStore {
+  get(url: string): Promise<ArrayBuffer | null>;
+}
+let browserTiles: BrowserTileStore | null = null;
+
+export function setBrowserTileStore(store: BrowserTileStore | null): void {
+  browserTiles = store;
+}
+
 async function fetchImage(url: string, signal: AbortSignal): Promise<ArrayBuffer | string> {
   if (window.hub) {
     // Desktop app: the main process serves the tile from disk, or fetches and saves it.
@@ -130,6 +152,8 @@ async function fetchImage(url: string, signal: AbortSignal): Promise<ArrayBuffer
       return String(error);
     }
   }
+  const saved = browserTiles ? await browserTiles.get(url).catch(() => null) : null;
+  if (saved) return saved;
   try {
     const response = await fetch(url, { signal });
     const isImage = response.headers.get('content-type')?.startsWith('image/');
@@ -177,8 +201,23 @@ export function setUpMapLibre(): void {
     const tiff = await withRetries(normalizeTileUrl(params.url.slice(`${RETRY_DEM_PROTOCOL}://`.length)), abortController.signal);
     return { data: await toTerrariumPng(readElevationTiff(tiff)) };
   });
+  maplibregl.addProtocol(RETRY_SLOPE_PROTOCOL, async (params, abortController) => {
+    const url = normalizeTileUrl(params.url.slice(`${RETRY_SLOPE_PROTOCOL}://`.length));
+    const tiff = await withRetries(url, abortController.signal);
+    return { data: await slopePng(readElevationTiff(tiff), url) };
+  });
+  maplibregl.addProtocol(RETRY_TINT_PROTOCOL, async (params, abortController) => {
+    const rest = params.url.slice(`${RETRY_TINT_PROTOCOL}://`.length);
+    const slash = rest.indexOf('/');
+    const png = await withRetries(normalizeTileUrl(rest.slice(slash + 1)), abortController.signal);
+    return { data: await tintPng(png, `#${rest.slice(0, slash)}`) };
+  });
   maplibregl.addProtocol(SAVED_PROTOCOL, async (params) => {
     const url = normalizeTileUrl(params.url.slice(`${SAVED_PROTOCOL}://`.length));
+    if (!window.hub && browserTiles) {
+      const saved = await browserTiles.get(url).catch(() => null);
+      return { data: saved ?? (EMPTY_PNG.buffer.slice(0) as ArrayBuffer) };
+    }
     const tile = window.hub ? await window.hub.getTile(url, { cacheOnly: true }).catch(() => null) : null;
     const bytes = tile ? tile.bytes : EMPTY_PNG;
     return { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer };
@@ -227,9 +266,21 @@ export function lidarStyleTiles(id: LidarStyleId): string[] {
   return elevationTiles(LIDAR_STYLES.find((s) => s.id === id)!.rasterFunction);
 }
 
-export function contourTiles(id: ContourInterval): string[] | null {
+// Contour line colors offered in Choose map; null is the original look
+// (black, lightened over satellite). Any other color can be picked too.
+export const CONTOUR_COLORS: { label: string; color: string }[] = [
+  { label: 'White', color: '#ffffff' },
+  { label: 'Black', color: '#000000' },
+  { label: 'Brown', color: '#8b5a2b' },
+];
+
+// Contour tiles, recolored when a color is given. The saved copy on disk is the
+// same tile either way, so offline maps work in any color.
+export function contourTiles(id: ContourInterval, color: string | null = null): string[] | null {
   const fn = CONTOUR_OPTIONS.find((c) => c.id === id)?.rasterFunction;
-  return fn ? elevationTiles(fn) : null;
+  if (!fn) return null;
+  const tiles = elevationTiles(fn);
+  return color ? tiles.map((url) => url.replace(`${RETRY_PROTOCOL}://`, `${RETRY_TINT_PROTOCOL}://${color.replace('#', '')}/`)) : tiles;
 }
 
 export const LAYER_IDS = {
@@ -240,6 +291,7 @@ export const LAYER_IDS = {
   lidar: 'base-lidar',
   lidarBlend: 'overlay-lidar',
   contours: 'overlay-contours',
+  slope: 'overlay-slope',
 } as const;
 
 export function buildBaseStyle(): StyleSpecification {
@@ -307,6 +359,16 @@ export function buildBaseStyle(): StyleSpecification {
         maxzoom: 15,
         attribution: `${ATTRIBUTION} 3DEP lidar`,
       },
+      // Steepness colors from the same elevation tiles as 3D terrain; past
+      // zoom 15 the zoom-15 tiles are stretched (about 4 m a pixel).
+      slope: {
+        type: 'raster',
+        tiles: [`${RETRY_SLOPE_PROTOCOL}://${TERRAIN_TILE_URL}`],
+        tileSize: 256,
+        minzoom: 11,
+        maxzoom: 15,
+        attribution: `${ATTRIBUTION} 3DEP lidar`,
+      },
       contours: {
         type: 'raster',
         tiles: contourTiles('10')!,
@@ -352,6 +414,15 @@ export function buildBaseStyle(): StyleSpecification {
         source: 'lidar',
         layout: { visibility: 'none' },
         paint: { 'raster-opacity': 0.5 },
+      },
+      // Under the contours, so lines stay readable over the colors.
+      {
+        id: LAYER_IDS.slope,
+        type: 'raster',
+        source: 'slope',
+        minzoom: 11,
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': 0.45, 'raster-resampling': 'linear', 'raster-fade-duration': TILE_FADE_MS },
       },
       {
         id: LAYER_IDS.contours,

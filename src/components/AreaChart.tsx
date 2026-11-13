@@ -16,6 +16,8 @@ interface AreaChartProps {
   markerTime: number;
   // Smallest padding above and below a fitted range, in the data's units.
   minPad?: number;
+  // Press and drag across the chart to move the time there.
+  onScrub?(time: number): void;
 }
 
 const WIDTH = 280;
@@ -51,9 +53,10 @@ function formatTime(time: number): string {
 
 // A small single-series area chart: 2px line over a light wash, recessive
 // baseline, crosshair + tooltip on hover.
-export function AreaChart({ title, points, color, format, domain, markerTime, minPad = 1 }: AreaChartProps) {
+export function AreaChart({ title, points, color, format, domain, markerTime, minPad = 1, onScrub }: AreaChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const dragging = useRef(false);
   if (points.length < 2) return null;
 
   const t0 = points[0].time;
@@ -73,7 +76,29 @@ export function AreaChart({ title, points, color, format, domain, markerTime, mi
   const line = smoothPath(points.map((p) => [x(p.time), y(p.value)]));
   const area = `${line}L${x(t1).toFixed(1)},${baseline}L${x(t0).toFixed(1)},${baseline}Z`;
 
+  // The time under the pointer, anywhere between the first and last point.
+  const timeAt = (event: PointerEvent<SVGSVGElement>) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    const px = ((event.clientX - rect.left) / rect.width) * WIDTH;
+    const fraction = (px - PAD.left) / (WIDTH - PAD.left - PAD.right);
+    return t0 + Math.min(1, Math.max(0, fraction)) * (t1 - t0);
+  };
+  const onDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (!onScrub || event.button !== 0) return;
+    dragging.current = true;
+    // Keep getting moves if the pointer leaves the chart mid-drag.
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Not every pointer can be captured; the drag still works over the chart.
+    }
+    onScrub(timeAt(event));
+  };
+  const onUp = () => {
+    dragging.current = false;
+  };
   const onMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (onScrub && dragging.current) onScrub(timeAt(event));
     const rect = svgRef.current!.getBoundingClientRect();
     const px = ((event.clientX - rect.left) / rect.width) * WIDTH;
     let nearest = 0;
@@ -103,7 +128,11 @@ export function AreaChart({ title, points, color, format, domain, markerTime, mi
           preserveAspectRatio="none"
           role="img"
           aria-label={`${title}: ${points.map((p) => `${formatTime(p.time)} ${format(p.value)}`).join(', ')}`}
+          className={onScrub ? 'scrubbable' : undefined}
+          onPointerDown={onDown}
           onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
           onPointerLeave={() => setHover(null)}
         >
           <line x1={PAD.left} x2={WIDTH - PAD.right} y1={baseline} y2={baseline} className="chart-baseline" />

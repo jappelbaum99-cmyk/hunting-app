@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { CampPlot } from '@/lib/actionBoard';
-import { campUserId, publishHandled, publishPinTypes, publishPlots, sendStand, type CampInfo, type Handled, watchCampInfo, watchHunts, watchNotes, watchPins, watchStands, watchTracks, type CampStand } from '@/lib/camp';
+import { MAX_CAMP_MAP_CHARS } from '@/lib/campMap';
+import { campUserId, publishHandled, publishMap, publishPinTypes, publishPlots, sendStand, type CampInfo, type Handled, watchCampInfo, watchHunts, watchNotes, watchPins, watchStands, watchTracks, type CampStand } from '@/lib/camp';
 import type { CampLink, CustomPinType, FieldNote, FieldPin, FieldTrack, HuntReport } from '@/types/models';
 
 // Wait for edits to settle before publishing stands.
@@ -18,6 +19,8 @@ export function useHubCamp(
   handled: Handled = {},
   // The food plots phones can log work on.
   plots: CampPlot[] = [],
+  // The camp map for the phones (packed text), or null to leave it alone.
+  mapText: string | null = null,
 ): { error: string | null; manager: boolean; uid: string | null; info: CampInfo | null } {
   const [error, setError] = useState<string | null>(null);
   const [published, setPublished] = useState<Map<string, CampStand> | null>(null);
@@ -112,6 +115,24 @@ export function useHubCamp(
     }, PUBLISH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [camp?.code, manager, plotsKey]);
+
+  // The map the phones draw. Sent when this hub's map changes and the camp's
+  // copy differs, so an idle hub writes nothing, and two partners with
+  // different maps don't keep overwriting each other.
+  const campMap = info?.map ?? null;
+  const lastMap = useRef<string | null>(null);
+  useEffect(() => {
+    if (!manager || !camp || !info || !mapText || mapText === campMap || mapText === lastMap.current) return;
+    const timer = setTimeout(() => {
+      if (mapText.length > MAX_CAMP_MAP_CHARS) {
+        setError('The map is too big to send to phones. Simplify a very detailed boundary or trail.');
+        return;
+      }
+      lastMap.current = mapText;
+      publishMap(camp, mapText).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    }, PUBLISH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [camp?.code, manager, info !== null, mapText, campMap]);
 
   return { error, manager, uid, info };
 }

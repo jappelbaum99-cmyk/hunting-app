@@ -58,6 +58,7 @@ function layerPlans(layers: MapLayersState, bbox: [number, number, number, numbe
   if (w < me && e > mw && s < mn && n > ms) {
     plans.push({ label: 'Missouri 6 inch close-up', template: MO_AERIAL_TILE_URL, minZoom: AERIAL_MIN_ZOOM - 1, maxZoom: MO_AERIAL_MAX_ZOOM, kbPerTile: 60 });
   }
+  // The plain tile; colors are drawn when it's shown.
   const contours = contourTiles(layers.contours);
   if (contours) plans.push({ label: 'Contours', template: strip(contours[0]), minZoom: 12, maxZoom: 18, kbPerTile: 15 });
   return plans;
@@ -100,12 +101,13 @@ export interface DownloadPlan {
   tooBig: boolean;
 }
 
-export function planDownload(boundary: AreaGeometry, layers: MapLayersState, radiusM: number = DEFAULT_OFFLINE_RADIUS_M): DownloadPlan {
+// `skip` leaves out layers by label (the phone has no 3D terrain).
+export function planDownload(boundary: AreaGeometry, layers: MapLayersState, radiusM: number = DEFAULT_OFFLINE_RADIUS_M, skip: string[] = []): DownloadPlan {
   const bbox = bufferedBounds(boundary, radiusM);
   const urls: string[] = [];
   const byLayer: DownloadPlan['byLayer'] = [];
   let kb = 0;
-  for (const plan of layerPlans(layers, bbox)) {
+  for (const plan of layerPlans(layers, bbox).filter((p) => !skip.includes(p.label))) {
     let tiles = 0;
     for (let z = plan.minZoom; z <= plan.maxZoom; z++) {
       const { x0, x1, y0, y1, size } = tileRange(bbox, z);
@@ -138,9 +140,12 @@ export async function runDownload(
   onProgress: (progress: DownloadProgress) => void,
   signal: AbortSignal,
   concurrency = CONCURRENCY,
+  // Saves one tile somewhere other than the desktop's disk (the phone page).
+  save?: (url: string) => Promise<{ cached: boolean }>,
 ): Promise<DownloadProgress> {
   const hub = window.hub;
-  if (!hub) throw new Error('Offline maps need the desktop app.');
+  const saveTile = save ?? (hub ? (url: string) => hub.getTile(url, { saveOnly: true }) : null);
+  if (!saveTile) throw new Error('Offline maps need the desktop app.');
   const progress: DownloadProgress = { done: 0, total: plan.urls.length, failed: 0, fetched: 0 };
   let next = 0;
 
@@ -150,7 +155,7 @@ export async function runDownload(
       let ok = false;
       for (let attempt = 0; attempt < RETRIES && !ok && !signal.aborted; attempt++) {
         try {
-          const tile = await hub.getTile(url, { saveOnly: true });
+          const tile = await saveTile(url);
           if (!tile.cached) progress.fetched = (progress.fetched ?? 0) + 1;
           ok = true;
         } catch {

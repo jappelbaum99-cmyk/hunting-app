@@ -41,7 +41,7 @@ interface Common {
 type DetailPanelProps =
   | ({ kind: 'property'; record: Property; onChange(p: Property): void; offlineField: ReactNode; onShare(): void } & Common)
   | ({ kind: 'area'; record: MapArea; onChange(a: MapArea): void; areaTypes: AreaTypeView[]; onAddTask(text: string): void; soilSamples: MapMarker[]; onOpenSoilTests(testId: string | null): void; plans: Plan[]; onAddPlan(kind: PlanKind): void; onOpenPlan(id: string): void } & Common)
-  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
+  | ({ kind: 'marker'; record: MapMarker; onChange(m: MapMarker): void; onLogHunt?: () => void; history?: ReactNode; thermals?: ReactNode; pinTypes: PinTypeView[]; unlocked: boolean; onToggleLock(): void } & Common)
   | ({ kind: 'overlay'; record: MapImageOverlay; onChange(o: MapImageOverlay): void; onRealign(): void } & Common)
   | ({ kind: 'trail'; record: MapTrail; onChange(t: MapTrail): void; trailStyles: HubSettings['trailStyles'] } & Common);
 
@@ -95,6 +95,7 @@ export function DetailPanel(props: DetailPanelProps) {
                 Log a hunt here
               </button>
             )}
+            {props.thermals}
             {props.history}
             <ColorField
               label="Color"
