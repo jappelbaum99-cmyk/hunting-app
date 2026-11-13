@@ -487,8 +487,20 @@ export function thermalReason(state: ThermalState, path: ThermalPath | null): st
 
 // ---------- Rating stands with thermals ----------
 
+// Thermals on their own: good (carrying scent clear), swirling (switching, so
+// scent wanders), bad (into bedding), or weak (the wind leads; no say).
+export type ThermalRating = 'good' | 'swirl' | 'bad' | 'weak';
+
+export const THERMAL_RATING_LABELS: Record<ThermalRating, string> = {
+  good: 'Good',
+  swirl: 'Swirling',
+  bad: 'Bad',
+  weak: 'Weak',
+};
+
 export interface StandThermal {
   reason: string;
+  rating: ThermalRating;
   // This stand's own phase (its slope's sun), and where its scent ends up.
   phase: ThermalPhase;
   ends: ThermalPath['ends'] | null;
@@ -502,11 +514,19 @@ export interface StandThermal {
 }
 
 // How much thermals must lead before scent they carry into bedding makes a stand Bad.
-const BAD_PULL = 0.35;
+export const BAD_PULL = 0.35;
+// Below this the wind leads and thermals only bend the scent.
+export const WEAK_PULL = 0.25;
+
+export function thermalRating(phase: ThermalPhase, pull: number, intoSomething: boolean): ThermalRating {
+  if (intoSomething && pull >= BAD_PULL) return 'bad';
+  if (pull < WEAK_PULL) return 'weak';
+  return phase === 'switching' ? 'swirl' : 'good';
+}
 
 // Adds each stand's thermal path and note, and marks a stand Bad when
 // thermals strong enough to matter carry its scent into bedding.
-export function withThermals<T extends { stand: { lng: number; lat: number }; rating: string; reason: string }>(
+export function withThermals<T extends { stand: { lng: number; lat: number }; rating: string; windRating?: string; reason: string }>(
   rated: T[],
   forecast: Forecast | null,
   time: number,
@@ -518,7 +538,7 @@ export function withThermals<T extends { stand: { lng: number; lat: number }; ra
   return rated.map((r) => {
     // No lidar here yet (still loading, or offline without saved maps).
     if (elevationAt(r.stand.lng, r.stand.lat) === null) {
-      return { ...r, thermal: { reason: 'Thermals: terrain is still loading (needs internet or saved maps).', shelter: 0, phase: 'switching', ends: null, pull: 0, path: null, into: [] } };
+      return { ...r, thermal: { reason: 'Thermals: terrain is still loading (needs internet or saved maps).', rating: 'weak', shelter: 0, phase: 'switching', ends: null, pull: 0, path: null, into: [] } };
     }
     const start: [number, number] = [r.stand.lng, r.stand.lat];
     // This stand's own timing, from the sun on its slope.
@@ -529,7 +549,9 @@ export function withThermals<T extends { stand: { lng: number; lat: number }; ra
     const local = withWind(state, shelteredWind(state.windMph, shelter));
     const path = traceThermalPath(start, local, windFromDeg, elevationAt);
     const into = path ? intersects(path.points) : [];
+    const rating = thermalRating(local.phase, local.pull, into.length > 0);
     const thermal: StandThermal = {
+      rating,
       reason:
         thermalReason(local, path) +
         (local.phase === 'switching' ? '' : shelterNote(shelter, windFromDeg, state.windMph)) +
@@ -541,8 +563,12 @@ export function withThermals<T extends { stand: { lng: number; lat: number }; ra
       path: path?.points ?? null,
       into,
     };
-    if (into.length > 0 && local.pull >= BAD_PULL && r.rating !== 'unset') {
+    if (rating === 'bad' && r.rating !== 'unset') {
       return { ...r, rating: 'bad', reason: `Thermals carry scent into ${into.join(' and ')}.`, thermal };
+    }
+    // A good wind doesn't help while the air is turning over: scent wanders.
+    if (rating === 'swirl' && r.rating === 'good') {
+      return { ...r, rating: 'ok', reason: 'Good wind, but thermals are switching, so scent may swirl around the stand.', thermal };
     }
     return { ...r, thermal };
   });

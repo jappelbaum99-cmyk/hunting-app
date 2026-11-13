@@ -140,6 +140,60 @@ export async function fetchForecast(
   };
 }
 
+// Past weather, hour by hour, from Open-Meteo's history (free, no key; it runs a
+// few days behind). Times are fetched in UTC so a range across the clocks
+// changing comes out right; `days` is left empty for the caller to fill.
+export async function fetchHistory(lat: number, lng: number, start: string, end: string, signal?: AbortSignal): Promise<Forecast> {
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    start_date: start,
+    end_date: end,
+    hourly: [
+      'temperature_2m',
+      'wind_speed_10m',
+      'wind_direction_10m',
+      'wind_gusts_10m',
+      'precipitation',
+      'relative_humidity_2m',
+      'cloud_cover',
+      'pressure_msl',
+      'shortwave_radiation',
+      'direct_radiation',
+      'diffuse_radiation',
+    ].join(','),
+    wind_speed_unit: 'mph',
+    temperature_unit: 'fahrenheit',
+    precipitation_unit: 'inch',
+    timezone: 'GMT',
+  });
+  const response = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`, { signal });
+  if (!response.ok) throw new Error(`Weather history answered ${response.status}`);
+  const h = ((await response.json()) as Pick<OpenMeteoResponse, 'hourly'>).hourly;
+  const hours: ForecastHour[] = [];
+  h.time.forEach((t, i) => {
+    // The newest days can still be blank.
+    if (h.wind_speed_10m[i] === null || h.wind_direction_10m[i] === null) return;
+    hours.push({
+      time: Date.parse(`${t}Z`),
+      tempF: h.temperature_2m[i],
+      windMph: h.wind_speed_10m[i],
+      gustMph: h.wind_gusts_10m[i] ?? h.wind_speed_10m[i],
+      windFromDeg: h.wind_direction_10m[i],
+      precipChance: 0,
+      precipIn: h.precipitation[i] ?? 0,
+      humidity: h.relative_humidity_2m[i],
+      cloudCover: h.cloud_cover[i] ?? 0,
+      pressureHpa: h.pressure_msl[i],
+      sunWm2: h.shortwave_radiation?.[i] ?? undefined,
+      directWm2: h.direct_radiation?.[i] ?? undefined,
+      diffuseWm2: h.diffuse_radiation?.[i] ?? undefined,
+    });
+  });
+  if (hours.length === 0) throw new Error('No weather history for those dates yet');
+  return { fetchedAt: Date.now(), lat, lng, hours, days: [] };
+}
+
 // The hour that contains `time`, or the nearest one.
 export function hourAt(forecast: Forecast, time: number): ForecastHour {
   let best = forecast.hours[0];

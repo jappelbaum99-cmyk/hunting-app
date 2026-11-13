@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { thermalSummary, type ThermalState } from '@/lib/thermals';
+import { THERMAL_RATING_LABELS, thermalSummary, type ThermalState } from '@/lib/thermals';
 import { Icon } from '@/components/Icon';
 
 import { AreaChart } from '@/components/AreaChart';
@@ -42,6 +42,8 @@ interface ForecastPanelProps {
   onPickStand(id: string): void;
   onRefresh(): void;
   onClose(): void;
+  // Opens "Test a stand spot".
+  onTestStand(): void;
   // Deer activity for each morning and evening sit, by sit id.
   activity: Record<string, WindowScore>;
   // Hunting Opportunity for each stand in the picked sit, by stand id.
@@ -60,6 +62,8 @@ const PLAY_DURATION_MS = 14_000;
 // fluid without redrawing the map more than it can keep up with.
 const PLAY_FRAME_MS = 33;
 const GROUPS: StandRating[] = ['good', 'ok', 'bad', 'unset'];
+// The wind's own say on a stand row, beside the thermals'.
+const WIND_WORDS: Record<StandRating, string> = { good: 'good', ok: 'fair', bad: 'bad', unset: '' };
 
 // Chart hues, checked for contrast and color-blind separation on the dark panels.
 const TEMP_COLOR = '#d96f17';
@@ -165,6 +169,14 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
       </div>
 
       {props.thermal && <ThermalCard thermal={props.thermal} show={props.showThermals} onToggle={props.onToggleThermals} />}
+
+      <section className="sidebar-section stand-test-card">
+        <div>
+          <h2>Test a stand spot</h2>
+          <p className="hint">Drop a spot and the way deer come and go, and see how it would have done with the wind and thermals of the last few Octobers through Decembers.</p>
+        </div>
+        <button onClick={props.onTestStand}>Test a spot</button>
+      </section>
 
       <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} onSetConeGroups={props.onSetConeGroups} opportunities={props.opportunities} />
 
@@ -434,6 +446,16 @@ function StandList({
                     <span className={`swatch rating-${r.rating}`} />
                     <span className="rated-text">
                       <span className="row-title">{r.stand.name}</span>
+                      {r.windRating !== 'unset' && (
+                        <span className="verdicts">
+                          <span className={`verdict v-${r.windRating}`}>Wind {WIND_WORDS[r.windRating]}</span>
+                          {r.thermal && r.thermal.phase !== undefined && !r.thermal.reason.startsWith('Thermals: terrain') && (
+                            <span className={`verdict v-${r.thermal.rating}`} title={r.thermal.rating === 'weak' ? 'The wind is strong enough that thermals only bend the scent' : undefined}>
+                              Thermals {THERMAL_RATING_LABELS[r.thermal.rating].toLowerCase()}
+                            </span>
+                          )}
+                        </span>
+                      )}
                       <span className="row-detail">{r.reason}</span>
                       {r.thermal && !r.reason.startsWith('Thermals') && <span className="row-detail thermal-note">{r.thermal.reason}</span>}
                     </span>

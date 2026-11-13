@@ -15,7 +15,9 @@ interface HubBridge {
   // With cacheOnly, returns null instead of fetching. With saveOnly, only makes
   // sure it's saved and sends no bytes back.
   getTile(url: string, options: { saveOnly: true }): Promise<{ bytes: null; cached: boolean }>;
-  getTile(url: string, options?: { cacheOnly?: boolean }): Promise<{ bytes: Uint8Array; cached: boolean } | null>;
+  getTile(url: string, options?: { cacheOnly?: boolean; requestId?: string }): Promise<{ bytes: Uint8Array; cached: boolean } | null>;
+  // Stops the fetch behind a getTile call with this requestId (the map moved away).
+  cancelTile(requestId: string): Promise<void>;
   tileCacheInfo(): Promise<{ count: number; bytes: number }>;
   clearTileCache(): Promise<void>;
   // Trail camera photos (see electron/main.cjs). Reads only from folders picked

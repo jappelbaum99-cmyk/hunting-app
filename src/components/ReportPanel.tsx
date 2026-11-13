@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import { compassPointOf } from '@/lib/standRating';
-import { BEHAVIORS, DEER_KINDS, fromDateTimeInputs, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
+import { BEHAVIORS, DEER_KINDS, fromDateTimeInputs, headingBetween, inOutLabel, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
 import type { DeerBehavior, DeerKind, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
@@ -141,9 +141,11 @@ export function ReportPanel(props: ReportPanelProps) {
 }
 
 function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sighting>): void; onPlace(): void; onRemove(): void }) {
-  // What's typed in the distance box, kept while editing so it can be cleared and retyped.
-  const [yardsText, setYardsText] = useState<string | null>(null);
   const { sighting: s, onChange } = props;
+  // Moving either end of the in-and-out line turns the deer to match it.
+  const setCameIn = (fromStand: Sighting['fromStand']) =>
+    onChange({ fromStand, lat: null, lng: null, ...(s.wentTo ? { headingDeg: headingBetween(fromStand ?? null, s.wentTo) } : {}) });
+  const setWentTo = (wentTo: Sighting['wentTo']) => onChange({ wentTo, ...(wentTo ? { headingDeg: headingBetween(s.fromStand ?? null, wentTo) } : {}) });
   const date = toDateInput(s.time);
   return (
     <li className="sighting">
@@ -250,49 +252,13 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
         <input type="text" placeholder="e.g. came from the creek" value={s.comment ?? ''} onChange={(e) => onChange({ comment: e.target.value || null })} />
       </label>
 
-      <div className="field-label">Where they were from the stand</div>
-      <div className="range-row from-stand">
-        <label>
-          <span className="field-label">Distance (yd)</span>
-          <input
-            type="number"
-            min={1}
-            max={MAX_YARDS}
-            placeholder="e.g. 140"
-            value={yardsText ?? (s.fromStand ? String(Math.round(s.fromStand.yards)) : '')}
-            onChange={(e) => {
-              setYardsText(e.target.value);
-              const yards = Number(e.target.value);
-              if (e.target.value === '' || !(yards >= 1)) return;
-              onChange({ fromStand: { bearingDeg: s.fromStand?.bearingDeg ?? 0, yards: Math.min(MAX_YARDS, Math.round(yards)) }, lat: null, lng: null });
-            }}
-            onBlur={() => setYardsText(null)}
-          />
-        </label>
-        <label>
-          <span className="field-label">Direction</span>
-          <select
-            value={s.fromStand ? String(Math.round(s.fromStand.bearingDeg / 45) * 45 % 360) : ''}
-            onChange={(e) =>
-              onChange(
-                e.target.value === ''
-                  ? { fromStand: null }
-                  : { fromStand: { bearingDeg: Number(e.target.value), yards: s.fromStand?.yards ?? 100 }, lat: null, lng: null },
-              )
-            }
-          >
-            <option value="">At the stand</option>
-            {HEADINGS.map((h) => (
-              <option key={h.point} value={h.deg}>
-                {h.point}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <SpotFields label="Came in (from the stand)" none="At the stand" value={s.fromStand ?? null} onChange={setCameIn} />
+      <SpotFields label="Went to (from the stand)" none="Not noted" value={s.wentTo ?? null} onChange={setWentTo} />
 
       <div className="sighting-where">
-        <span className="muted">{s.lat !== null ? 'Placed on the map (overrides distance)' : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}</span>
+        <span className="muted">
+          {s.lat !== null ? 'Placed on the map (overrides distance)' : inOutLabel(s) ? `${inOutLabel(s)} of the stand` : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}
+        </span>
         <button className="link" onClick={props.onPlace}>
           {s.lat !== null ? 'Move on map' : 'Place on map'}
         </button>
@@ -303,6 +269,51 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
         )}
       </div>
     </li>
+  );
+}
+
+// A spot as distance and direction from the stand: where a deer came in, or went.
+function SpotFields(props: { label: string; none: string; value: Sighting['wentTo']; onChange(next: Sighting['wentTo']): void }) {
+  // What's typed in the distance box, kept while editing so it can be cleared and retyped.
+  const [yardsText, setYardsText] = useState<string | null>(null);
+  const { value } = props;
+  return (
+    <>
+      <div className="field-label">{props.label}</div>
+      <div className="range-row from-stand">
+        <label>
+          <span className="field-label">Distance (yd)</span>
+          <input
+            type="number"
+            min={1}
+            max={MAX_YARDS}
+            placeholder="e.g. 140"
+            value={yardsText ?? (value ? String(Math.round(value.yards)) : '')}
+            onChange={(e) => {
+              setYardsText(e.target.value);
+              const yards = Number(e.target.value);
+              if (e.target.value === '' || !(yards >= 1)) return;
+              props.onChange({ bearingDeg: value?.bearingDeg ?? 0, yards: Math.min(MAX_YARDS, Math.round(yards)) });
+            }}
+            onBlur={() => setYardsText(null)}
+          />
+        </label>
+        <label>
+          <span className="field-label">Direction</span>
+          <select
+            value={value ? String((Math.round(value.bearingDeg / 45) * 45) % 360) : ''}
+            onChange={(e) => props.onChange(e.target.value === '' ? null : { bearingDeg: Number(e.target.value), yards: value?.yards ?? 100 })}
+          >
+            <option value="">{props.none}</option>
+            {HEADINGS.map((h) => (
+              <option key={h.point} value={h.deg}>
+                {h.point}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
   );
 }
 

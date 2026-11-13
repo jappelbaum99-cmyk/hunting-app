@@ -5581,3 +5581,273 @@ body.resizing {
   border-radius: 2px;
   vertical-align: -1px;
 }
+
+/* Hunt Forecast stand rows: the wind and the thermals each get a say, e.g. "Wind good · Thermals bad". */
+.verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 1px;
+}
+
+.verdict {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.verdict.v-good {
+  background: rgba(76, 175, 80, 0.2);
+  color: #8fd694;
+}
+
+.verdict.v-ok,
+.verdict.v-swirl {
+  background: rgba(230, 180, 40, 0.2);
+  color: #f0cc6a;
+}
+
+.verdict.v-bad {
+  background: rgba(220, 70, 60, 0.22);
+  color: #ff9a8f;
+}
+
+/* Hunt Forecast: the "Test a stand spot" card, and its panel. */
+.stand-test-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stand-test-card h2 {
+  margin: 0 0 2px;
+}
+
+.stand-test-card button {
+  flex-shrink: 0;
+}
+
+.stand-test .button-row {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.stand-test .button-row button {
+  flex: 1;
+}
+
+.stand-test-progress {
+  margin: 8px 0 12px;
+}
+
+.stand-test-stats {
+  margin-top: 10px;
+}
+
+.stand-test-notes li::before {
+  content: '•';
+  color: var(--accent);
+}
+
+/* How clear by wind direction: a little bar for each. */
+.wind-bars {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 4px;
+  height: 64px;
+  margin: 10px 0 4px;
+}
+
+.wind-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  padding-bottom: 16px;
+}
+
+.wind-bar-fill {
+  display: block;
+  border-radius: 3px 3px 0 0;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.wind-bar.good .wind-bar-fill {
+  background: #6cc070;
+}
+
+.wind-bar-label {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Every sit of the seasons as a little square. */
+.season-grid {
+  margin: 12px 0;
+}
+
+.season-grid-months {
+  display: grid;
+  grid-template-columns: 31fr 30fr 31fr;
+  margin-left: 62px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.season-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.season-row-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.season-cells {
+  display: grid;
+  grid-template-columns: repeat(92, 1fr);
+  flex: 1;
+  gap: 1px;
+}
+
+.season-cell {
+  height: 12px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.season-cell.v-good,
+.season-grid-key .v-good {
+  background: #4caf50;
+}
+
+.season-cell.v-ok,
+.season-grid-key .v-ok {
+  background: #d9a92c;
+}
+
+.season-cell.v-bad,
+.season-grid-key .v-bad {
+  background: #d9574b;
+}
+
+.season-cell.active {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+
+.season-grid-key i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin: 0 2px 0 6px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.season-grid-key i:first-child {
+  margin-left: 0;
+}
+
+.stand-test-player .sit-title {
+  align-items: center;
+}
+
+.stand-test-player .play {
+  flex-shrink: 0;
+}
+
+.stand-test-moment.m-clean {
+  border-left: 3px solid #4caf50;
+  padding-left: 8px;
+}
+
+.stand-test-moment.m-swirl {
+  border-left: 3px solid #d9a92c;
+  padding-left: 8px;
+}
+
+.stand-test-moment.m-wind,
+.stand-test-moment.m-thermal {
+  border-left: 3px solid #d9574b;
+  padding-left: 8px;
+}
+
+.stand-test-make {
+  width: 100%;
+  margin: 4px 0 8px;
+}
+
+/* Test a stand spot: your stands and blinds to pick from. */
+.stand-test-pick {
+  list-style: none;
+  margin: 4px 0 12px;
+  padding: 0;
+}
+
+.stand-test-pick .row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* Stand panel: "Test this spot" under "Log a hunt here". */
+.test-spot {
+  width: 100%;
+  margin-top: 6px;
+}
+
+/* Test a stand spot: ideal winds, tap to pick. */
+.ideal-winds h2 {
+  margin: 0 0 4px;
+}
+
+.ideal-wind-bars {
+  height: 84px;
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.ideal-wind-bars .wind-bar {
+  padding: 16px 0 16px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.ideal-wind-bars .wind-bar.good {
+  border-color: #6cc070;
+  background: rgba(108, 192, 112, 0.12);
+}
+
+.wind-bar-pct {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+}

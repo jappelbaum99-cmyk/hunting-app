@@ -6,37 +6,48 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { Feature, FeatureCollection, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
 import type { FieldData } from '@/field/fieldData';
+import type { FieldPin } from '@/types/models';
 import { clearSavedTiles, saveTile, storageUsedMb, tileStoreAvailable, turnOnSavedTiles } from '@/field/tileStore';
 import type { CampMap } from '@/lib/campMap';
 import { pinTypeInfo } from '@/lib/featureTypes';
 import { boundsOf } from '@/lib/geo';
 import { compassPointOf } from '@/lib/standRating';
-import { metersBetween } from '@/lib/trails';
+import { formatDistance, lineLengthM, metersBetween } from '@/lib/trails';
 import { AERIAL_TILE_URL, buildBaseStyle, DEFAULT_LAYERS, LAYER_IDS, MO_AERIAL_TILE_URL, retryFailedTiles, setUpMapLibre } from '@/map/layers';
 import { DEFAULT_OFFLINE_RADIUS_M, planDownload, runDownload } from '@/map/offline';
 
 type Base = 'satellite' | 'topo' | 'lidar';
 type Fix = { lat: number; lng: number; accuracyM: number };
-type Picked = { name: string; kind: string; lat: number; lng: number };
+type Tool = 'pin' | 'walk' | 'soil';
+// A pin tapped on the map: one from the hub (moving it asks the hub), or one of
+// this phone's own the hub doesn't have yet (moving it just moves it).
+type Picked = { id: string; source: 'hub' | 'mine'; type: string; name: string; kind: string; lat: number; lng: number };
 
 // The phone has no 3D, so its saved maps leave the terrain tiles out.
-// For now the phone map is topo only: small to save (about 1 MB a property)
-// and quick to load. Add 'satellite' or 'lidar' here, and contours below, to
-// offer them again; what's saved follows.
-const PHONE_BASES: Base[] = ['topo'];
+// The maps to pick from, and the ones a property's offline save keeps. For now
+// only topo is saved (about 1 MB a property); satellite is for looking while
+// there's signal. Add a map to SAVED_BASES, and turn contours on, to save more.
+const PHONE_BASES: Base[] = ['topo', 'satellite'];
+const SAVED_BASES: Base[] = ['topo'];
 const PHONE_CONTOURS = false;
 const PHONE_SKIP = [
   '3D terrain',
-  ...(PHONE_BASES.includes('satellite') ? [] : ['Satellite', 'Satellite close-up', 'Missouri 6 inch close-up']),
-  ...(PHONE_BASES.includes('topo') ? [] : ['Topo']),
-  ...(PHONE_BASES.includes('lidar') ? [] : ['Lidar']),
+  ...(SAVED_BASES.includes('satellite') ? [] : ['Satellite', 'Satellite close-up', 'Missouri 6 inch close-up']),
+  ...(SAVED_BASES.includes('topo') ? [] : ['Topo']),
+  ...(SAVED_BASES.includes('lidar') ? [] : ['Lidar']),
 ];
 // Saved maps: what's included, so a change here can ask for a fresh save.
-const PHONE_LAYERS = [...PHONE_BASES, ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
+const PHONE_LAYERS = [...SAVED_BASES, ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
+const BASE_LABELS: Record<Base, string> = { topo: 'Topo', satellite: 'Satellite', lidar: 'Lidar' };
+// Topo tiles stop at zoom 16; a little past that is still readable.
+const MAX_ZOOM: Record<Base, number> = { topo: 17.5, satellite: 19, lidar: 19 };
+// Sign and cameras: small dots with no name (tap one to see it), so they
+// don't crowd out the stands.
+const SMALL_PINS = ['rub', 'scrape', 'camera'];
 // Tiles fetched at once. The browser allows about 6 per server, and the maps come
 // from four servers, so the list is mixed to keep them all busy at once.
 const SAVE_AT_ONCE = 12;
@@ -156,16 +167,40 @@ export function MapTab(props: {
   gpsError: string | null;
   onData(update: (d: FieldData) => FieldData): void;
   onMessage(text: string): void;
+  // Drop a pin, walk a trail or an area, and soil tests: opened from the buttons along the bottom.
+  tools: Record<Tool, ReactNode>;
 }) {
   const { visible, data, fix } = props;
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
-  const [base, setBaseState] = useState<Base>(PHONE_BASES[0]);
+  const prefs = data.mapView ?? {};
+  const base: Base = prefs.base && PHONE_BASES.includes(prefs.base) ? prefs.base : PHONE_BASES[0];
+  const labels = prefs.labels !== false;
+  const setPrefs = (patch: NonNullable<FieldData['mapView']>) => props.onData((d) => ({ ...d, mapView: { ...d.mapView, ...patch } }));
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
   const [contours, setContours] = useState(false);
   const [follow, setFollow] = useState(false);
   const [picked, setPicked] = useState<Picked | null>(null);
+  // A pin being moved: the map slides under a cross in the middle, which marks the new spot.
+  const [moving, setMoving] = useState<Picked | null>(null);
+  const movingRef = useRef<Picked | null>(null);
+  movingRef.current = moving;
+  const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
+  // Set when the cross was snapped to your GPS spot, for the pin's accuracy.
+  const [usedGps, setUsedGps] = useState(false);
   const [sheet, setSheet] = useState(false);
+  // The tool panel open over the bottom of the map, if any.
+  const [tool, setTool] = useState<Tool | null>(null);
   const [saving, setSaving] = useState<{ id: string; done: number; total: number } | null>(null);
   const [usedMb, setUsedMb] = useState<number | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -184,8 +219,7 @@ export function MapTab(props: {
       style: buildBaseStyle(),
       center: first ? middleOf(first.boundary) : data.stands[0] ? [data.stands[0].lng, data.stands[0].lat] : [-92.5, 38.5],
       zoom: first || data.stands[0] ? 15 : 6,
-      // Topo tiles stop at zoom 16; a little past that is still readable.
-      maxZoom: PHONE_BASES.length === 1 && PHONE_BASES[0] === 'topo' ? 17.5 : 19,
+      maxZoom: MAX_ZOOM[base],
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
@@ -198,7 +232,16 @@ export function MapTab(props: {
       setReady(true);
     });
     // Moving the map by hand stops following you.
-    map.on('dragstart', () => setFollow(false));
+    map.on('dragstart', () => {
+      setFollow(false);
+      setUsedGps(false);
+    });
+    // Only while moving a pin, so panning normally doesn't redraw this panel.
+    map.on('move', () => {
+      if (!movingRef.current) return;
+      const c = map.getCenter();
+      setCenter({ lat: c.lat, lng: c.lng });
+    });
     if (first) map.fitBounds(boundsOf(first.boundary), { padding: 40, duration: 0 });
     mapRef.current = map;
     return () => {
@@ -214,7 +257,9 @@ export function MapTab(props: {
   }, [visible]);
 
   useEffect(() => {
-    if (ready && mapRef.current) setBase(mapRef.current, base, contours);
+    if (!ready || !mapRef.current) return;
+    setBase(mapRef.current, base, contours);
+    mapRef.current.setMaxZoom(MAX_ZOOM[base]);
   }, [ready, base, contours]);
 
   // Lines and outlines.
@@ -231,35 +276,55 @@ export function MapTab(props: {
     markers.current.forEach((m) => m.remove());
     const list: maplibregl.Marker[] = [];
     const pin = (p: Picked & { color: string; mine?: boolean }) => {
+      const small = !!p.type && SMALL_PINS.includes(p.type);
       const el = document.createElement('button');
       el.classList.add('fm-pin');
       if (p.mine) el.classList.add('mine');
+      if (small) el.classList.add('small');
       el.style.setProperty('--pin', p.color);
-      el.append(document.createElement('i'), labelEl(p.name, 'fm-pin-name'));
+      el.append(document.createElement('i'));
+      if (labels && !small) el.append(labelEl(p.name, 'fm-pin-name'));
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        setPicked({ name: p.name, kind: p.kind, lat: p.lat, lng: p.lng });
+        setPicked({ id: p.id, source: p.source, type: p.type, name: p.name, kind: p.kind, lat: p.lat, lng: p.lng });
       });
-      list.push(new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, -7] }).setLngLat([p.lng, p.lat]).addTo(map));
+      list.push(new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, small ? -4 : -7] }).setLngLat([p.lng, p.lat]).addTo(map));
     };
     if (campMap) {
-      for (const p of campMap.pins) pin({ name: p.name, kind: pinTypeInfo(p.type, data.pinTypes).label, lat: p.lat, lng: p.lng, color: p.color });
-      for (const p of campMap.properties) list.push(new maplibregl.Marker({ element: labelEl(p.name, 'fm-property-name') }).setLngLat(middleOf(p.boundary)).addTo(map));
-      for (const s of campMap.sections) list.push(new maplibregl.Marker({ element: labelEl(s.name, 'fm-section-name') }).setLngLat(middleOf(s.geometry)).addTo(map));
+      for (const p of campMap.pins) pin({ id: p.id, source: 'hub', name: p.name || pinTypeInfo(p.type, data.pinTypes).label, kind: pinTypeInfo(p.type, data.pinTypes).label, lat: p.lat, lng: p.lng, color: p.color, type: p.type });
+      if (labels) {
+        for (const p of campMap.properties) list.push(new maplibregl.Marker({ element: labelEl(p.name, 'fm-property-name') }).setLngLat(middleOf(p.boundary)).addTo(map));
+        for (const s of campMap.sections) list.push(new maplibregl.Marker({ element: labelEl(s.name, 'fm-section-name') }).setLngLat(middleOf(s.geometry)).addTo(map));
+      }
     } else {
       // No map from the hub yet: the stands still show.
-      for (const s of data.stands) pin({ name: s.name, kind: 'Stand', lat: s.lat, lng: s.lng, color: '#f08a24' });
+      for (const s of data.stands) pin({ id: s.id, source: 'hub', type: 'stand', name: s.name, kind: 'Stand', lat: s.lat, lng: s.lng, color: '#f08a24' });
     }
     // This phone's own pins the hub hasn't taken in yet, outlined.
     for (const p of data.pins.filter((p) => !p.deletedAt && !data.handled[p.id] && !p.soil)) {
       const info = pinTypeInfo(p.type, data.pinTypes);
-      pin({ name: p.note || info.label, kind: `${info.label} (yours, not on the hub yet)`, lat: p.lat, lng: p.lng, color: info.color, mine: true });
+      pin({ id: p.id, source: 'mine', name: p.note || info.label, kind: `${info.label} (yours, not on the hub yet)`, lat: p.lat, lng: p.lng, color: info.color, mine: true, type: p.type });
     }
     markers.current = list;
-  }, [ready, campMap, data.stands, data.pins, data.handled, data.pinTypes]);
+  }, [ready, campMap, data.stands, data.pins, data.handled, data.pinTypes, labels]);
+
+  useEffect(() => {
+    for (const m of markers.current) m.getElement().classList.remove('fm-moving');
+    if (!moving) return;
+    const el = markers.current.find((m) => {
+      const at = m.getLngLat();
+      return Math.abs(at.lat - moving.lat) < 1e-9 && Math.abs(at.lng - moving.lng) < 1e-9;
+    });
+    el?.getElement().classList.add('fm-moving');
+  }, [moving]);
 
   // The walk being recorded.
   const walk = data.activeWalk?.points ?? null;
+  // Starting a walk follows you, so the line draws where you can see it.
+  const walkId = data.activeWalk?.id ?? null;
+  useEffect(() => {
+    if (walkId) setFollow(true);
+  }, [walkId]);
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -389,6 +454,65 @@ export function MapTab(props: {
     props.onMessage('Saved maps removed.');
   };
 
+  const startMove = (p: Picked) => {
+    const map = mapRef.current;
+    if (!map) return;
+    setPicked(null);
+    setTool(null);
+    setFollow(false);
+    setUsedGps(false);
+    setMoving(p);
+    setCenter({ lat: p.lat, lng: p.lng });
+    map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 17), duration: 500 });
+  };
+
+  const snapToMe = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!fix) return props.onMessage(props.gpsError ?? 'Finding GPS… step out from under heavy cover if it takes a while.');
+    map.easeTo({ center: [fix.lng, fix.lat], duration: 400 });
+    setUsedGps(true);
+  };
+
+  const saveMove = () => {
+    const map = mapRef.current;
+    if (!map || !moving) return;
+    const { lat, lng } = map.getCenter();
+    const at = new Date().toISOString();
+    const accuracyM = usedGps && fix ? Math.round(fix.accuracyM) : null;
+    if (moving.source === 'mine') {
+      props.onData((d) => ({ ...d, pins: d.pins.map((p) => (p.id === moving.id ? { ...p, lat, lng, accuracyM, updatedAt: at } : p)) }));
+      props.onMessage(`${moving.name} moved.`);
+    } else {
+      // The hub's pin moves once someone there says OK, keeping its name and history.
+      // A second move before then just changes the spot already sent.
+      props.onData((d) => {
+        const pending = d.pins.find((p) => p.moveStandId === moving.id && !p.deletedAt && !d.handled[p.id]);
+        if (pending) return { ...d, pins: d.pins.map((p) => (p.id === pending.id ? { ...p, lat, lng, accuracyM, updatedAt: at } : p)) };
+        const request: FieldPin = {
+          id: crypto.randomUUID(),
+          createdAt: at,
+          updatedAt: at,
+          deletedAt: null,
+          lat,
+          lng,
+          accuracyM,
+          type: moving.type,
+          note: `New spot for ${moving.name}`,
+          status: 'new',
+          markerId: null,
+          moveStandId: moving.id,
+          loggedBy: d.camp?.hunter ?? null,
+        };
+        return { ...d, pins: [request, ...d.pins] };
+      });
+      props.onMessage(`New spot for ${moving.name} saved. ${data.camp ? 'It goes to the hub as soon as you have signal, and' : 'Send it from the Send tab; then'} the hub moves it once someone there says OK.`);
+    }
+    setMoving(null);
+  };
+
+  const movedBy = moving && center ? metersBetween([moving.lng, moving.lat], [center.lng, center.lat]) : 0;
+
   const pickedInfo = picked && fix ? `${yards(metersBetween([fix.lng, fix.lat], [picked.lng, picked.lat]))} ${compassPointOf(bearingDeg(fix, picked))} of you` : null;
   const savedCount = Object.keys(data.offlineMaps ?? {}).length;
 
@@ -396,11 +520,11 @@ export function MapTab(props: {
     <div className="field-map" style={visible ? undefined : { display: 'none' }}>
       <div ref={box} className="field-map-canvas" onClick={() => setPicked(null)} />
 
-      {(PHONE_BASES.length > 1 || PHONE_CONTOURS) && <div className="fm-top">
+      <div className="fm-top">
         <div className="fm-bases">
           {PHONE_BASES.map((b) => (
-            <button key={b} className={base === b ? 'active' : ''} onClick={() => setBaseState(b)}>
-              {b === 'satellite' ? 'Satellite' : b === 'topo' ? 'Topo' : 'Lidar'}
+            <button key={b} className={base === b ? 'active' : ''} onClick={() => setPrefs({ base: b })}>
+              {BASE_LABELS[b]}
             </button>
           ))}
           {PHONE_CONTOURS && (
@@ -409,7 +533,14 @@ export function MapTab(props: {
             </button>
           )}
         </div>
-      </div>}
+        <button className={`fm-chip${labels ? ' active' : ''}`} onClick={() => setPrefs({ labels: !labels })}>
+          Labels
+        </button>
+      </div>
+
+      {!online && !SAVED_BASES.includes(base) && (
+        <div className="fm-note fm-note-top">{BASE_LABELS[base]} needs signal; it isn't saved on the phone. Switch to {BASE_LABELS[SAVED_BASES[0]]} to see the saved map.</div>
+      )}
 
       <div className="fm-side">
         <button className={`fm-round${follow ? ' active' : ''}`} onClick={findMe} aria-label="Where am I">
@@ -427,11 +558,11 @@ export function MapTab(props: {
         )}
       </div>
 
-      {!campMap && (
+      {!campMap && !tool && (
         <div className="fm-note">{data.camp ? 'Property lines show here once a partner opens the hub with this version.' : 'Join your camp (Camp tab) to see property lines, sections and pins.'}</div>
       )}
 
-      {picked && (
+      {picked && !tool && !moving && (
         <div className="fm-card">
           <div>
             <strong>{picked.name}</strong>
@@ -440,9 +571,75 @@ export function MapTab(props: {
               {pickedInfo ? ` · ${pickedInfo}` : ''}
             </span>
           </div>
+          <button className="fm-move-button" onClick={() => startMove(picked)}>
+            Move
+          </button>
           <button className="fm-close" onClick={() => setPicked(null)} aria-label="Close">
             <Icon name="close" size={18} />
           </button>
+        </div>
+      )}
+
+      {moving && (
+        <>
+          <div className="fm-cross" aria-hidden>
+            <span />
+          </div>
+          <div className="fm-move">
+            <strong>Moving {moving.name}</strong>
+            <span className="muted">
+              {usedGps ? 'At your GPS spot' : 'Drag the map to put the cross on the new spot'}
+              {movedBy >= 1 ? ` · ${yards(movedBy)} from where it is` : ''}
+            </span>
+            {moving.source === 'hub' && <span className="muted">The hub moves it once someone there says OK.</span>}
+            <div className="fm-move-buttons">
+              <button onClick={() => setMoving(null)}>Cancel</button>
+              <button onClick={snapToMe}>Use my spot</button>
+              <button className="primary" disabled={movedBy < 1} onClick={saveMove}>
+                Save spot
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {moving ? null : tool ? (
+        <div className="fm-panel">
+          <div className="fm-panel-head">
+            <span className="fm-grip" />
+            <button className="fm-close" onClick={() => setTool(null)} aria-label="Back to the map">
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          {props.gpsError && <p className="field-warn">{props.gpsError}</p>}
+          {props.tools[tool]}
+        </div>
+      ) : (
+        <div className="fm-bottom">
+          {data.activeWalk && (
+            <button className="fm-status" onClick={() => setTool('walk')}>
+              <i /> {data.activeWalk.shape === 'area' ? 'Walking area' : 'Walking trail'} · {formatDistance(lineLengthM(data.activeWalk.points))} · tap to stop or see it
+            </button>
+          )}
+          {!data.activeWalk && data.soilRun && (
+            <button className="fm-status soil" onClick={() => setTool('soil')}>
+              <i /> Soil test · {data.pins.filter((p) => p.soil?.runId === data.soilRun?.id).length} cores · tap to add a core
+            </button>
+          )}
+          <div className="fm-actions">
+            <button onClick={() => setTool('pin')}>
+              <Icon name="pin" size={22} />
+              Drop pin
+            </button>
+            <button className={data.activeWalk ? 'active' : ''} onClick={() => setTool('walk')}>
+              <Icon name="track" size={22} />
+              {data.activeWalk ? 'Walking' : 'Walk area'}
+            </button>
+            <button className={data.soilRun ? 'active' : ''} onClick={() => setTool('soil')}>
+              <Icon name="rock" size={22} />
+              Soil test
+            </button>
+          </div>
         </div>
       )}
 
@@ -456,7 +653,7 @@ export function MapTab(props: {
               </button>
             </div>
             <p className="hint">
-              Save a property and its map works with no signal, ¼ mile past the line. Your GPS dot works without
+              Save a property and its topo map works with no signal, ¼ mile past the line. Satellite needs signal. Your GPS dot works without
               signal too.
             </p>
             {plans.length === 0 && <p className="hint">No properties from the hub yet.</p>}

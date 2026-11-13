@@ -67,6 +67,8 @@ export interface SightingView {
   color: string;
   // Animals other than deer carry their icon, since they share one color.
   icon?: IconName;
+  // Where it went ([lng, lat]): drawn as a line with an arrow from where it was seen.
+  wentTo?: [number, number];
 }
 
 // A map-side control point while lining up an image.
@@ -114,6 +116,8 @@ interface MapViewProps {
   windFromDeg: number | null;
   // Where thermals carry scent from stands with a cone: stand outward, [lng, lat].
   thermalPaths: { id: string; phase: 'falling' | 'rising' | 'switching'; ends: 'pools' | 'ridge' | 'open' | null; pull: number; points: [number, number][] }[];
+  // Testing a stand spot (Hunt Forecast): the spot, and the way deer come and go.
+  standTest: { spot: [number, number] | null; route: [number, number][] } | null;
   selection: Selection | null;
   interaction: MapInteraction;
   draftPoints: Position[];
@@ -303,10 +307,73 @@ function addFeatureLayers(map: maplibregl.Map): void {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-opacity': 0.45, 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 17, 2.5], 'line-blur': 0.8 },
   });
+  // Testing a stand spot: the deer's way (hollow dot where they come from,
+  // filled where they go) and the spot itself.
+  map.addSource('stand-test', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'stand-test-route-casing',
+    type: 'line',
+    source: 'stand-test',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': 'rgba(20, 12, 6, 0.75)', 'line-width': 6 },
+  });
+  map.addLayer({
+    id: 'stand-test-route',
+    type: 'line',
+    source: 'stand-test',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    paint: { 'line-color': STAND_TEST_DEER, 'line-width': 3, 'line-dasharray': [2, 1.2] },
+  });
+  map.addLayer({
+    id: 'stand-test-points',
+    type: 'circle',
+    source: 'stand-test',
+    filter: ['==', ['geometry-type'], 'Point'],
+    paint: {
+      'circle-radius': ['match', ['get', 'kind'], 'spot', 8, 6],
+      'circle-color': ['match', ['get', 'kind'], 'spot', '#f08a24', 'from', 'rgba(0, 0, 0, 0)', STAND_TEST_DEER],
+      'circle-stroke-color': ['match', ['get', 'kind'], 'spot', '#ffffff', STAND_TEST_DEER],
+      'circle-stroke-width': ['match', ['get', 'kind'], 'from', 3, 2],
+    },
+  });
   // Animals from hunt reports. A moving animal is a pill pointing the way it
   // went (chevron at the front), in its kind's color; one that wasn't moving
   // is a dot. Pill images are drawn per kind on a canvas below.
   map.addSource('sightings', { type: 'geojson', data: EMPTY });
+  // Where each animal came in and went: a line under its pill, an arrow at the end.
+  map.addSource('sighting-paths', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'sighting-path-casing',
+    type: 'line',
+    source: 'sighting-paths',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': '#1c130d', 'line-width': 5, 'line-opacity': 0.55 },
+  });
+  map.addLayer({
+    id: 'sighting-path',
+    type: 'line',
+    source: 'sighting-paths',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': '#f7efe6', 'line-width': 2.5, 'line-opacity': 0.9 },
+  });
+  map.addImage('sighting-arrow', arrowImage(), { pixelRatio: 2 });
+  map.addLayer({
+    id: 'sighting-path-arrow',
+    type: 'symbol',
+    source: 'sighting-paths',
+    filter: ['==', ['geometry-type'], 'Point'],
+    layout: {
+      'icon-image': 'sighting-arrow',
+      'icon-size': 1.4,
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  });
   map.addLayer({
     id: 'sighting-pills-still',
     type: 'symbol',
@@ -454,6 +521,35 @@ function pillName(map: maplibregl.Map, color: string, moving: boolean): string {
   const name = `pill-${moving ? 'moving' : 'still'}-${color.replace('#', '')}`;
   if (!map.hasImage(name)) map.addImage(name, pillImage(color, moving), { pixelRatio: 2 });
   return name;
+}
+
+// The arrowhead at the end of a sighting's line, pointing up (north) before rotating.
+function arrowImage(): ImageData {
+  const size = 26;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 3);
+  ctx.lineTo(size - 5, size - 5);
+  ctx.lineTo(size / 2, size - 10);
+  ctx.lineTo(5, size - 5);
+  ctx.closePath();
+  ctx.fillStyle = '#f7efe6';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#1c130d';
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// Compass bearing (0 = north) from one [lng, lat] to another.
+function bearingBetween(a: [number, number], b: [number, number]): number {
+  const toRad = Math.PI / 180;
+  const y = Math.sin((b[0] - a[0]) * toRad) * Math.cos(b[1] * toRad);
+  const x = Math.cos(a[1] * toRad) * Math.sin(b[1] * toRad) - Math.sin(a[1] * toRad) * Math.cos(b[1] * toRad) * Math.cos((b[0] - a[0]) * toRad);
+  return ((Math.atan2(y, x) / toRad) + 360) % 360;
 }
 
 function pillImage(color: string, moving: boolean): ImageData {
@@ -695,6 +791,9 @@ function scentArrowFeatures(cones: { cone: Polygon; rating: StandRating }[], now
   }
   return { type: 'FeatureCollection', features };
 }
+
+// The deer's way when testing a stand spot.
+export const STAND_TEST_DEER = '#f2c46d';
 
 function draftFeatures(points: Position[], cursor: Position | null, color: string, snap: Snap['kind'] | null = null, line = false): FeatureCollection {
   const ring = cursor ? [...points, cursor] : points;
@@ -1233,6 +1332,20 @@ export function MapView(props: MapViewProps) {
     });
   }, [thermalPaths, readyTick]);
 
+  // Testing a stand spot.
+  const { standTest } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const features: FeatureCollection['features'] = [];
+    const route = standTest?.route ?? [];
+    if (route.length >= 2) features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: route }, properties: {} });
+    if (route.length >= 1) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: route[0] }, properties: { kind: 'from' } });
+    if (route.length >= 2) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: route[route.length - 1] }, properties: { kind: 'to' } });
+    if (standTest?.spot) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: standTest.spot }, properties: { kind: 'spot' } });
+    map.getSource<GeoJSONSource>('stand-test')?.setData({ type: 'FeatureCollection', features });
+  }, [standTest, readyTick]);
+
   // Deer sightings.
   const { sightings } = props;
   useEffect(() => {
@@ -1252,6 +1365,22 @@ export function MapView(props: MapViewProps) {
           ...(s.icon ? { icon: s.icon } : {}),
         },
       })),
+    });
+    const went = sightings.filter((s) => s.wentTo);
+    map.getSource<GeoJSONSource>('sighting-paths')?.setData({
+      type: 'FeatureCollection',
+      features: went.flatMap((s) => [
+        {
+          type: 'Feature' as const,
+          geometry: { type: 'LineString' as const, coordinates: [[s.lng, s.lat], s.wentTo!] },
+          properties: { color: s.color },
+        },
+        {
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: s.wentTo! },
+          properties: { bearing: bearingBetween([s.lng, s.lat], s.wentTo!) },
+        },
+      ]),
     });
   }, [sightings, readyTick]);
 

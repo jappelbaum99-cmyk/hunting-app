@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveImage: (name, bytes) => ipcRenderer.invoke('hub:saveImage', name, bytes),
   loadImage: (name) => ipcRenderer.invoke('hub:loadImage', name),
   getTile: (url, options) => ipcRenderer.invoke('hub:getTile', url, options),
+  cancelTile: (requestId) => ipcRenderer.invoke('hub:cancelTile', requestId),
   tileCacheInfo: () => ipcRenderer.invoke('hub:tileCacheInfo'),
   clearTileCache: () => ipcRenderer.invoke('hub:clearTileCache'),
   showDataFolder: () => ipcRenderer.invoke('hub:showDataFolder'),

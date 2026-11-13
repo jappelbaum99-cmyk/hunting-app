@@ -58,7 +58,7 @@ export function SoilTestWindow(props: Props) {
         <div className="soil-window-body">
           <nav className="soil-window-list">
             <div className="soil-list-head">Waiting for results</div>
-            {waiting.length === 0 && <p className="hint">None. Start a soil test on the phone (Pin tab), and its cores show here.</p>}
+            {waiting.length === 0 && <p className="hint">None. Start a soil test on the phone (Map tab, Soil test), and its cores show here.</p>}
             {waiting.map((r) => (
               <button key={r.key} className={`soil-list-row${pick?.kind === 'run' && pick.key === r.key ? ' active' : ''}`} onClick={() => setPick({ kind: 'run', key: r.key })}>
                 <span className="row-title">{runName(r, areaName(r.areaId))}</span>

@@ -141,7 +141,7 @@ export function WalkCard(props: {
         {props.gpsReady ? 'Walk a trail' : 'Waiting for GPS…'}
       </button>
       <button className="big-button secondary" onClick={() => props.onStart('area')} disabled={!props.gpsReady}>
-        Walk around an area
+        Walk area
       </button>
       {props.tracks.length > 0 && (
         <>

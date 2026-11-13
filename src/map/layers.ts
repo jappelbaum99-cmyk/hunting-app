@@ -142,14 +142,30 @@ export function setBrowserTileStore(store: BrowserTileStore | null): void {
 async function fetchImage(url: string, signal: AbortSignal): Promise<ArrayBuffer | string> {
   if (window.hub) {
     // Desktop app: the main process serves the tile from disk, or fetches and saves it.
+    // When the map stops wanting the tile (it moved on), stop waiting right away and
+    // cancel the fetch. Otherwise a slow USGS server keeps the map's loading slots
+    // busy with tiles nobody will see, and tiles already on disk queue up behind them,
+    // showing a blurry stand-in meanwhile.
+    const hub = window.hub;
+    signal.throwIfAborted();
+    const requestId = crypto.randomUUID();
+    let onAbort = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => {
+        void hub.cancelTile(requestId).catch(() => {});
+        reject(signal.reason);
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
     try {
-      const tile = await window.hub.getTile(url);
-      signal.throwIfAborted();
+      const tile = await Promise.race([hub.getTile(url, { requestId }), aborted]);
       if (!tile) return 'missing';
       return tile.bytes.buffer.slice(tile.bytes.byteOffset, tile.bytes.byteOffset + tile.bytes.byteLength) as ArrayBuffer;
     } catch (error) {
       if (signal.aborted) throw error;
       return String(error);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
     }
   }
   const saved = browserTiles ? await browserTiles.get(url).catch(() => null) : null;
@@ -226,20 +242,24 @@ export function setUpMapLibre(): void {
 
 // After a tile gives up, MapLibre keeps showing the coarser stand-in until the
 // zoom changes, so a busy spell on the USGS server leaves a blurry square on the
-// lidar. Try each failed tile again, further apart each time (about half an hour in all).
-const TILE_RETRY_ROUNDS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000];
+// lidar. Try each failed tile again, further apart each time, for as long as the
+// map is open; a tile that's been fine for a while starts over at the short wait.
+// (A tile off screen when its turn comes is skipped; it loads fresh when it's back.)
+const TILE_RETRY_ROUNDS_MS = [3_000, 8_000, 15_000, 30_000, 60_000, 120_000];
+const TILE_RETRY_RESET_MS = 10 * 60_000;
 
 export function retryFailedTiles(map: maplibregl.Map): void {
-  const rounds = new Map<string, number>();
+  const tries = new Map<string, { round: number; at: number }>();
   type TileError = { sourceId?: string; tile?: { tileID?: { canonical?: { x: number; y: number; z: number } } } };
   map.on('error', (event) => {
     const { sourceId, tile: failed } = event as unknown as TileError;
     const tile = failed?.tileID?.canonical;
     if (!sourceId || !tile) return;
     const key = `${sourceId}/${tile.z}/${tile.x}/${tile.y}`;
-    const round = rounds.get(key) ?? 0;
-    if (round >= TILE_RETRY_ROUNDS_MS.length) return;
-    rounds.set(key, round + 1);
+    const now = Date.now();
+    const last = tries.get(key);
+    const round = last && now - last.at < TILE_RETRY_RESET_MS ? last.round + 1 : 0;
+    tries.set(key, { round, at: now });
     setTimeout(() => {
       // The source may be gone (lidar style changed) or the map closed.
       if (!map.getStyle() || !map.getSource(sourceId)) return;
@@ -248,7 +268,7 @@ export function retryFailedTiles(map: maplibregl.Map): void {
       } catch {
         // Nothing to refresh.
       }
-    }, TILE_RETRY_ROUNDS_MS[round]);
+    }, TILE_RETRY_ROUNDS_MS[Math.min(round, TILE_RETRY_ROUNDS_MS.length - 1)]);
   });
 }
 

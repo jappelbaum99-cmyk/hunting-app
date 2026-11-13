@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import {
   appleMapsUrl,
@@ -28,15 +28,27 @@ import { WherePicker } from '@/field/WherePicker';
 import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
-import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
+import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, inOutLabel, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
-type Tab = 'pin' | 'map' | 'hunt' | 'stands' | 'notes' | 'send';
+type Tab = 'map' | 'hunt' | 'stands' | 'notes' | 'send';
 
 // The map is a big download, so it loads on its own. It's fetched soon after
 // the page opens anyway, so the page saves it for use with no signal.
 const loadMapTab = () => import('@/field/MapTab');
 const MapTab = lazy(loadMapTab);
+
+// If the map can't load or breaks, the pin, walk and soil tools still show on
+// their own, so nothing in the field depends on the map working.
+class MapFallback extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 if (typeof window !== 'undefined') window.addEventListener('load', () => setTimeout(() => void loadMapTab().catch(() => undefined), 3000));
 
 // Soil samples have their own tab, so they aren't in this list.
@@ -96,9 +108,9 @@ const sameCode = (a: string, b: string) => a.replace(/[^A-Za-z0-9]/g, '').toUppe
 export function FieldApp() {
   const [data, setData] = useState<FieldData>(loadFieldData);
   // A scanned QR code opens the Camp tab with the code filled in.
-  const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : JOIN_CODE ? 'send' : 'pin');
+  const [tab, setTab] = useState<Tab>(data.activeReportId ? 'hunt' : JOIN_CODE ? 'send' : 'map');
   // The map stays once opened, so it doesn't reload each visit.
-  const [mapOpened, setMapOpened] = useState(false);
+  const [mapOpened, setMapOpened] = useState(tab === 'map');
   useEffect(() => {
     if (tab === 'map') setMapOpened(true);
   }, [tab]);
@@ -118,8 +130,8 @@ export function FieldApp() {
     return () => clearTimeout(t);
   }, [message]);
 
-  // GPS runs on the Pin, Hunt and Notes tabs, while moving stands, and the whole time a walk is recorded.
-  const gps = useGps(tab === 'pin' || tab === 'map' || tab === 'hunt' || tab === 'notes' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
+  // GPS runs on the Map, Hunt and Notes tabs, while moving stands, and the whole time a walk is recorded.
+  const gps = useGps(tab === 'map' || tab === 'hunt' || tab === 'notes' || (tab === 'stands' && movingStands) || data.activeWalk !== null);
   const sync = useCampSync(data, setData);
 
   // While walking, add a point every ~8 m, skipping fixes rougher than 30 m.
@@ -178,60 +190,72 @@ export function FieldApp() {
         />
   );
 
+  // The map's tools: drop a pin, walk a trail or an area, take a soil test.
+  const pinTool = (
+    <PinTab
+      status={statusOf}
+      onResend={() => resend(data.pins.map((p) => p.id))}
+      onClear={() => setData((d) => ({ ...d, pins: d.pins.filter((p) => !d.handled[p.id]) }))}
+      onRemove={(id) => setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== id) }))}
+      fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins.filter((p) => !p.soil && p.type !== 'soil_sample')} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />
+  );
+  const walkTool = (
+    <WalkCard
+      walk={data.activeWalk}
+      tracks={data.tracks}
+      gpsReady={gps.fix !== null}
+      here={gps.fix ? [gps.fix.lng, gps.fix.lat] : null}
+      onStart={(shape) => setData((d) => ({ ...d, activeWalk: { id: crypto.randomUUID(), startedAt: new Date().toISOString(), points: [], shape } }))}
+      onStop={() => {
+        const walk = data.activeWalk;
+        if (!walk || walk.points.length < 2) return;
+        const isArea = walk.shape === 'area';
+        const ended = new Date();
+        const started = new Date(walk.startedAt);
+        const track: FieldTrack = record({
+          name: `${isArea ? 'Area walk' : 'Walk'} ${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+          shape: isArea ? ('area' as const) : ('line' as const),
+          coords: packPoints(simplifyLine(walk.points)),
+          startedAt: walk.startedAt,
+          endedAt: ended.toISOString(),
+          lengthM: Math.round(lineLengthM(walk.points)),
+          loggedBy,
+          status: 'new' as const,
+          trailId: null,
+        });
+        setData((d) => ({ ...d, tracks: [track, ...d.tracks], activeWalk: null }));
+        setMessage(data.camp ? 'Walk saved. It goes to camp as soon as you have signal.' : 'Walk saved. Send it to the hub from the Send tab.');
+      }}
+      onDiscard={() => setData((d) => ({ ...d, activeWalk: null }))}
+      onDeleteTrack={(id) => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => t.id !== id) }))}
+      status={statusOf}
+      onResend={() => resend(data.tracks.map((t) => t.id))}
+      onClear={() => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => !d.handled[t.id]) }))}
+    />
+  );
+  // Without the map, the tools stacked the way the Pin tab used to show them.
+  const toolsAlone = (
+    <>
+      {gps.error && <p className="field-warn">{gps.error}</p>}
+      {data.soilRun && soilCard}
+      {walkTool}
+      {pinTool}
+      {!data.soilRun && soilCard}
+    </>
+  );
+
   return (
     <div className="field-app">
       <header className="field-header">
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
         <h1>Fenceline</h1>
         <span className={`gps-badge${gps.fix ? ' ok' : ''}`}>
-          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'pin' || tab === 'map' || tab === 'hunt' || tab === 'notes' ? 'Finding GPS…' : 'GPS off'}
+          {gps.fix ? `GPS ±${Math.round(gps.fix.accuracyM)} m` : tab === 'map' || tab === 'hunt' || tab === 'notes' ? 'Finding GPS…' : 'GPS off'}
         </span>
       </header>
 
       <main className="field-main">
-        {gps.error && (tab === 'pin' || tab === 'hunt') && <p className="field-warn">{gps.error}</p>}
-        {tab === 'pin' && data.soilRun && soilCard}
-        {tab === 'pin' && (
-          <WalkCard
-            walk={data.activeWalk}
-            tracks={data.tracks}
-            gpsReady={gps.fix !== null}
-            here={gps.fix ? [gps.fix.lng, gps.fix.lat] : null}
-            onStart={(shape) => setData((d) => ({ ...d, activeWalk: { id: crypto.randomUUID(), startedAt: new Date().toISOString(), points: [], shape } }))}
-            onStop={() => {
-              const walk = data.activeWalk;
-              if (!walk || walk.points.length < 2) return;
-              const isArea = walk.shape === 'area';
-              const ended = new Date();
-              const started = new Date(walk.startedAt);
-              const track: FieldTrack = record({
-                name: `${isArea ? 'Area walk' : 'Walk'} ${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
-                shape: isArea ? ('area' as const) : ('line' as const),
-                coords: packPoints(simplifyLine(walk.points)),
-                startedAt: walk.startedAt,
-                endedAt: ended.toISOString(),
-                lengthM: Math.round(lineLengthM(walk.points)),
-                loggedBy,
-                status: 'new' as const,
-                trailId: null,
-              });
-              setData((d) => ({ ...d, tracks: [track, ...d.tracks], activeWalk: null }));
-              setMessage(data.camp ? 'Walk saved. It goes to camp as soon as you have signal.' : 'Walk saved. Send it to the hub from the Send tab.');
-            }}
-            onDiscard={() => setData((d) => ({ ...d, activeWalk: null }))}
-            onDeleteTrack={(id) => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => t.id !== id) }))}
-            status={statusOf}
-            onResend={() => resend(data.tracks.map((t) => t.id))}
-            onClear={() => setData((d) => ({ ...d, tracks: d.tracks.filter((t) => !d.handled[t.id]) }))}
-          />
-        )}
-        {tab === 'pin' && <PinTab
-          status={statusOf}
-          onResend={() => resend(data.pins.map((p) => p.id))}
-          onClear={() => setData((d) => ({ ...d, pins: d.pins.filter((p) => !d.handled[p.id]) }))}
-          onRemove={(id) => setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== id) }))}
-          fix={gps.fix} pinTypes={data.pinTypes} pins={data.pins.filter((p) => !p.soil && p.type !== 'soil_sample')} onAdd={(pin) => setData((d) => ({ ...d, pins: [{ ...pin, loggedBy }, ...d.pins] }))} onMessage={setMessage} />}
-        {tab === 'pin' && !data.soilRun && soilCard}
+        {gps.error && tab === 'hunt' && <p className="field-warn">{gps.error}</p>}
         {tab === 'hunt' && <WeatherNow forecast={weather.forecast} offline={weather.offline} />}
         {tab === 'hunt' && (
           <HuntTab
@@ -287,9 +311,19 @@ export function FieldApp() {
           />
         )}
         {mapOpened && (
-          <Suspense fallback={tab === 'map' ? <p className="hint">Loading the map…</p> : null}>
-            <MapTab visible={tab === 'map'} data={data} fix={gps.fix} gpsError={gps.error} onData={setData} onMessage={setMessage} />
-          </Suspense>
+          <MapFallback fallback={tab === 'map' ? toolsAlone : null}>
+            <Suspense fallback={tab === 'map' ? toolsAlone : null}>
+              <MapTab
+                visible={tab === 'map'}
+                data={data}
+                fix={gps.fix}
+                gpsError={gps.error}
+                onData={setData}
+                onMessage={setMessage}
+                tools={{ pin: pinTool, walk: walkTool, soil: soilCard }}
+              />
+            </Suspense>
+          </MapFallback>
         )}
         {tab === 'send' && <SendTab data={data} sync={sync} joinCode={JOIN_CODE} onData={setData} onMessage={setMessage} />}
       </main>
@@ -299,8 +333,7 @@ export function FieldApp() {
       <nav className="field-tabs">
         {(
           [
-            ['pin', data.activeWalk ? 'track' : 'pin', data.activeWalk ? 'Walking' : data.soilRun ? 'Sampling' : 'Pin'],
-            ['map', 'map', 'Map'],
+            ['map', data.activeWalk ? 'track' : 'map', data.activeWalk ? 'Walking' : data.soilRun ? 'Sampling' : 'Map'],
             ['hunt', 'track', active ? 'Hunting' : 'Hunt'],
             ['stands', 'stand', 'Stands'],
             ['notes', 'clipboard', 'Notes'],
@@ -625,6 +658,7 @@ interface SightingDraft {
   buckName: string;
   otherName: string;
   where: Sighting['fromStand'];
+  wentTo?: Sighting['wentTo'];
   note: string;
   editingId: string | null;
   behavior?: DeerBehavior | null;
@@ -675,6 +709,7 @@ function QuickLog(props: {
   const [buckName, setBuckName] = useState(draft?.buckName ?? '');
   const [otherName, setOtherName] = useState(draft?.otherName ?? '');
   const [where, setWhere] = useState<Sighting['fromStand']>(draft?.where ?? null);
+  const [wentTo, setWentTo] = useState<Sighting['wentTo']>(draft?.wentTo ?? null);
   const [note, setNote] = useState(draft?.note ?? '');
   const [behavior, setBehavior] = useState<DeerBehavior | null>(draft?.behavior ?? null);
   const [editingId, setEditingId] = useState<string | null>(draft?.editingId ?? null);
@@ -685,8 +720,8 @@ function QuickLog(props: {
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, note, editingId, behavior });
-  }, [report.id, kind, count, heading, buckName, otherName, where, note, editingId, behavior]);
+    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, wentTo, note, editingId, behavior });
+  }, [report.id, kind, count, heading, buckName, otherName, where, wentTo, note, editingId, behavior]);
 
   // Hunt notes save as you type (a moment after you stop), not only when you tap away.
   const saveNotes = (value: string) => {
@@ -706,6 +741,7 @@ function QuickLog(props: {
     setBuckName('');
     setOtherName('');
     setWhere(null);
+    setWentTo(null);
     setNote('');
     setBehavior(null);
   };
@@ -718,6 +754,7 @@ function QuickLog(props: {
     setBuckName(s.buckName ?? '');
     setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
     setWhere(s.fromStand ?? null);
+    setWentTo(s.wentTo ?? null);
     setNote(s.comment ?? '');
     setBehavior(s.behavior ?? null);
   };
@@ -730,6 +767,7 @@ function QuickLog(props: {
       buckName: kind === 'buck' ? buckName.trim() || null : null,
       notes: kind === 'other' ? otherName.trim() || null : null,
       fromStand: where,
+      wentTo: where ? wentTo ?? null : null,
       comment: note.trim() || null,
       behavior,
     };
@@ -792,10 +830,12 @@ function QuickLog(props: {
       <WherePicker
         where={where ?? null}
         headingDeg={heading}
+        wentTo={wentTo ?? null}
         color={DEER_KINDS[kind].color}
         onChange={(next) => {
           setWhere(next.where);
           setHeading(next.headingDeg);
+          setWentTo(next.wentTo);
         }}
         logged={report.sightings.filter((s) => s.id !== editingId)}
       />
@@ -841,7 +881,7 @@ function QuickLog(props: {
                     {s.buckName ? ` (${s.buckName})` : ''}
                     {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
                     {s.behavior ? ` · ${BEHAVIORS[s.behavior].toLowerCase()}` : ''}
-                    {whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
+                    {inOutLabel(s) ? ` · ${inOutLabel(s)!.replace('Came', 'came')}` : whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
                     {s.comment && <span className="sighting-comment">{s.comment}</span>}
                   </span>
                   <span className="muted">{clock(s.time)}</span>

@@ -48,6 +48,11 @@ const angleOf = (x: number, y: number) => ((Math.atan2(x, -y) * 180) / Math.PI +
 const norm = (deg: number) => ((deg % 360) + 360) % 360;
 const snap45 = (deg: number) => (Math.round(norm(deg) / 45) * 45) % 360;
 
+// A point on the target as "this far, this way" from the stand (clamped to the edge).
+function whereOf(x: number, y: number, rotation: number): Where {
+  return { bearingDeg: (Math.round(norm(angleOf(x, y) + rotation) / 5) * 5) % 360, yards: yardsFor(Math.min(OUTER, Math.hypot(x, y))) };
+}
+
 function spotOf(where: Where, rotation: number): [number, number] {
   const r = radiusFor(where.yards);
   const rad = ((where.bearingDeg - rotation) * Math.PI) / 180;
@@ -100,13 +105,15 @@ function useCompass(): { heading: number | null; on: boolean; error: string | nu
 }
 
 // "Where were they, and which way were they going?" in one control: a target
-// around the stand. Tap the spot; drag from it the way they went. North is up,
-// or, with the compass on, the way you're facing is up.
+// around the stand. Tap the spot; or press where they came in, hold, and drag
+// to where they went (a line with an arrow). North is up, or, with the compass
+// on, the way you're facing is up.
 export function WherePicker(props: {
   where: Where | null;
   headingDeg: number | null;
+  wentTo: Where | null;
   color: string;
-  onChange(next: { where: Where | null; headingDeg: number | null }): void;
+  onChange(next: { where: Where | null; headingDeg: number | null; wentTo: Where | null }): void;
   logged: Sighting[];
 }) {
   const compass = useCompass();
@@ -120,6 +127,10 @@ export function WherePicker(props: {
   const [armed, setArmed] = useState(false);
   const [dragHeading, setDragHeading] = useState<number | null>(null);
   const [yardsText, setYardsText] = useState<string | null>(null);
+  // The deer shows where you press, right away, and turns as you drag, before you let go.
+  const [pressSpot, setPressSpot] = useState<[number, number] | null>(null);
+  // Where the finger is while dragging a direction, for the line it draws.
+  const [finger, setFinger] = useState<[number, number] | null>(null);
 
   // Once a press is armed, stop the page from scrolling under the finger. This
   // has to be a non-passive listener; React's touch handlers are passive.
@@ -141,6 +152,8 @@ export function WherePicker(props: {
     press.current = null;
     setArmed(false);
     setDragHeading(null);
+    setPressSpot(null);
+    setFinger(null);
   };
 
   const toLocal = (event: PointerEvent<SVGSVGElement>) => {
@@ -161,6 +174,12 @@ export function WherePicker(props: {
       armed: !touch,
       scrolling: false,
     };
+    // Pressing a new spot: put the deer there now, not when the finger lifts.
+    if (!press.current.fromStand && !press.current.onSpot) {
+      const r = Math.hypot(x, y);
+      const k = r > OUTER ? OUTER / r : 1;
+      setPressSpot([x * k, y * k]);
+    }
     clearTimeout(holdTimer.current);
     if (touch) {
       holdTimer.current = setTimeout(() => {
@@ -183,17 +202,23 @@ export function WherePicker(props: {
       if (moved) {
         p.scrolling = true;
         clearTimeout(holdTimer.current);
+        setPressSpot(null);
       }
       return;
     }
-    if (!moved) return setDragHeading(null);
+    if (!moved) {
+      setFinger(null);
+      return setDragHeading(null);
+    }
+    setFinger([x, y]);
     try {
       // Keep getting moves if the finger slides off the target.
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
       // Not every pointer can be captured; the drag still works.
     }
-    setDragHeading(snap45(angleOf(x - p.x, y - p.y) + p.rotation));
+    const from = p.onSpot && props.where ? spotOf(props.where, p.rotation) : [p.x, p.y];
+    setDragHeading(snap45(angleOf(x - from[0], y - from[1]) + p.rotation));
   };
 
   const onUp = (event: PointerEvent<SVGSVGElement>) => {
@@ -203,28 +228,46 @@ export function WherePicker(props: {
     const [x, y] = toLocal(event);
     // Only an armed press can drag; an unarmed one that got here barely moved (a tap).
     const dragged = p.armed && Math.hypot(x - p.x, y - p.y) >= DRAG;
-    const heading = dragged ? snap45(angleOf(x - p.x, y - p.y) + p.rotation) : null;
     setYardsText(null);
-    // Dragging from your stand or from the spot already picked only sets the direction.
-    if (dragged && (p.fromStand || p.onSpot)) return props.onChange({ where: props.where, headingDeg: heading });
+    // Where the line starts: the stand, the spot already picked, or the pressed spot.
+    const r0 = Math.hypot(p.x, p.y);
+    const k0 = r0 > OUTER ? OUTER / r0 : 1;
+    const from: [number, number] = p.fromStand ? [0, 0] : p.onSpot && props.where ? spotOf(props.where, p.rotation) : [p.x * k0, p.y * k0];
+    const heading = dragged ? snap45(angleOf(x - from[0], y - from[1]) + p.rotation) : null;
+    // Dragging from your stand: a deer right at the stand, only the way it went.
+    if (dragged && p.fromStand) return props.onChange({ where: props.where, headingDeg: heading, wentTo: null });
+    // Dragging from a spot: it came in there and went to where the finger let go.
+    const wentTo = dragged ? whereOf(x, y, p.rotation) : null;
+    if (dragged && p.onSpot) return props.onChange({ where: props.where, headingDeg: heading, wentTo });
     // A tap on the stand clears the spot.
-    if (p.fromStand) return props.onChange({ where: null, headingDeg: props.headingDeg });
-    const r = Math.min(OUTER, Math.hypot(p.x, p.y));
-    const where = { bearingDeg: Math.round(norm(angleOf(p.x, p.y) + p.rotation) / 5) * 5 % 360, yards: yardsFor(r) };
-    props.onChange({ where, headingDeg: dragged ? heading : null });
+    if (p.fromStand) return props.onChange({ where: null, headingDeg: props.headingDeg, wentTo: null });
+    props.onChange({ where: whereOf(from[0], from[1], p.rotation), headingDeg: heading, wentTo });
   };
 
-  const label = props.where ? whereLabel({ fromStand: props.where }) : null;
-  const shownHeading = dragHeading ?? props.headingDeg;
-  const going = shownHeading === null ? 'not moving' : `heading ${HEADINGS.find((h) => h.deg === snap45(shownHeading))?.point}`;
-  const spot = props.where ? spotOf(props.where, rotation) : null;
+  // While pressing a new spot, the readout follows the finger.
+  const pressWhere = pressSpot ? whereOf(pressSpot[0], pressSpot[1], rotation) : null;
+  const label = pressWhere ? whereLabel({ fromStand: pressWhere }) : props.where ? whereLabel({ fromStand: props.where }) : null;
+  // A new spot starts not moving, until you drag the way it went.
+  const shownHeading = pressSpot ? dragHeading : (dragHeading ?? props.headingDeg);
+  const spot = pressSpot ?? (props.where ? spotOf(props.where, rotation) : null);
+  // The drag's start: the pressed spot, the picked spot, or the stand.
+  const dragFrom: [number, number] | null = finger && press.current ? (press.current.fromStand ? [0, 0] : spot) : null;
+  // Where they went: the finger while dragging from a spot, else the saved end.
+  const dragging = dragFrom !== null && finger !== null;
+  const goingTo: Where | null = dragging ? (press.current?.fromStand ? null : whereOf(finger[0], finger[1], rotation)) : pressSpot ? null : props.wentTo;
+  const toLabel = goingTo ? whereLabel({ fromStand: goingTo }) : null;
+  const going =
+    shownHeading === null
+      ? 'not moving'
+      : `heading ${HEADINGS.find((h) => h.deg === snap45(shownHeading))?.point}${toLabel ? `, to ${toLabel}` : ''}`;
+  const wentSpot = !dragging && !pressSpot && spot && props.wentTo ? spotOf(props.wentTo, rotation) : null;
 
   return (
     <div className="where-picker">
       <div className="where-head">
         <span>Where, and which way?</span>
         <span className="muted">
-          {label ? `${label} of you · ${going}` : shownHeading === null ? 'Tap the spot; hold, then drag the way they went' : `At the stand · ${going}`}
+          {label ? `${label} of you · ${going}` : shownHeading === null ? 'Tap the spot, or hold where they came in and drag to where they went' : `At the stand · ${going}`}
         </span>
       </div>
 
@@ -239,6 +282,11 @@ export function WherePicker(props: {
         role="img"
         aria-label={label ? `Seen ${label} of the stand, ${going}` : 'Pick where they were'}
       >
+        <defs>
+          <marker id="where-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" className="where-arrowhead" />
+          </marker>
+        </defs>
         <circle r={OUTER} className="where-outer" />
         <g transform={`rotate(${-rotation})`}>
           {[0, 45, 90, 135].map((deg) => {
@@ -270,10 +318,18 @@ export function WherePicker(props: {
           .filter((s) => s.fromStand)
           .map((s) => {
             const [x, y] = spotOf(s.fromStand!, rotation);
-            return <Pill key={s.id} x={x} y={y} heading={s.headingDeg === null ? null : s.headingDeg - rotation} color={kindInfo(s.kind).color} size={0.75} faded />;
+            const to = s.wentTo ? spotOf(s.wentTo, rotation) : null;
+            return (
+              <g key={s.id}>
+                {to && <line x1={x} y1={y} x2={to[0]} y2={to[1]} className="where-path faded" markerEnd="url(#where-arrow)" />}
+                <Pill x={x} y={y} heading={s.headingDeg === null ? null : s.headingDeg - rotation} color={kindInfo(s.kind).color} size={0.75} faded />
+              </g>
+            );
           })}
 
         <circle r={9} className="where-stand" />
+        {dragFrom && finger && <line x1={dragFrom[0]} y1={dragFrom[1]} x2={finger[0]} y2={finger[1]} className="where-path drag" markerEnd="url(#where-arrow)" />}
+        {spot && wentSpot && <line x1={spot[0]} y1={spot[1]} x2={wentSpot[0]} y2={wentSpot[1]} className="where-path" markerEnd="url(#where-arrow)" />}
         {spot && <Pill x={spot[0]} y={spot[1]} heading={shownHeading === null ? null : shownHeading - rotation} color={props.color} size={1} />}
         {!spot && shownHeading !== null && <Pill x={0} y={0} heading={shownHeading - rotation} color={props.color} size={1} />}
       </svg>
@@ -292,7 +348,7 @@ export function WherePicker(props: {
             onChange={(e) => {
               setYardsText(e.target.value);
               const yards = Number(e.target.value);
-              if (props.where && e.target.value !== '' && yards >= 1) props.onChange({ where: { ...props.where, yards: Math.min(MAX_YARDS, Math.round(yards)) }, headingDeg: props.headingDeg });
+              if (props.where && e.target.value !== '' && yards >= 1) props.onChange({ where: { ...props.where, yards: Math.min(MAX_YARDS, Math.round(yards)) }, headingDeg: props.headingDeg, wentTo: props.wentTo });
             }}
             onBlur={() => setYardsText(null)}
             aria-label="Yards from the stand"
@@ -309,7 +365,7 @@ export function WherePicker(props: {
           </button>
         )}
         {(props.where || props.headingDeg !== null) && (
-          <button className="where-chip" onClick={() => (setYardsText(null), props.onChange({ where: null, headingDeg: null }))} aria-label="Clear where and which way">
+          <button className="where-chip" onClick={() => (setYardsText(null), props.onChange({ where: null, headingDeg: null, wentTo: null }))} aria-label="Clear where and which way">
             <Icon name="close" size={14} /> Clear
           </button>
         )}

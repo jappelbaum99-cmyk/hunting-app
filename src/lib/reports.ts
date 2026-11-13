@@ -120,11 +120,33 @@ export const BEHAVIORS = {
   scraping: 'Scraping',
 } as const satisfies Record<DeerBehavior, string>;
 
+type FromStand = NonNullable<Sighting['fromStand']>;
+
+// "~140 yd NE" for a spot measured from the stand.
+export function spotLabel(w: FromStand): string {
+  const point = COMPASS_POINTS[Math.round((((w.bearingDeg % 360) + 360) % 360) / 45) % 8];
+  return `~${Math.round(w.yards)} yd ${point}`;
+}
+
 // "~140 yd NE", or null when not given.
 export function whereLabel(s: Pick<Sighting, 'fromStand'>): string | null {
-  if (!s.fromStand) return null;
-  const point = COMPASS_POINTS[Math.round((((s.fromStand.bearingDeg % 360) + 360) % 360) / 45) % 8];
-  return `~${Math.round(s.fromStand.yards)} yd ${point}`;
+  return s.fromStand ? spotLabel(s.fromStand) : null;
+}
+
+// "Came in ~50 yd NW, went to ~90 yd SE", or null without a went-to spot.
+export function inOutLabel(s: Pick<Sighting, 'fromStand' | 'wentTo'>): string | null {
+  if (!s.wentTo) return null;
+  const came = s.fromStand ? `Came in ${spotLabel(s.fromStand)}` : 'Came in at the stand';
+  return `${came}, went to ${spotLabel(s.wentTo)}`;
+}
+
+// The way from one spot to another (both from the stand), to the nearest of 8 points.
+export function headingBetween(from: FromStand | null, to: FromStand): number {
+  const xy = (w: FromStand | null) => (w ? [Math.sin((w.bearingDeg * Math.PI) / 180) * w.yards, Math.cos((w.bearingDeg * Math.PI) / 180) * w.yards] : [0, 0]);
+  const [x0, y0] = xy(from);
+  const [x1, y1] = xy(to);
+  const deg = ((Math.atan2(x1 - x0, y1 - y0) * 180) / Math.PI + 360) % 360;
+  return (Math.round(deg / 45) * 45) % 360;
 }
 
 // For <input type="date"> and <input type="time">, in the PC's local time.

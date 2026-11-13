@@ -64,6 +64,9 @@ export interface MapMarker extends Syncable {
   notes: string | null;
   // Winds a stand can be hunted on, e.g. ['N', 'NW'].
   goodWinds: CompassPoint[];
+  // Stands: the way deer come and go past it ([lng, lat], from where they come
+  // to where they go), drawn in "Test a stand spot" so the test can run again.
+  deerRoute?: [number, number][] | null;
   // Overrides the category color from Settings.
   color?: string | null;
   // Soil sample pins: the field (area) it was taken in, once known.
@@ -466,6 +469,9 @@ export interface Sighting {
   // direction and a distance band. Kept this small on purpose; the exact
   // spot is worked out from the stand when drawing. lat/lng win when set.
   fromStand?: { bearingDeg: number; yards: number } | null;
+  // Where they went, the same way (from the stand): the end of the line dragged
+  // from where they came in. Null or missing = only a direction, or not moving.
+  wentTo?: { bearingDeg: number; yards: number } | null;
   // For "other", what it was (e.g. "coyote").
   notes: string | null;
   // Anything else worth remembering, e.g. "came from the creek".
@@ -526,7 +532,7 @@ export interface FieldPin extends Syncable {
   markerId: string | null;
   // Who dropped it, from the phone's camp name.
   loggedBy?: string | null;
-  // Set when this is a new spot for a stand that was moved (the stand's id),
+  // Set when this is a new spot for a stand or any pin that was moved (its id),
   // rather than a new pin. The hub asks before moving the stand.
   moveStandId?: string | null;
   // A core from a soil sampling run on the phone's Soil tab: which run and field, and its number.

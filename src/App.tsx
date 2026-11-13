@@ -5,6 +5,8 @@ import { AlignPanel, completePoints, type AlignDraft } from '@/components/AlignP
 import { DetailPanel } from '@/components/DetailPanel';
 import { DrawBar, EditBar, LineEditBar } from '@/components/DrawBar';
 import { ForecastPanel } from '@/components/ForecastPanel';
+import { StandTestPanel, type StandTestStep } from '@/components/StandTestPanel';
+import type { Moment } from '@/lib/standTest';
 import { LayerPanel } from '@/components/LayerPanel';
 import { PosterEditor } from '@/components/PosterEditor';
 import { SoilTestWindow, type SoilWindowPick } from '@/components/SoilTestWindow';
@@ -58,7 +60,7 @@ import { ThermalTimeline } from '@/components/ThermalTimeline';
 import { elevationAt, loadElevationAround } from '@/map/elevation';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
-import { DEFAULT_CENTER, MapView, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
+import { DEFAULT_CENTER, MapView, STAND_TEST_DEER, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
 import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, PosterSettings, Property, HubSettings, Selection } from '@/types/models';
 
 // How far around each stand lidar elevation is loaded for thermal paths, meters.
@@ -194,6 +196,17 @@ export function App() {
   const [savingAlign, setSavingAlign] = useState(false);
   const imageUrls = useImageUrls(hub.overlays);
   const [forecastOpen, setForecastOpen] = useState(false);
+  // Testing a stand spot from the Hunt Forecast: placing the spot, drawing the
+  // deer's way, then the results; and the moment of a past sit shown on the map.
+  // standId: testing a stand or blind you already have (its deer way is saved on it).
+  const [standTest, setStandTest] = useState<{ step: StandTestStep; spot: [number, number] | null; route: [number, number][]; standId: string | null } | null>(null);
+  // Scores from tests run this session, by stand id.
+  const [standScores, setStandScores] = useState<Record<string, { score: number; grade: string }>>({});
+  const [testMoment, setTestMoment] = useState<Moment | null>(null);
+  useEffect(() => {
+    if (!forecastOpen) setStandTest(null);
+  }, [forecastOpen]);
+  const testing = forecastOpen ? standTest : null;
   // Settings shows in the sidebar over the lists (and over the forecast, if open).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -940,7 +953,7 @@ export function App() {
     } else if (action === 'dismiss') {
       hub.saveFieldPin({ ...pin, status: 'dismissed' });
     } else if (moving) {
-      // A stand moved in the field: same stand and history, new spot.
+      // A stand or any pin moved in the field: same pin and history, new spot.
       hub.saveMarker({
         ...moving,
         lng: pin.lng,
@@ -989,6 +1002,12 @@ export function App() {
   };
 
   const handleMapClick = (position: Position) => {
+    if (testing && testing.step !== 'ready') {
+      const p: [number, number] = [position[0], position[1]];
+      // A new spot isn't the stand any more.
+      setStandTest(testing.step === 'spot' ? { ...testing, spot: p, standId: null, step: testing.route.length >= 2 ? 'ready' : 'route' } : { ...testing, route: [...testing.route, p] });
+      return;
+    }
     if (mode.kind === 'trailPick') {
       pickOnTrail(mode.id, mode.action, position);
       return;
@@ -1415,8 +1434,69 @@ export function App() {
     zoomTo({ kind: 'marker', id: marker.id });
   };
 
-  const forecastView = forecastOpen ? (
+  // Makes the tested spot a stand, with the winds it did well on.
+  const makeTestedStand = (goodWinds: MapMarker['goodWinds']) => {
+    if (!testing?.spot) return;
+    const [lng, lat] = testing.spot;
+    const marker: MapMarker = {
+      ...newRecordFields(),
+      propertyId: propertyContaining(hub.properties, [lng, lat])?.id ?? forecastPropertyId ?? null,
+      type: 'stand',
+      name: nextName(pinTypeInfo('stand', hub.settings.customPinTypes).label, hub.markers),
+      lng,
+      lat,
+      notes: '',
+      goodWinds,
+    };
+    hub.saveMarker(marker);
+    setStandTest(null);
+    setSelection({ kind: 'marker', id: marker.id });
+  };
+
+  // Opens the stand tester on a stand or blind you have, with its saved deer way if any.
+  const testExistingStand = (m: MapMarker) => {
+    const route = m.deerRoute ?? [];
+    setStandTest({ step: route.length >= 2 ? 'ready' : 'route', spot: [m.lng, m.lat], route, standId: m.id });
+    zoomTo({ kind: 'marker', id: m.id });
+  };
+  const testedStand = testing?.standId ? hub.markers.find((m) => m.id === testing.standId) ?? null : null;
+
+  const forecastView = forecastOpen && testing ? (
+    <StandTestPanel
+      step={testing.step}
+      spot={testing.spot}
+      route={testing.route}
+      stand={testedStand ? { name: testedStand.name, goodWinds: testedStand.goodWinds } : null}
+      stands={hub.markers
+        .filter((m) => isStandMarker(m) && (!forecastProperty || m.propertyId === forecastProperty.id))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((m) => ({ id: m.id, name: m.name, hasRoute: (m.deerRoute?.length ?? 0) >= 2, score: standScores[m.id] ?? null }))}
+      onPickStand={(id) => {
+        const m = hub.markers.find((x) => x.id === id);
+        if (m) testExistingStand(m);
+      }}
+      onPlaceSpot={() => setStandTest({ ...testing, step: 'spot', standId: null })}
+      onDrawRoute={() => setStandTest({ ...testing, step: 'route', route: [] })}
+      onUndoPoint={() => setStandTest({ ...testing, route: testing.route.slice(0, -1) })}
+      onFinishRoute={() => {
+        // A stand keeps its deer way, so its test can run again later.
+        if (testedStand) hub.saveMarker({ ...testedStand, deerRoute: testing.route });
+        setStandTest({ ...testing, step: testing.spot ? 'ready' : 'spot' });
+      }}
+      onShow={setTestMoment}
+      onResult={(score, grade) => {
+        if (testing.standId) setStandScores((s) => ({ ...s, [testing.standId!]: { score, grade } }));
+      }}
+      onMakeStand={makeTestedStand}
+      onSetGoodWinds={(goodWinds) => testedStand && hub.saveMarker({ ...testedStand, goodWinds })}
+      onClose={() => setStandTest(null)}
+    />
+  ) : forecastOpen ? (
     <ForecastPanel
+      onTestStand={() => {
+        setSelection(null);
+        setStandTest({ step: 'spot', spot: null, route: [], standId: null });
+      }}
       state={forecastState}
       properties={hub.properties}
       propertyId={forecastPropertyId}
@@ -1477,7 +1557,20 @@ export function App() {
           at = offsetPosition(stand.lng, stand.lat, (360 * unplaced.indexOf(s)) / Math.max(1, unplaced.length), SIGHTING_RING_M);
         }
         const info = kindInfo(s.kind);
-        if (at) sightingViews.push({ reportId: report.id, id: s.id, lng: at[0], lat: at[1], headingDeg: s.headingDeg, kind: s.kind, color: info.color, ...(info.deer ? {} : { icon: info.icon }) });
+        // Where it went, when the line was drawn on the phone.
+        const went = stand && s.wentTo && s.lat === null ? offsetPosition(stand.lng, stand.lat, s.wentTo.bearingDeg, s.wentTo.yards * YARD_M) : null;
+        if (at)
+          sightingViews.push({
+            reportId: report.id,
+            id: s.id,
+            lng: at[0],
+            lat: at[1],
+            headingDeg: s.headingDeg,
+            kind: s.kind,
+            color: info.color,
+            ...(went ? { wentTo: went } : {}),
+            ...(info.deer ? {} : { icon: info.icon }),
+          });
       }
     }
   }
@@ -1763,7 +1856,7 @@ export function App() {
           sections={hub.sections.filter((x) => x.id !== editing?.id)}
           trails={hub.trails.filter((t) => t.id !== editing?.id)}
           fieldTracks={hub.fieldTracks.filter((t) => t.status === 'new')}
-          draftLine={mode.kind === 'draw' && mode.target === 'trail'}
+          draftLine={testing?.step === 'route' || (mode.kind === 'draw' && mode.target === 'trail')}
           editShape={editRings && mode.kind === 'edit' ? { rings: editRings, closed: mode.target !== 'trail', color: editColor } : null}
           onEditBegin={() => editRings && setEditHistory((h) => [...h, editRings])}
           onEditRings={setEditRings}
@@ -1776,15 +1869,30 @@ export function App() {
           alignMarkers={alignMarkers}
           standRatings={standRatings}
           unlockedPinId={unlockedPinId}
-          scentCones={coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))}
-          thermalPaths={showThermals && thermal ? coneStands.flatMap((r) => (r.thermal?.path ? [{ id: r.stand.id, phase: r.thermal.phase, ends: r.thermal.ends, pull: r.thermal.pull, points: r.thermal.path }] : [])) : []}
+          scentCones={
+            testing
+              ? testMoment && testing.step === 'ready'
+                ? [{ id: 'stand-test', rating: testMoment.verdict === 'clean' ? 'good' : testMoment.verdict === 'swirl' ? 'ok' : 'bad', cone: testMoment.cone }]
+                : []
+              : coneStands.map((r) => ({ id: r.stand.id, rating: r.rating, cone: r.cone }))
+          }
+          thermalPaths={
+            testing
+              ? testMoment?.path && testMoment.thermal && testing.step === 'ready'
+                ? [{ id: 'stand-test', phase: testMoment.thermal.phase, ends: testMoment.path.ends, pull: testMoment.thermal.pull, points: testMoment.path.points }]
+                : []
+              : showThermals && thermal
+                ? coneStands.flatMap((r) => (r.thermal?.path ? [{ id: r.stand.id, phase: r.thermal.phase, ends: r.thermal.ends, pull: r.thermal.pull, points: r.thermal.path }] : []))
+                : []
+          }
+          standTest={testing ? { spot: testing.spot, route: testing.step === 'route' ? [] : testing.route } : null}
           sightings={sightingViews}
           huntSpots={huntSpotViews}
-          windFromDeg={ratingHour?.windFromDeg ?? null}
+          windFromDeg={testing && testMoment ? testMoment.hour.windFromDeg : (ratingHour?.windFromDeg ?? null)}
           selection={selection}
-          interaction={mode.kind === 'placeSighting' ? 'place' : mode.kind === 'trailPick' ? 'draw' : mode.kind}
-          draftPoints={draftPoints}
-          draftColor={draftColor}
+          interaction={testing?.step === 'spot' ? 'place' : testing?.step === 'route' ? 'draw' : mode.kind === 'placeSighting' ? 'place' : mode.kind === 'trailPick' ? 'draw' : mode.kind}
+          draftPoints={testing?.step === 'route' ? testing.route : draftPoints}
+          draftColor={testing?.step === 'route' ? STAND_TEST_DEER : draftColor}
           onMapClick={handleMapClick}
           onSelect={setSelection}
           onMarkerMoved={handleMarkerMoved}
@@ -2136,6 +2244,18 @@ export function App() {
         unlocked={unlockedPinId === record.id}
         onToggleLock={() => setUnlockedPinId(unlockedPinId === record.id ? null : record.id)}
         onLogHunt={isStandMarker(record) ? () => startReport(record.id) : undefined}
+        onTestSpot={
+          isStandMarker(record)
+            ? () => {
+                setSummaryOpen(false);
+                setBoardOpen(false);
+                setLandOpen(false);
+                setForecastOpen(true);
+                setSelection(null);
+                testExistingStand(record);
+              }
+            : undefined
+        }
         thermals={(() => {
           // The stand's own thermal day, once the forecast and its lidar are in.
           if (!isStandMarker(record) || !forecast || elevationAt(record.lng, record.lat) === null) return null;

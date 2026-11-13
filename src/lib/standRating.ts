@@ -14,6 +14,9 @@ export interface RatedStand {
   stand: MapMarker;
   rating: StandRating;
   reason: string;
+  // The rating from the wind alone (its good winds and the cone), before thermals
+  // have their say, so a stand can read "Good wind · Bad thermals".
+  windRating: StandRating;
   cone: Polygon;
   // Names of bedding areas / sanctuaries the scent drifts into.
   scentInto: string[];
@@ -55,9 +58,9 @@ export function rateStand(stand: MapMarker, hour: ForecastHour, sensitiveAreas: 
   const windRating = rateWind(stand, hour);
   if (scentInto.length > 0) {
     // Scent in a bedding area outweighs a "good" wind direction.
-    return { stand, cone, scentInto, rating: 'bad', reason: `Scent drifts into ${scentInto.join(' and ')}.` };
+    return { stand, cone, scentInto, rating: 'bad', windRating: 'bad', reason: `Scent drifts into ${scentInto.join(' and ')}.` };
   }
-  return { stand, cone, scentInto, ...windRating };
+  return { stand, cone, scentInto, ...windRating, windRating: windRating.rating };
 }
 
 function rateWind(stand: MapMarker, hour: ForecastHour): { rating: StandRating; reason: string } {

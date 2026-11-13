@@ -89,7 +89,20 @@ function tilePath(url) {
 // from TILE_HOSTS are allowed. Fails (so the page can retry) on any bad response.
 // With saveOnly, makes sure the tile is on disk and returns no bytes (the
 // background property download only needs it saved).
-async function getTile(_event, url, { cacheOnly = false, saveOnly = false } = {}) {
+// Fetches the map no longer needs (it panned or zoomed away), by request id, so a
+// busy USGS server doesn't tie up connections for tiles nobody will see.
+const tileFetches = new Map();
+const cancelledTiles = new Set();
+
+function cancelTile(_event, requestId) {
+  const fetching = tileFetches.get(requestId);
+  if (fetching) return fetching.abort();
+  // Cancelled before its fetch started (it was still checking the disk).
+  cancelledTiles.add(requestId);
+  setTimeout(() => cancelledTiles.delete(requestId), 60_000);
+}
+
+async function getTile(_event, url, { cacheOnly = false, saveOnly = false, requestId = null } = {}) {
   if (typeof url !== 'string' || !TILE_HOSTS.has(new URL(url).hostname)) throw new Error(`Not a map tile URL: ${url}`);
   const file = tilePath(url);
   if (saveOnly) {
@@ -105,12 +118,20 @@ async function getTile(_event, url, { cacheOnly = false, saveOnly = false } = {}
     if (error.code !== 'ENOENT') throw error;
   }
   if (cacheOnly) return null;
+  if (requestId && cancelledTiles.delete(requestId)) throw new Error('Tile no longer needed');
   // The USGS servers can hang on a busy day. Give up after 30 seconds so the map's
   // loading slot frees up for saved tiles; the map tries the tile again later.
-  const response = await net.fetch(url, { signal: AbortSignal.timeout(30_000) });
-  const type = response.headers.get('content-type') ?? '';
-  if (!response.ok || !type.startsWith('image/')) throw new Error(`USGS answered ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const cancel = new AbortController();
+  if (requestId) tileFetches.set(requestId, cancel);
+  let bytes;
+  try {
+    const response = await net.fetch(url, { signal: AbortSignal.any([AbortSignal.timeout(30_000), cancel.signal]) });
+    const type = response.headers.get('content-type') ?? '';
+    if (!response.ok || !type.startsWith('image/')) throw new Error(`USGS answered ${response.status}`);
+    bytes = Buffer.from(await response.arrayBuffer());
+  } finally {
+    if (requestId) tileFetches.delete(requestId);
+  }
   await fs.mkdir(path.dirname(file), { recursive: true });
   // Write then rename, so a half-written tile is never read back.
   const temp = `${file}.${process.pid}.tmp`;
@@ -373,6 +394,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hub:saveImage', saveImage);
   ipcMain.handle('hub:loadImage', loadImage);
   ipcMain.handle('hub:getTile', getTile);
+  ipcMain.handle('hub:cancelTile', cancelTile);
   ipcMain.handle('hub:tileCacheInfo', tileCacheInfo);
   ipcMain.handle('hub:clearTileCache', clearTileCache);
   ipcMain.handle('hub:showDataFolder', () => shell.openPath(dataDir()));

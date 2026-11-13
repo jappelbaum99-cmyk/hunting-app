@@ -42,6 +42,8 @@ export interface FieldData {
   soilRun?: SoilRun | null;
   // The camp map from the hub (Map tab), as last seen.
   map?: CampMap | null;
+  // The Map tab's picked map and whether names show.
+  mapView?: { base?: 'topo' | 'satellite' | 'lidar'; labels?: boolean };
   // Properties whose map tiles are saved on this phone, by property id.
   offlineMaps?: Record<string, { savedAt: string; tiles: number; failed: number; layers: string }>;
 }
