@@ -1936,3 +1936,99 @@ textarea {
   outline-offset: -2px;
   border-radius: 50%;
 }
+
+/* Where they were: three steps, each tapped on the target in turn. */
+.where-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.where-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.where-step-name {
+  font-size: 13px;
+}
+
+.where-step-value {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.where-step.on {
+  border-color: #d9822b;
+  box-shadow: inset 0 0 0 1px #d9822b;
+}
+
+.where-step.set .where-step-value {
+  opacity: 1;
+}
+
+.where-picker svg.tapping .where-outer {
+  stroke: #d9822b;
+}
+
+polyline.where-path {
+  fill: none;
+  stroke-linejoin: round;
+}
+
+/* Logging a deer on the stand map: taller, with an outline while a tap is waited for. */
+.where-picker .stand-map {
+  height: 340px;
+  margin: 0;
+}
+
+.stand-map-ring {
+  padding: 0 4px;
+  border-radius: 6px;
+  background: rgba(20, 12, 6, 0.65);
+  color: #f7efe6;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.where-map-hint {
+  margin: 4px 0 0;
+}
+
+/* The deer being placed: its points, big enough to drag with a finger. */
+.stand-map-point {
+  box-sizing: border-box;
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.stand-map-point.point-from {
+  width: 16px;
+  height: 16px;
+  background: #f7efe6;
+  border: 2px solid rgba(20, 12, 6, 0.85);
+}
+
+.stand-map-point.point-closest {
+  width: 24px;
+  height: 24px;
+  background: var(--deer, #a07a55);
+  border: 3px solid #fff;
+}
+
+.stand-map-point.point-went {
+  width: 20px;
+  height: 20px;
+  background: rgba(20, 12, 6, 0.25);
+  border: 3px solid #fff;
+}

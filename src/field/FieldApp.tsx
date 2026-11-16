@@ -31,7 +31,6 @@ import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weat
 import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, huntPosition, inOutLabel, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
 import { harvestLine } from '@/lib/harvests';
 import { HarvestSection } from '@/field/HarvestSection';
-import { StandMap } from '@/field/StandMap';
 import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'map' | 'hunt' | 'stands' | 'notes' | 'send';
@@ -519,13 +518,16 @@ function HuntTab(props: {
   const newSpot = standId === NEW_SPOT;
   const fresh = props.fix && Date.now() - props.fix.at < 60_000 ? props.fix : null;
 
-  // Suggest the closest stand from GPS.
+  // Set once the hunter picks from the list (No stand included), so GPS
+  // doesn't switch it back to the closest stand.
+  const [picked, setPicked] = useState(false);
+  // Suggest the closest stand from GPS, until one is picked.
   useEffect(() => {
-    if (standId || !props.fix || data.stands.length === 0) return;
+    if (picked || standId || !props.fix || data.stands.length === 0) return;
     const { lat, lng } = props.fix;
     const closest = [...data.stands].sort((a, b) => Math.hypot(a.lat - lat, a.lng - lng) - Math.hypot(b.lat - lat, b.lng - lng))[0];
     setStandId(closest.id);
-  }, [props.fix, data.stands, standId]);
+  }, [props.fix, data.stands, standId, picked]);
 
   if (active) {
     return (
@@ -566,7 +568,13 @@ function HuntTab(props: {
     <>
       <section className="field-card">
         <h2>Start a hunt</h2>
-        <select value={standId} onChange={(e) => setStandId(e.target.value)}>
+        <select
+          value={standId}
+          onChange={(e) => {
+            setPicked(true);
+            setStandId(e.target.value);
+          }}
+        >
           <option value="">No stand / walking</option>
           <option value={NEW_SPOT}>New spot (a tree, a climber…)</option>
           {data.stands.map((s) => (
@@ -594,14 +602,18 @@ function HuntTab(props: {
           className="big-button"
           disabled={newSpot && !fresh}
           onClick={() => {
-            if (!newSpot) return props.onStart(standId || null, null);
+            if (!newSpot) {
+              setPicked(false);
+              return props.onStart(standId || null, null);
+            }
             if (!fresh) return;
             props.onStart(null, { lat: fresh.lat, lng: fresh.lng, accuracyM: Math.round(fresh.accuracyM), name: spotName.trim() || null });
             setSpotName('');
             setStandId('');
+            setPicked(false);
           }}
         >
-          {newSpot ? "I'm hunting here" : "I'm in the stand"}
+          {newSpot ? "I'm hunting here" : standId ? "I'm in the stand" : "I'm hunting (no stand)"}
         </button>
       </section>
 
@@ -800,8 +812,9 @@ function QuickLog(props: {
       headingDeg: heading,
       buckName: kind === 'buck' ? buckName.trim() || null : null,
       notes: kind === 'other' ? otherName.trim() || null : null,
-      fromStand: where,
-      wentTo: where ? wentTo ?? null : null,
+      // With no closest tapped, where they were first seen stands in for it.
+      fromStand: where ?? cameFrom ?? null,
+      wentTo: where || cameFrom ? wentTo ?? null : null,
       cameFrom: where ? cameFrom ?? null : null,
       comment: note.trim() || null,
       behavior,
@@ -832,15 +845,7 @@ function QuickLog(props: {
             : `since ${clock(report.start)}`}
         </span>
       </h2>
-      {standAt && (
-        <StandMap
-          at={standAt}
-          sightings={report.sightings.filter((s) => s.id !== editingId)}
-          base={props.data.mapView?.base ?? 'topo'}
-          campMap={props.data.map ?? null}
-        />
-      )}
-      {editingId && <p className="editing-note">Changing a sighting. Pick what's different, then tap Update.</p>}
+      {editingId && <p className="editing-note">Changing a sighting. Drag its points on the map (or pick what else is different), then tap Update.</p>}
 
       <div className="kind-row">
         {KINDS.map((k) => (
@@ -884,6 +889,7 @@ function QuickLog(props: {
           setCameFrom(next.cameFrom);
         }}
         logged={report.sightings.filter((s) => s.id !== editingId)}
+        map={standAt ? { at: standAt, base: props.data.mapView?.base ?? 'topo', campMap: props.data.map ?? null } : null}
       />
 
       <input
