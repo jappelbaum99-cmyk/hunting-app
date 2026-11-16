@@ -1310,8 +1310,8 @@ textarea {
 
 /* Rubs, scrapes and cameras: smaller, with no name. */
 .fm-pin.small i {
-  width: 9px;
-  height: 9px;
+  width: calc(9px * var(--pin-scale, 1));
+  height: calc(9px * var(--pin-scale, 1));
   border-width: 1.5px;
 }
 
@@ -1433,8 +1433,8 @@ textarea {
 }
 
 .fm-pin i {
-  width: 14px;
-  height: 14px;
+  width: calc(14px * var(--pin-scale, 1));
+  height: calc(14px * var(--pin-scale, 1));
   border-radius: 50%;
   background: var(--pin);
   border: 2px solid #fff;
@@ -1449,7 +1449,7 @@ textarea {
 .fm-label {
   white-space: nowrap;
   color: #fff;
-  font-size: 12px;
+  font-size: calc(12px * var(--label-scale, 1));
   font-weight: 600;
   text-shadow: 0 0 3px #000, 0 0 2px #000;
   pointer-events: none;
@@ -1460,13 +1460,13 @@ textarea {
 }
 
 .fm-property-name {
-  font-size: 14px;
+  font-size: calc(14px * var(--label-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .fm-section-name {
-  font-size: 12px;
+  font-size: calc(12px * var(--label-scale, 1));
   opacity: 0.9;
 }
 
@@ -1762,4 +1762,177 @@ textarea {
 
 .where-arrowhead {
   fill: #f7efe6;
+}
+
+/* Phone map: area and trail names. */
+.fm-area-name {
+  font-size: calc(11px * var(--label-scale, 1));
+  font-style: italic;
+}
+
+.fm-trail-name {
+  font-size: calc(11px * var(--label-scale, 1));
+  opacity: 0.9;
+}
+
+/* Phone map: Labels and sizes sheet. */
+.fm-display h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fm-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fm-toggles button,
+.fm-sizes button {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.fm-toggles button.active,
+.fm-sizes button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(240, 138, 36, 0.12);
+}
+
+.fm-size-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fm-sizes {
+  display: flex;
+  gap: 4px;
+}
+
+/* Harvests: "We got one" on the hunt screen and its form. */
+.harvest-section {
+  margin: 12px 0 4px;
+}
+
+.harvest-button {
+  width: 100%;
+  border-color: #d9822b;
+  color: #f0a75a;
+}
+
+.harvest-form {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #d9822b;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.harvest-form h3 {
+  margin: 0;
+}
+
+.harvest-kinds {
+  flex-wrap: wrap;
+}
+
+.harvest-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.harvest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.harvest-field > span {
+  opacity: 0.75;
+}
+
+.harvest-field input,
+.harvest-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.harvest-mark {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: #d9822b;
+}
+
+.harvest-field input[type='time'],
+.harvest-field input[type='number'] {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color-scheme: dark;
+}
+
+/* Five maps to pick from: the row scrolls sideways rather than wrapping. */
+.fm-bases {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: calc(100vw - 110px);
+}
+
+.fm-bases::-webkit-scrollbar {
+  display: none;
+}
+
+.fm-bases button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fm-save-extras {
+  margin: 4px 0 8px;
+}
+
+/* The stand map on the hunt screen. */
+.stand-map {
+  height: 210px;
+  margin: 8px 0 12px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* Where they came from: a dashed lead-in line to the spot, starting at a small dot. */
+.where-path.from {
+  stroke-dasharray: 4 4;
+}
+
+.where-from-dot {
+  fill: #f7efe6;
+  stroke: rgba(20, 12, 6, 0.8);
+  stroke-width: 1.5;
+}
+
+.where-picker svg.picking-from {
+  outline: 2px dashed #d9822b;
+  outline-offset: -2px;
+  border-radius: 50%;
 }

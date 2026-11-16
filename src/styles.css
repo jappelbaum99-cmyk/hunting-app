@@ -525,6 +525,10 @@ input[type='checkbox'] {
 
 .layer-card {
   width: 290px;
+  /* Scrolls inside the window instead of running off the bottom. */
+  max-height: calc(100dvh - 84px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -5850,4 +5854,104 @@ body.resizing {
   text-align: center;
   font-size: 10px;
   color: var(--muted);
+}
+
+/* Hunt Forecast › On the map: scent cones and thermal paths side by side. */
+.scent-card h2 {
+  margin: 0;
+}
+
+.scent-card:not(.thermal-card) {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+.scent-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 2px;
+}
+
+.scent-toggles .cone-toggle {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.thermal-now-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.thermal-now-block .thermal-now {
+  margin-top: 0;
+}
+
+.stand-picks-head {
+  margin: 14px 0 0;
+  font-size: 15px;
+}
+
+/* Test a stand spot: how close the deer's way comes. */
+.stand-test-distance {
+  margin: 4px 0 8px;
+}
+
+/* Test a stand spot: the yards from the spot to the deer's way, on the map. */
+.stand-test-yards {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(20, 12, 6, 0.8);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Harvests: "Log a harvest" beside "Log a hunt", the report's cards, and the Summary list. */
+.log-hunt-row {
+  display: flex;
+  gap: 8px;
+}
+
+.log-hunt-row .log-hunt {
+  flex: 1;
+}
+
+.harvest-add {
+  width: 100%;
+}
+
+.sighting.harvest {
+  border-left: 3px solid #d9822b;
+}
+
+.summary-subhead.harvest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.harvest-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.harvest-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.harvest-list .link-button {
+  align-self: flex-start;
+  font-weight: 700;
 }

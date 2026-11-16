@@ -1,13 +1,17 @@
 // Hunt report summaries: who's in the stand now, hunts by day, and what each
 // stand has produced (deer seen and which way they travel).
 import { DEER_KINDS, HEADINGS, kindInfo, sightingSummary } from '@/lib/reports';
+import { harvestsOf } from '@/lib/harvests';
 import { compassPointOf } from '@/lib/standRating';
 import type { CompassPoint, DeerKind, HuntReport } from '@/types/models';
 
 // A phone hunt with no end is "in the stand now" only if it started recently;
 // older ones were just never ended. Hunts typed into the hub are written up
 // after the fact, so they never count as live.
-const LIVE_FOR_MS = 12 * 60 * 60 * 1000;
+// A hunt left running this long is ended on its own (on the phone), at this
+// many hours after it started.
+export const HUNT_AUTO_END_MS = 13 * 60 * 60 * 1000;
+const LIVE_FOR_MS = HUNT_AUTO_END_MS;
 
 export function isLive(report: HuntReport, now = Date.now()): boolean {
   if (report.end || report.source !== 'phone') return false;
@@ -70,9 +74,13 @@ export function huntsByDay(reports: HuntReport[], now = new Date()): HuntDay[] {
 
 // "3 hunts · 5 deer (2 bucks) · 1 turkey".
 export function daySummary(day: Pick<HuntDay, 'reports' | 'deer' | 'bucks'> & { others?: string }): string {
-  const hunts = `${day.reports.length} hunt${day.reports.length === 1 ? '' : 's'}`;
+  // A harvest logged on its own isn't a sit.
+  const sits = day.reports.filter((r) => !r.harvestOnly).length;
+  const taken = day.reports.reduce((n, r) => n + harvestsOf(r).length, 0);
+  if (!sits) return taken ? `${taken} taken` : '';
+  const hunts = `${sits} hunt${sits === 1 ? '' : 's'}`;
   const deer = day.deer === 0 ? 'no deer' : `${day.deer} deer${day.bucks ? ` (${day.bucks} buck${day.bucks === 1 ? '' : 's'})` : ''}`;
-  return [hunts, deer, day.others].filter(Boolean).join(' · ');
+  return [hunts, deer, day.others, taken ? `${taken} taken` : null].filter(Boolean).join(' · ');
 }
 
 export interface StandStats {
@@ -90,7 +98,8 @@ export interface StandStats {
   evening: { hunts: number; deer: number };
 }
 
-export function standStats(reports: HuntReport[]): StandStats {
+export function standStats(all: HuntReport[]): StandStats {
+  const reports = all.filter((r) => !r.harvestOnly);
   const headings = HEADINGS.map((h) => ({ point: h.point, deg: h.deg, count: 0 }));
   const byWind = new Map<CompassPoint, { hunts: number; deer: number }>();
   const morning = { hunts: 0, deer: 0 };

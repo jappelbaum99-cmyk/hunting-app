@@ -168,7 +168,18 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
         ))}
       </div>
 
-      {props.thermal && <ThermalCard thermal={props.thermal} show={props.showThermals} onToggle={props.onToggleThermals} />}
+      {ratedStands.length > 0 && (
+        <ScentCard
+          thermal={props.thermal}
+          showThermals={props.showThermals}
+          onToggleThermals={props.onToggleThermals}
+          ratedStands={ratedStands}
+          coneGroups={props.coneGroups}
+          onSetConeGroups={props.onSetConeGroups}
+        />
+      )}
+
+      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} opportunities={props.opportunities} />
 
       <section className="sidebar-section stand-test-card">
         <div>
@@ -177,8 +188,6 @@ function ReadyForecast(props: ForecastPanelProps & { forecast: Forecast }) {
         </div>
         <button onClick={props.onTestStand}>Test a spot</button>
       </section>
-
-      <StandList ratedStands={ratedStands} time={selectedTime} onPickStand={props.onPickStand} coneGroups={props.coneGroups} onToggleCones={props.onToggleCones} onSetConeGroups={props.onSetConeGroups} opportunities={props.opportunities} />
 
       <p className="hint forecast-source">
         Forecast from Open-Meteo, updated {updatedMinutes < 1 ? 'just now' : `${updatedMinutes} min ago`}.{' '}
@@ -403,7 +412,6 @@ function StandList({
   onPickStand,
   coneGroups,
   onToggleCones,
-  onSetConeGroups,
   opportunities,
 }: {
   ratedStands: RatedStand[];
@@ -411,16 +419,12 @@ function StandList({
   onPickStand(id: string): void;
   coneGroups: StandRating[];
   onToggleCones(group: StandRating): void;
-  onSetConeGroups(groups: StandRating[]): void;
   opportunities: Record<string, Opportunity>;
 }) {
   if (ratedStands.length === 0) return <p className="empty">Add stands with their good winds to get recommendations.</p>;
   return (
     <>
-      <div className="stands-at-row">
-        <p className="hint stands-at">Stand picks for {formatClock(time)}. Click a stand to see its scent cone, or turn on Cones for a group.</p>
-        <AllConesToggle ratedStands={ratedStands} coneGroups={coneGroups} onSetConeGroups={onSetConeGroups} />
-      </div>
+      <h2 className="stand-picks-head">Stand picks for {formatClock(time)}</h2>
       {GROUPS.map((group) => {
         const items = ratedStands.filter((r) => r.rating === group);
         if (items.length === 0) return null;
@@ -653,24 +657,53 @@ function ActivityCard({
   );
 }
 
-// Every stand's scent cone on the map at once, or all of them off.
-function AllConesToggle({ ratedStands, coneGroups, onSetConeGroups }: { ratedStands: RatedStand[]; coneGroups: StandRating[]; onSetConeGroups(groups: StandRating[]): void }) {
-  const present = GROUPS.filter((g) => ratedStands.some((r) => r.rating === g));
+// What scent shows on the map: every stand's cone, and where thermals carry it,
+// side by side, with what the thermals are doing at the picked time.
+function ScentCard(props: {
+  thermal: ThermalState | null;
+  showThermals: boolean;
+  onToggleThermals(): void;
+  ratedStands: RatedStand[];
+  coneGroups: StandRating[];
+  onSetConeGroups(groups: StandRating[]): void;
+}) {
+  const { thermal, coneGroups } = props;
+  const present = GROUPS.filter((g) => props.ratedStands.some((r) => r.rating === g));
   const allOn = present.length > 0 && present.every((g) => coneGroups.includes(g));
+  const someOn = coneGroups.length > 0;
   return (
-    <button
-      className={`cone-toggle all-cones${allOn ? ' on' : ''}`}
-      aria-pressed={allOn}
-      onClick={() => onSetConeGroups(allOn ? [] : present)}
-      title={allOn ? 'Hide every scent cone' : 'Show the scent cone for every stand'}
-    >
-      All cones
-    </button>
+    <section className={`sidebar-section scent-card${thermal ? ` thermal-card thermal-${thermal.phase}` : ''}`}>
+      <h2>On the map</h2>
+      <div className="scent-toggles">
+        <button
+          className={`cone-toggle${allOn ? ' on' : ''}`}
+          aria-pressed={allOn}
+          onClick={() => props.onSetConeGroups(allOn ? [] : present)}
+          title={allOn ? 'Hide every scent cone' : 'Show the scent cone for every stand'}
+        >
+          Scent cones
+        </button>
+        {thermal && (
+          <button
+            className={`cone-toggle thermal-toggle${props.showThermals ? ' on' : ''}`}
+            aria-pressed={props.showThermals}
+            onClick={props.onToggleThermals}
+            title="Show where thermals carry scent from stands with a cone on the map"
+          >
+            Thermal paths
+          </button>
+        )}
+      </div>
+      <p className="hint">
+        {someOn && !allOn ? 'Cones show for the groups turned on below. ' : ''}Click a stand for just its cone.{thermal ? ' Thermal paths follow the cones.' : ''}
+      </p>
+      {thermal && <ThermalNow thermal={thermal} />}
+    </section>
   );
 }
 
-// Which way thermals run at the picked time, and a switch for their scent paths on the map.
-function ThermalCard({ thermal, show, onToggle }: { thermal: ThermalState; show: boolean; onToggle(): void }) {
+// Which way thermals run at the picked time, and what that means for a stand.
+function ThermalNow({ thermal }: { thermal: ThermalState }) {
   const advice =
     thermal.phase === 'switching'
       ? 'Air is changing direction; scent swirls around the stand for a while.'
@@ -680,17 +713,14 @@ function ThermalCard({ thermal, show, onToggle }: { thermal: ThermalState; show:
           ? 'Scent sinks and drains downhill into draws and bottoms. Hunt above where deer travel.'
           : 'Scent rises up the slopes toward the ridges. Hunt below where deer travel.';
   return (
-    <section className={`sidebar-section thermal-card thermal-${thermal.phase}`}>
-      <div className="thermal-head">
-        <h2>Thermals</h2>
-        <button className={`cone-toggle thermal-toggle${show ? ' on' : ''}`} aria-pressed={show} onClick={onToggle} title="Show where thermals carry scent from stands with a cone on the map">
-          Show paths
-        </button>
-      </div>
-      <p className="thermal-now">{thermalSummary(thermal)}</p>
-      <p className="hint">
-        {advice} Strength here is for open ground; a stand tucked below a ridge or in a hollow out of the wind feels thermals more, and its note says so. Paths show for stands with a scent cone.
+    <div className="thermal-now-block">
+      <p
+        className="thermal-now"
+        title="Strength is for open ground; a stand tucked below a ridge or in a hollow out of the wind feels thermals more, and its note says so."
+      >
+        Thermals: {thermalSummary(thermal)}
       </p>
-    </section>
+      <p className="hint">{advice}</p>
+    </div>
   );
 }

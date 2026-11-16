@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 
 import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
-import { areasToFeatures, boundsOf, propertiesToFeatures } from '@/lib/geo';
+import { areasToFeatures, boundsOf, closestOnLine, offsetPosition, propertiesToFeatures } from '@/lib/geo';
 import { findSnap, type Snap } from '@/lib/snap';
 import { areaTypeInfo, dashFor, LABEL_KINDS, markerStyle, outlineLook, propertyColor } from '@/lib/styles';
 import {
@@ -69,6 +69,8 @@ export interface SightingView {
   icon?: IconName;
   // Where it went ([lng, lat]): drawn as a line with an arrow from where it was seen.
   wentTo?: [number, number];
+  // Where it was first seen: the line starts here.
+  cameFrom?: [number, number];
 }
 
 // A map-side control point while lining up an image.
@@ -314,7 +316,7 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'stand-test-route-casing',
     type: 'line',
     source: 'stand-test',
-    filter: ['==', ['geometry-type'], 'LineString'],
+    filter: ['all', ['==', ['geometry-type'], 'LineString'], ['!=', ['get', 'kind'], 'closest']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': 'rgba(20, 12, 6, 0.75)', 'line-width': 6 },
   });
@@ -322,8 +324,16 @@ function addFeatureLayers(map: maplibregl.Map): void {
     id: 'stand-test-route',
     type: 'line',
     source: 'stand-test',
-    filter: ['==', ['geometry-type'], 'LineString'],
+    filter: ['all', ['==', ['geometry-type'], 'LineString'], ['!=', ['get', 'kind'], 'closest']],
     paint: { 'line-color': STAND_TEST_DEER, 'line-width': 3, 'line-dasharray': [2, 1.2] },
+  });
+  // How close the deer's way comes: a thin line from the spot, and its yards.
+  map.addLayer({
+    id: 'stand-test-closest',
+    type: 'line',
+    source: 'stand-test',
+    filter: ['==', ['get', 'kind'], 'closest'],
+    paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-dasharray': [1.5, 1.5], 'line-opacity': 0.9 },
   });
   map.addLayer({
     id: 'stand-test-points',
@@ -1019,9 +1029,14 @@ export function MapView(props: MapViewProps) {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     const show = (id: string, visible: boolean) => map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    show(LAYER_IDS.satellite, layers.base === 'satellite');
-    show(LAYER_IDS.aerial, layers.base === 'satellite');
-    show(LAYER_IDS.aerialMo, layers.base === 'satellite' && settings.aerialPhotos !== 'leafOn');
+    // Infrared and greenness load slowly, so the photos show under them meanwhile.
+    const bands = layers.base === 'infrared' || layers.base === 'greenness';
+    const photos = layers.base === 'satellite' || bands;
+    show(LAYER_IDS.satellite, photos);
+    show(LAYER_IDS.aerial, photos);
+    show(LAYER_IDS.aerialMo, photos && settings.aerialPhotos !== 'leafOn');
+    show(LAYER_IDS.infrared, layers.base === 'infrared');
+    show(LAYER_IDS.greenness, layers.base === 'greenness');
     show(LAYER_IDS.topo, layers.base === 'topo');
     show(LAYER_IDS.lidar, layers.base === 'lidar');
     show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0);
@@ -1054,7 +1069,7 @@ export function MapView(props: MapViewProps) {
     show(LAYER_IDS.slope, layers.slope);
     map.setPaintProperty(LAYER_IDS.slope, 'raster-opacity', layers.slopeOpacity);
     // The original black lines are lightened over satellite; a picked color is drawn as is.
-    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', !contourColor && layers.base === 'satellite' ? 0.85 : 0);
+    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', !contourColor && photos ? 0.85 : 0);
     map.setPaintProperty(LAYER_IDS.contours, 'raster-opacity', layers.contourOpacity);
   }, [layers, settings.aerialPhotos, settings.contourColor, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1334,6 +1349,7 @@ export function MapView(props: MapViewProps) {
 
   // Testing a stand spot.
   const { standTest } = props;
+  const closestLabel = useRef<maplibregl.Marker | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
@@ -1343,8 +1359,36 @@ export function MapView(props: MapViewProps) {
     if (route.length >= 1) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: route[0] }, properties: { kind: 'from' } });
     if (route.length >= 2) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: route[route.length - 1] }, properties: { kind: 'to' } });
     if (standTest?.spot) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: standTest.spot }, properties: { kind: 'spot' } });
+    const spot = standTest?.spot ?? null;
+    const closest = spot && route.length >= 2 ? closestOnLine(spot, route) : null;
+    const closestAt = spot && closest && closest.meters >= 1 ? offsetPosition(spot[0], spot[1], closest.bearingDeg, closest.meters) : null;
+    if (spot && closestAt) features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [spot, closestAt] }, properties: { kind: 'closest' } });
     map.getSource<GeoJSONSource>('stand-test')?.setData({ type: 'FeatureCollection', features });
+
+    // Its yards, as an HTML label (no glyph server).
+    if (!spot || !closest || !closestAt) {
+      closestLabel.current?.remove();
+      closestLabel.current = null;
+      return;
+    }
+    // Just past the deer's way, on the far side from the spot, so it covers neither.
+    const rad = (closest.bearingDeg * Math.PI) / 180;
+    const offset: [number, number] = [Math.sin(rad) * 26, -Math.cos(rad) * 18];
+    if (!closestLabel.current) {
+      const el = document.createElement('div');
+      el.classList.add('stand-test-yards');
+      closestLabel.current = new maplibregl.Marker({ element: el }).setLngLat(closestAt).addTo(map);
+    }
+    closestLabel.current.setLngLat(closestAt).setOffset(offset);
+    closestLabel.current.getElement().textContent = `${Math.round(closest.meters * 1.09361)} yd`;
   }, [standTest, readyTick]);
+  useEffect(
+    () => () => {
+      closestLabel.current?.remove();
+      closestLabel.current = null;
+    },
+    [],
+  );
 
   // Deer sightings.
   const { sightings } = props;
@@ -1366,20 +1410,25 @@ export function MapView(props: MapViewProps) {
         },
       })),
     });
-    const went = sightings.filter((s) => s.wentTo);
+    // From where it was first seen, through the closest it got, to where it went (arrow at the end).
+    const paths = sightings.filter((s) => s.wentTo || s.cameFrom);
     map.getSource<GeoJSONSource>('sighting-paths')?.setData({
       type: 'FeatureCollection',
-      features: went.flatMap((s) => [
+      features: paths.flatMap((s) => [
         {
           type: 'Feature' as const,
-          geometry: { type: 'LineString' as const, coordinates: [[s.lng, s.lat], s.wentTo!] },
+          geometry: { type: 'LineString' as const, coordinates: [...(s.cameFrom ? [s.cameFrom] : []), [s.lng, s.lat], ...(s.wentTo ? [s.wentTo] : [])] },
           properties: { color: s.color },
         },
-        {
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: s.wentTo! },
-          properties: { bearing: bearingBetween([s.lng, s.lat], s.wentTo!) },
-        },
+        ...(s.wentTo
+          ? [
+              {
+                type: 'Feature' as const,
+                geometry: { type: 'Point' as const, coordinates: s.wentTo },
+                properties: { bearing: bearingBetween([s.lng, s.lat], s.wentTo) },
+              },
+            ]
+          : []),
       ]),
     });
   }, [sightings, readyTick]);

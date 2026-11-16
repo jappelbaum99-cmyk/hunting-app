@@ -6,21 +6,21 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { Feature, FeatureCollection, Position } from 'geojson';
 import * as maplibregl from 'maplibre-gl';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
-import type { FieldData } from '@/field/fieldData';
+import type { FieldData, MapLabelKind, MapLineKind, MapSize } from '@/field/fieldData';
 import type { FieldPin } from '@/types/models';
 import { clearSavedTiles, saveTile, storageUsedMb, tileStoreAvailable, turnOnSavedTiles } from '@/field/tileStore';
 import type { CampMap } from '@/lib/campMap';
-import { pinTypeInfo } from '@/lib/featureTypes';
+import { isHuntingSpot, pinTypeInfo } from '@/lib/featureTypes';
 import { boundsOf } from '@/lib/geo';
 import { compassPointOf } from '@/lib/standRating';
 import { formatDistance, lineLengthM, metersBetween } from '@/lib/trails';
 import { AERIAL_TILE_URL, buildBaseStyle, DEFAULT_LAYERS, LAYER_IDS, MO_AERIAL_TILE_URL, retryFailedTiles, setUpMapLibre } from '@/map/layers';
 import { DEFAULT_OFFLINE_RADIUS_M, planDownload, runDownload } from '@/map/offline';
 
-type Base = 'satellite' | 'topo' | 'lidar';
+type Base = 'satellite' | 'topo' | 'lidar' | 'infrared';
 type Fix = { lat: number; lng: number; accuracyM: number };
 type Tool = 'pin' | 'walk' | 'soil';
 // A pin tapped on the map: one from the hub (moving it asks the hub), or one of
@@ -28,26 +28,73 @@ type Tool = 'pin' | 'walk' | 'soil';
 type Picked = { id: string; source: 'hub' | 'mine'; type: string; name: string; kind: string; lat: number; lng: number };
 
 // The phone has no 3D, so its saved maps leave the terrain tiles out.
-// The maps to pick from, and the ones a property's offline save keeps. For now
-// only topo is saved (about 1 MB a property); satellite is for looking while
-// there's signal. Add a map to SAVED_BASES, and turn contours on, to save more.
-const PHONE_BASES: Base[] = ['topo', 'satellite'];
-const SAVED_BASES: Base[] = ['topo'];
+// The maps to pick from. A property's offline save always keeps topo (about
+// 1 MB a property); satellite photos (with Missouri's 6 inch ones where a
+// property is in Missouri) and lidar are kept too when picked in Offline maps.
+// Infrared is for looking while there's signal.
+const PHONE_BASES: Base[] = ['topo', 'satellite', 'lidar', 'infrared'];
 const PHONE_CONTOURS = false;
-const PHONE_SKIP = [
-  '3D terrain',
-  ...(SAVED_BASES.includes('satellite') ? [] : ['Satellite', 'Satellite close-up', 'Missouri 6 inch close-up']),
-  ...(SAVED_BASES.includes('topo') ? [] : ['Topo']),
-  ...(SAVED_BASES.includes('lidar') ? [] : ['Lidar']),
-];
-// Saved maps: what's included, so a change here can ask for a fresh save.
-const PHONE_LAYERS = [...SAVED_BASES, ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
-const BASE_LABELS: Record<Base, string> = { topo: 'Topo', satellite: 'Satellite', lidar: 'Lidar' };
+type SaveExtras = NonNullable<NonNullable<FieldData['mapView']>['saveExtras']>;
+function savedBases(extras: SaveExtras): Base[] {
+  return ['topo', ...(extras.photos ? (['satellite'] as const) : []), ...(extras.lidar ? (['lidar'] as const) : [])];
+}
+function phoneSkip(saved: Base[]): string[] {
+  return [
+    '3D terrain',
+    ...(saved.includes('satellite') ? [] : ['Satellite', 'Satellite close-up', 'Missouri 6 inch close-up']),
+    ...(saved.includes('topo') ? [] : ['Topo']),
+    ...(saved.includes('lidar') ? [] : ['Lidar']),
+  ];
+}
+// Saved maps: what's included, so a change can ask for a fresh save.
+const phoneLayers = (saved: Base[]) => [...saved, ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
+const BASE_LABELS: Record<Base, string> = { topo: 'Topo', satellite: 'Satellite', lidar: 'Lidar', infrared: 'Infrared' };
 // Topo tiles stop at zoom 16; a little past that is still readable.
-const MAX_ZOOM: Record<Base, number> = { topo: 17.5, satellite: 19, lidar: 19 };
+const MAX_ZOOM: Record<Base, number> = { topo: 17.5, satellite: 19, lidar: 19, infrared: 19 };
 // Sign and cameras: small dots with no name (tap one to see it), so they
 // don't crowd out the stands.
 const SMALL_PINS = ['rub', 'scrape', 'camera'];
+
+// Names on the phone map, by kind, and which show until you pick.
+const LABEL_KINDS: { kind: MapLabelKind; label: string; on: boolean }[] = [
+  { kind: 'properties', label: 'Properties', on: true },
+  { kind: 'sections', label: 'Sections', on: true },
+  { kind: 'areas', label: 'Areas', on: false },
+  { kind: 'trails', label: 'Trails', on: false },
+  { kind: 'stands', label: 'Stands and blinds', on: true },
+  { kind: 'pins', label: 'Other pins', on: true },
+  { kind: 'small', label: 'Rubs, scrapes, cameras', on: false },
+];
+const LINE_KINDS: { kind: MapLineKind; label: string; layers: string[] }[] = [
+  { kind: 'property', label: 'Property lines', layers: ['property-line'] },
+  { kind: 'section', label: 'Section lines', layers: ['section-line'] },
+  { kind: 'area', label: 'Areas', layers: ['area-fill', 'area-line'] },
+  { kind: 'trail', label: 'Trails', layers: ['trail-line', 'trail-dashed'] },
+];
+const SIZES: { size: MapSize; label: string }[] = [
+  { size: 'small', label: 'Small' },
+  { size: 'medium', label: 'Medium' },
+  { size: 'large', label: 'Large' },
+];
+const PIN_SCALE: Record<MapSize, number> = { small: 0.75, medium: 1, large: 1.45 };
+const LINE_SCALE: Record<MapSize, number> = { small: 0.6, medium: 1, large: 1.8 };
+const TEXT_SCALE: Record<MapSize, number> = { small: 0.85, medium: 1, large: 1.3 };
+// Line widths at medium; the line size multiplies them.
+const LINE_WIDTHS: Record<string, maplibregl.ExpressionSpecification | number> = {
+  'area-line': 1.5,
+  'section-line': 2,
+  'property-line': 3,
+  'trail-line': ['get', 'px'],
+  'trail-dashed': ['get', 'px'],
+};
+
+// Where a trail's name goes: the middle point of its longest line.
+function trailMiddle(lines: Position[][]): [number, number] | null {
+  const line = [...lines].sort((a, b) => b.length - a.length)[0];
+  if (!line?.length) return null;
+  const p = line[Math.floor(line.length / 2)];
+  return [p[0], p[1]];
+}
 // Tiles fetched at once. The browser allows about 6 per server, and the maps come
 // from four servers, so the list is mixed to keep them all busy at once.
 const SAVE_AT_ONCE = 12;
@@ -141,14 +188,17 @@ function addCampLayers(map: maplibregl.Map) {
 
 function setBase(map: maplibregl.Map, base: Base, contours: boolean) {
   const show = (id: string, on: boolean) => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-  show(LAYER_IDS.satellite, base === 'satellite');
-  show(LAYER_IDS.aerial, base === 'satellite');
-  show(LAYER_IDS.aerialMo, base === 'satellite');
+  // Infrared shows the satellite photos underneath while its slow tiles come in.
+  const photos = base === 'satellite' || base === 'infrared';
+  show(LAYER_IDS.satellite, photos);
+  show(LAYER_IDS.aerial, photos);
+  show(LAYER_IDS.aerialMo, photos);
   show(LAYER_IDS.topo, base === 'topo');
+  show(LAYER_IDS.infrared, base === 'infrared');
   show(LAYER_IDS.lidar, base === 'lidar');
   show(LAYER_IDS.contours, contours);
   // Black lines read poorly on photos, so they're lightened there.
-  map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', base === 'satellite' ? 0.85 : 0);
+  map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', base === 'topo' || base === 'lidar' ? 0 : 0.85);
   // Cream section lines vanish on the light topo map, so they're dark there.
   map.setPaintProperty('section-line', 'line-color', base === 'topo' ? '#5a3d2b' : SECTION_COLOR);
 }
@@ -176,7 +226,18 @@ export function MapTab(props: {
   const [ready, setReady] = useState(false);
   const prefs = data.mapView ?? {};
   const base: Base = prefs.base && PHONE_BASES.includes(prefs.base) ? prefs.base : PHONE_BASES[0];
-  const labels = prefs.labels !== false;
+  const extras = prefs.saveExtras ?? {};
+  const SAVED_BASES = savedBases(extras);
+  const PHONE_LAYERS = phoneLayers(SAVED_BASES);
+  const labelOn = (kind: MapLabelKind) => prefs.labelKinds?.[kind] ?? (prefs.labels === false ? false : LABEL_KINDS.find((k) => k.kind === kind)!.on);
+  const lineOn = (kind: MapLineKind) => prefs.lineKinds?.[kind] ?? true;
+  const pinSize = prefs.pinSize ?? 'medium';
+  const lineSize = prefs.lineSize ?? 'medium';
+  const textSize = prefs.textSize ?? 'medium';
+  // For the effects below: changes when any label choice does.
+  const labelKey = LABEL_KINDS.map((k) => (labelOn(k.kind) ? 1 : 0)).join('');
+  const lineKey = LINE_KINDS.map((k) => (lineOn(k.kind) ? 1 : 0)).join('');
+  const [display, setDisplay] = useState(false);
   const setPrefs = (patch: NonNullable<FieldData['mapView']>) => props.onData((d) => ({ ...d, mapView: { ...d.mapView, ...patch } }));
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -269,6 +330,19 @@ export function MapTab(props: {
     (map.getSource('camp') as maplibregl.GeoJSONSource).setData(campFeatures(campMap));
   }, [ready, campMap]);
 
+  // Lines on or off, and how thick.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    for (const { kind, layers } of LINE_KINDS) {
+      for (const id of layers) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', lineOn(kind) ? 'visible' : 'none');
+    }
+    const k = LINE_SCALE[lineSize];
+    for (const [id, width] of Object.entries(LINE_WIDTHS)) {
+      if (map.getLayer(id)) map.setPaintProperty(id, 'line-width', typeof width === 'number' ? width * k : ['*', width, k]);
+    }
+  }, [ready, lineKey, lineSize]);
+
   // Pins and names: HTML markers, like the hub (no font server needed).
   useEffect(() => {
     const map = mapRef.current;
@@ -283,19 +357,25 @@ export function MapTab(props: {
       if (small) el.classList.add('small');
       el.style.setProperty('--pin', p.color);
       el.append(document.createElement('i'));
-      if (labels && !small) el.append(labelEl(p.name, 'fm-pin-name'));
+      const stand = !!p.type && isHuntingSpot(p.type, data.pinTypes);
+      if (labelOn(small ? 'small' : stand ? 'stands' : 'pins')) el.append(labelEl(p.name, 'fm-pin-name'));
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         setPicked({ id: p.id, source: p.source, type: p.type, name: p.name, kind: p.kind, lat: p.lat, lng: p.lng });
       });
-      list.push(new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, small ? -4 : -7] }).setLngLat([p.lng, p.lat]).addTo(map));
+      list.push(new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, (small ? -4 : -7) * PIN_SCALE[pinSize]] }).setLngLat([p.lng, p.lat]).addTo(map));
     };
     if (campMap) {
       for (const p of campMap.pins) pin({ id: p.id, source: 'hub', name: p.name || pinTypeInfo(p.type, data.pinTypes).label, kind: pinTypeInfo(p.type, data.pinTypes).label, lat: p.lat, lng: p.lng, color: p.color, type: p.type });
-      if (labels) {
-        for (const p of campMap.properties) list.push(new maplibregl.Marker({ element: labelEl(p.name, 'fm-property-name') }).setLngLat(middleOf(p.boundary)).addTo(map));
-        for (const s of campMap.sections) list.push(new maplibregl.Marker({ element: labelEl(s.name, 'fm-section-name') }).setLngLat(middleOf(s.geometry)).addTo(map));
-      }
+      const named = (text: string, className: string, at: [number, number]) => text && list.push(new maplibregl.Marker({ element: labelEl(text, className) }).setLngLat(at).addTo(map));
+      if (labelOn('properties')) for (const p of campMap.properties) named(p.name, 'fm-property-name', middleOf(p.boundary));
+      if (labelOn('sections')) for (const s of campMap.sections) named(s.name, 'fm-section-name', middleOf(s.geometry));
+      if (labelOn('areas')) for (const a of campMap.areas) named(a.name, 'fm-area-name', middleOf(a.geometry));
+      if (labelOn('trails'))
+        for (const t of campMap.trails) {
+          const at = trailMiddle(t.lines);
+          if (at) named(t.name, 'fm-trail-name', at);
+        }
     } else {
       // No map from the hub yet: the stands still show.
       for (const s of data.stands) pin({ id: s.id, source: 'hub', type: 'stand', name: s.name, kind: 'Stand', lat: s.lat, lng: s.lng, color: '#f08a24' });
@@ -306,7 +386,7 @@ export function MapTab(props: {
       pin({ id: p.id, source: 'mine', name: p.note || info.label, kind: `${info.label} (yours, not on the hub yet)`, lat: p.lat, lng: p.lng, color: info.color, mine: true, type: p.type });
     }
     markers.current = list;
-  }, [ready, campMap, data.stands, data.pins, data.handled, data.pinTypes, labels]);
+  }, [ready, campMap, data.stands, data.pins, data.handled, data.pinTypes, labelKey, pinSize]);
 
   useEffect(() => {
     for (const m of markers.current) m.getElement().classList.remove('fm-moving');
@@ -381,9 +461,9 @@ export function MapTab(props: {
     () =>
       (campMap?.properties ?? []).map((p) => ({
         property: p,
-        plan: planDownload(p.boundary, { ...DEFAULT_LAYERS, contours: PHONE_CONTOURS ? '10' : 'off' }, DEFAULT_OFFLINE_RADIUS_M, PHONE_SKIP),
+        plan: planDownload(p.boundary, { ...DEFAULT_LAYERS, contours: PHONE_CONTOURS ? '10' : 'off' }, DEFAULT_OFFLINE_RADIUS_M, phoneSkip(SAVED_BASES)),
       })),
-    [campMap],
+    [campMap, PHONE_LAYERS],
   );
 
   useEffect(() => {
@@ -517,7 +597,10 @@ export function MapTab(props: {
   const savedCount = Object.keys(data.offlineMaps ?? {}).length;
 
   return (
-    <div className="field-map" style={visible ? undefined : { display: 'none' }}>
+    <div
+      className="field-map"
+      style={{ ...(visible ? {} : { display: 'none' }), '--pin-scale': PIN_SCALE[pinSize], '--label-scale': TEXT_SCALE[textSize] } as CSSProperties}
+    >
       <div ref={box} className="field-map-canvas" onClick={() => setPicked(null)} />
 
       <div className="fm-top">
@@ -533,7 +616,7 @@ export function MapTab(props: {
             </button>
           )}
         </div>
-        <button className={`fm-chip${labels ? ' active' : ''}`} onClick={() => setPrefs({ labels: !labels })}>
+        <button className="fm-chip active" onClick={() => setDisplay(true)}>
           Labels
         </button>
       </div>
@@ -643,6 +726,64 @@ export function MapTab(props: {
         </div>
       )}
 
+      {display && (
+        <div className="fm-sheet-backdrop" onClick={() => setDisplay(false)}>
+          <div className="fm-sheet fm-display" onClick={(e) => e.stopPropagation()}>
+            <div className="fm-sheet-head">
+              <h2>Labels and sizes</h2>
+              <button className="fm-close" onClick={() => setDisplay(false)} aria-label="Close">
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <h3>Names</h3>
+            <div className="fm-toggles">
+              {LABEL_KINDS.map(({ kind, label }) => (
+                <button
+                  key={kind}
+                  className={labelOn(kind) ? 'active' : ''}
+                  aria-pressed={labelOn(kind)}
+                  onClick={() => setPrefs({ labelKinds: { ...prefs.labelKinds, [kind]: !labelOn(kind) } })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <h3>Lines</h3>
+            <div className="fm-toggles">
+              {LINE_KINDS.map(({ kind, label }) => (
+                <button
+                  key={kind}
+                  className={lineOn(kind) ? 'active' : ''}
+                  aria-pressed={lineOn(kind)}
+                  onClick={() => setPrefs({ lineKinds: { ...prefs.lineKinds, [kind]: !lineOn(kind) } })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {(
+              [
+                ['Pin size', 'pinSize', pinSize],
+                ['Line size', 'lineSize', lineSize],
+                ['Name size', 'textSize', textSize],
+              ] as const
+            ).map(([title, key, now]) => (
+              <div key={key} className="fm-size-row">
+                <span>{title}</span>
+                <div className="fm-sizes" role="group" aria-label={title}>
+                  {SIZES.map(({ size, label }) => (
+                    <button key={size} className={now === size ? 'active' : ''} aria-pressed={now === size} onClick={() => setPrefs({ [key]: size })}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p className="hint">Kept on this phone.</p>
+          </div>
+        </div>
+      )}
+
       {sheet && (
         <div className="fm-sheet-backdrop" onClick={() => setSheet(false)}>
           <div className="fm-sheet" onClick={(e) => e.stopPropagation()}>
@@ -653,9 +794,18 @@ export function MapTab(props: {
               </button>
             </div>
             <p className="hint">
-              Save a property and its topo map works with no signal, ¼ mile past the line. Satellite needs signal. Your GPS dot works without
-              signal too.
+              Save a property and its map works with no signal, ¼ mile past the line. Topo is always saved; pick more below (they take more room).
+              Infrared needs signal. Your GPS dot works without signal too.
             </p>
+            <div className="fm-toggles fm-save-extras">
+              <button className={extras.photos ? 'active' : ''} aria-pressed={!!extras.photos} onClick={() => setPrefs({ saveExtras: { ...extras, photos: !extras.photos } })}>
+                Satellite photos
+              </button>
+              <button className={extras.lidar ? 'active' : ''} aria-pressed={!!extras.lidar} onClick={() => setPrefs({ saveExtras: { ...extras, lidar: !extras.lidar } })}>
+                Lidar
+              </button>
+            </div>
+            {extras.photos && <p className="hint">Satellite saves the sharpest photos up close, including Missouri's 6 inch photos for a property in Missouri.</p>}
             {plans.length === 0 && <p className="hint">No properties from the hub yet.</p>}
             {plans.map(({ property, plan }) => {
               const saved = data.offlineMaps?.[property.id];
@@ -668,7 +818,7 @@ export function MapTab(props: {
                       {busy
                         ? `Saving… ${Math.round((saving.done / Math.max(1, saving.total)) * 100)}%`
                         : saved
-                          ? `Saved ${new Date(saved.savedAt).toLocaleDateString()}${saved.failed ? ` · ${saved.failed} missing` : ''}${saved.layers !== PHONE_LAYERS ? ' · save again for new maps' : ''}`
+                          ? `Saved ${new Date(saved.savedAt).toLocaleDateString()}${saved.failed ? ` · ${saved.failed} missing` : ''}${saved.layers !== PHONE_LAYERS ? ` · save again for new maps (about ${Math.max(1, Math.round(plan.estimatedMb))} MB)` : ''}`
                           : plan.tooBig
                             ? 'Too big to save on a phone'
                             : `About ${Math.max(1, Math.round(plan.estimatedMb))} MB`}

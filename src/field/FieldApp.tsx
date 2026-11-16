@@ -18,7 +18,7 @@ import { takeJoinCode } from '@/lib/site';
 import { QrScanner } from '@/field/QrScanner';
 import { pinTypeInfo } from '@/lib/featureTypes';
 import type { IconName } from '@/lib/icons';
-import { daySummary, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
+import { daySummary, HUNT_AUTO_END_MS, huntsByDay, isLive, otherAnimals, standStats, type StandStats } from '@/lib/huntStats';
 import { NotesTab } from '@/field/NotesTab';
 import { SoilTab } from '@/field/SoilTab';
 import { useFieldWeather } from '@/field/useFieldWeather';
@@ -28,7 +28,10 @@ import { WherePicker } from '@/field/WherePicker';
 import { lineLengthM, metersBetween, packPoints, simplifyLine } from '@/lib/trails';
 import { compassPointOf } from '@/lib/standRating';
 import { formatPressure, pressureAt, weatherAt, type Forecast } from '@/lib/weather';
-import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, inOutLabel, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
+import { BEHAVIORS, DEER_KINDS, HEADINGS, huntPlaceName, huntPosition, inOutLabel, kindInfo, newSighting, sightingLabel, sightingSummary, whereLabel } from '@/lib/reports';
+import { harvestLine } from '@/lib/harvests';
+import { HarvestSection } from '@/field/HarvestSection';
+import { StandMap } from '@/field/StandMap';
 import type { CustomPinType, DeerBehavior, DeerKind, FieldPin, FieldTrack, HuntReport, HuntSpot, MarkerType, Sighting } from '@/types/models';
 
 type Tab = 'map' | 'hunt' | 'stands' | 'notes' | 'send';
@@ -171,6 +174,28 @@ export function FieldApp() {
 
   const saveReport = (report: HuntReport) =>
     setData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === report.id ? { ...report, updatedAt: new Date().toISOString() } : r)) }));
+
+  // A hunt nobody ended ends on its own 13 hours after it started (checked on
+  // opening the page and every minute), so it doesn't stay "in the stand".
+  useEffect(() => {
+    if (!active || active.end) return;
+    const check = () => {
+      const started = Date.parse(active.start);
+      if (Date.now() - started < HUNT_AUTO_END_MS) return;
+      // From the latest data, so sightings logged since this check began are kept.
+      const end = new Date(started + HUNT_AUTO_END_MS).toISOString();
+      const now = new Date().toISOString();
+      setData((d) => ({
+        ...d,
+        reports: d.reports.map((r) => (r.id === active.id && !r.end ? { ...r, end, updatedAt: now } : r)),
+        activeReportId: d.activeReportId === active.id ? null : d.activeReportId,
+      }));
+      setMessage('Your hunt was ended on its own, 13 hours after it started.');
+    };
+    check();
+    const timer = setInterval(check, 60_000);
+    return () => clearInterval(timer);
+  }, [active?.id, active?.start, active?.end]);
 
   const soilCard = (
         <SoilTab
@@ -508,6 +533,7 @@ function HuntTab(props: {
         key={active.id}
         report={active}
         standName={placeName(active)}
+        data={data}
         onChange={props.onChange}
         doneLabel="Done hunting"
         onDone={() => props.onEnd(active)}
@@ -522,6 +548,7 @@ function HuntTab(props: {
         key={editing.id}
         report={editing}
         standName={placeName(editing)}
+        data={data}
         past
         onChange={props.onChange}
         doneLabel="Done editing"
@@ -613,6 +640,7 @@ function HuntTab(props: {
                           <strong>{placeName(r)}</strong>
                           <span className="muted">
                             {clock(r.start)} · {sightingSummary(r)}
+                            {harvestLine(r) ? ` · ${harvestLine(r)}` : ''}
                           </span>
                         </span>
                         <span className="edit-hint">
@@ -659,6 +687,7 @@ interface SightingDraft {
   otherName: string;
   where: Sighting['fromStand'];
   wentTo?: Sighting['wentTo'];
+  cameFrom?: Sighting['cameFrom'];
   note: string;
   editingId: string | null;
   behavior?: DeerBehavior | null;
@@ -696,6 +725,8 @@ function QuickLog(props: {
   standName: string;
   // Editing a hunt that's over: new sightings get the hunt's start time.
   past?: boolean;
+  // For the stand map: stands, the camp map and the map picked on the Map tab.
+  data: FieldData;
   onChange(r: HuntReport): void;
   doneLabel: string;
   onDone(): void;
@@ -710,6 +741,7 @@ function QuickLog(props: {
   const [otherName, setOtherName] = useState(draft?.otherName ?? '');
   const [where, setWhere] = useState<Sighting['fromStand']>(draft?.where ?? null);
   const [wentTo, setWentTo] = useState<Sighting['wentTo']>(draft?.wentTo ?? null);
+  const [cameFrom, setCameFrom] = useState<Sighting['cameFrom']>(draft?.cameFrom ?? null);
   const [note, setNote] = useState(draft?.note ?? '');
   const [behavior, setBehavior] = useState<DeerBehavior | null>(draft?.behavior ?? null);
   const [editingId, setEditingId] = useState<string | null>(draft?.editingId ?? null);
@@ -720,8 +752,8 @@ function QuickLog(props: {
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, wentTo, note, editingId, behavior });
-  }, [report.id, kind, count, heading, buckName, otherName, where, wentTo, note, editingId, behavior]);
+    saveDraft({ reportId: report.id, kind, count, heading, buckName, otherName, where, wentTo, cameFrom, note, editingId, behavior });
+  }, [report.id, kind, count, heading, buckName, otherName, where, wentTo, cameFrom, note, editingId, behavior]);
 
   // Hunt notes save as you type (a moment after you stop), not only when you tap away.
   const saveNotes = (value: string) => {
@@ -742,6 +774,7 @@ function QuickLog(props: {
     setOtherName('');
     setWhere(null);
     setWentTo(null);
+    setCameFrom(null);
     setNote('');
     setBehavior(null);
   };
@@ -755,6 +788,7 @@ function QuickLog(props: {
     setOtherName(s.kind === 'other' ? (s.notes ?? '') : '');
     setWhere(s.fromStand ?? null);
     setWentTo(s.wentTo ?? null);
+    setCameFrom(s.cameFrom ?? null);
     setNote(s.comment ?? '');
     setBehavior(s.behavior ?? null);
   };
@@ -768,6 +802,7 @@ function QuickLog(props: {
       notes: kind === 'other' ? otherName.trim() || null : null,
       fromStand: where,
       wentTo: where ? wentTo ?? null : null,
+      cameFrom: where ? cameFrom ?? null : null,
       comment: note.trim() || null,
       behavior,
     };
@@ -784,6 +819,7 @@ function QuickLog(props: {
   };
 
   const info = DEER_KINDS[kind];
+  const standAt = huntPosition(report, props.data.stands);
   const saveLabel = `${editingId ? 'Update' : 'Save'} ${sightingLabel({ kind, count, notes: kind === 'other' ? otherName : null })}`;
 
   return (
@@ -796,6 +832,14 @@ function QuickLog(props: {
             : `since ${clock(report.start)}`}
         </span>
       </h2>
+      {standAt && (
+        <StandMap
+          at={standAt}
+          sightings={report.sightings.filter((s) => s.id !== editingId)}
+          base={props.data.mapView?.base ?? 'topo'}
+          campMap={props.data.map ?? null}
+        />
+      )}
       {editingId && <p className="editing-note">Changing a sighting. Pick what's different, then tap Update.</p>}
 
       <div className="kind-row">
@@ -831,11 +875,13 @@ function QuickLog(props: {
         where={where ?? null}
         headingDeg={heading}
         wentTo={wentTo ?? null}
+        cameFrom={cameFrom ?? null}
         color={DEER_KINDS[kind].color}
         onChange={(next) => {
           setWhere(next.where);
           setHeading(next.headingDeg);
           setWentTo(next.wentTo);
+          setCameFrom(next.cameFrom);
         }}
         logged={report.sightings.filter((s) => s.id !== editingId)}
       />
@@ -881,7 +927,7 @@ function QuickLog(props: {
                     {s.buckName ? ` (${s.buckName})` : ''}
                     {s.headingDeg !== null ? ` → ${HEADINGS.find((h) => h.deg === s.headingDeg)?.point}` : ''}
                     {s.behavior ? ` · ${BEHAVIORS[s.behavior].toLowerCase()}` : ''}
-                    {inOutLabel(s) ? ` · ${inOutLabel(s)!.replace('Came', 'came')}` : whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
+                    {inOutLabel(s) ? ` · ${inOutLabel(s)!.replace(/^./, (c) => c.toLowerCase())}` : whereLabel(s) ? ` · ${whereLabel(s)}` : ''}
                     {s.comment && <span className="sighting-comment">{s.comment}</span>}
                   </span>
                   <span className="muted">{clock(s.time)}</span>
@@ -891,6 +937,8 @@ function QuickLog(props: {
           </ul>
         </>
       )}
+
+      <HarvestSection report={report} onChange={props.onChange} />
 
       <textarea
         ref={notes}

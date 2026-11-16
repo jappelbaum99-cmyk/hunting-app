@@ -1,9 +1,11 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
+import { HarvestCard } from '@/components/HarvestCard';
 import { Icon } from '@/components/Icon';
+import { addHarvest, harvestsOf, newHarvest, withHarvest } from '@/lib/harvests';
 import { compassPointOf } from '@/lib/standRating';
 import { BEHAVIORS, DEER_KINDS, fromDateTimeInputs, headingBetween, inOutLabel, MAX_YARDS, whereLabel, HEADINGS, newSighting, sightingSummary, toDateInput, toTimeInput } from '@/lib/reports';
-import type { DeerBehavior, DeerKind, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
+import type { DeerBehavior, DeerKind, Harvest, HuntReport, MapMarker, MarkerType, Sighting } from '@/types/models';
 
 interface ReportPanelProps {
   report: HuntReport;
@@ -16,6 +18,10 @@ interface ReportPanelProps {
   spotTypes: { id: MarkerType; label: string }[];
   onMakeStand(type: MarkerType): void;
   onPlaceSighting(sightingId: string): void;
+  // A stand was picked: the map moves to it.
+  onStandPicked(id: string | null): void;
+  // This hub's hunter name (from the camp), filled in on a new harvest.
+  hunterName: string | null;
   onDelete(): void;
   onZoom(): void;
   onClose(): void;
@@ -28,19 +34,31 @@ export function ReportPanel(props: ReportPanelProps) {
     set({ sightings: report.sightings.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
   const date = toDateInput(report.start);
   const w = report.weather;
+  const harvests = harvestsOf(report);
+  // A harvest logged on its own keeps its hunt on the same day and time.
+  const setHarvest = (id: string, patch: Partial<Harvest>) => {
+    const next = withHarvest(report, id, patch);
+    onChange(report.harvestOnly && patch.time ? { ...next, start: patch.time, end: patch.time } : next);
+  };
 
   return (
     <aside className="detail-panel">
       <header className="detail-header">
-        <h2>Hunt report</h2>
+        <h2>{report.harvestOnly ? 'Harvest' : 'Hunt report'}</h2>
         <button className="icon" onClick={props.onClose} title="Close (Esc)">
           <Icon name="close" size={16} />
         </button>
       </header>
 
       <div className="detail-body">
-        <Field label="Stand">
-          <select value={report.standId ?? ''} onChange={(e) => set({ standId: e.target.value || null })}>
+        <Field label={report.harvestOnly ? 'Where (stand)' : 'Stand'}>
+          <select
+            value={report.standId ?? ''}
+            onChange={(e) => {
+              set({ standId: e.target.value || null });
+              props.onStandPicked(e.target.value || null);
+            }}
+          >
             <option value="">{report.spot ? 'New spot (not a stand yet)' : 'No stand (still hunting, walking…)'}</option>
             {stands.map((s) => (
               <option key={s.id} value={s.id}>
@@ -52,6 +70,10 @@ export function ReportPanel(props: ReportPanelProps) {
 
         {report.spot && !report.standId && <NewSpot report={report} spotTypes={props.spotTypes} onName={(name) => set({ spot: { ...report.spot!, name } })} onMakeStand={props.onMakeStand} />}
 
+        {report.harvestOnly ? (
+          <p className="hint">Logged as a harvest only, so it isn't counted as a hunt.</p>
+        ) : (
+        <>
         <div className="range-row">
           <Field label="Date">
             <input
@@ -78,8 +100,10 @@ export function ReportPanel(props: ReportPanelProps) {
             />
           </Field>
         </div>
+        </>
+        )}
 
-        <Field label="Weather when you went in">
+        <Field label={report.harvestOnly ? 'Weather' : 'Weather when you went in'}>
           {w ? (
             <div className="report-weather">
               <span>
@@ -99,6 +123,7 @@ export function ReportPanel(props: ReportPanelProps) {
           {props.weatherStatus !== 'idle' && props.weatherStatus !== 'loading' && <p className="hint warn">{props.weatherStatus}</p>}
         </Field>
 
+        {!report.harvestOnly && (
         <Field label={`Seen · ${sightingSummary(report)}`}>
           <ul className="sightings">
             {report.sightings.map((s) => (
@@ -116,6 +141,26 @@ export function ReportPanel(props: ReportPanelProps) {
             onClick={() => set({ sightings: [...report.sightings, newSighting(new Date(Math.min(Date.now(), Date.parse(report.end ?? report.start) || Date.now())).toISOString())] })}
           >
             + Add deer
+          </button>
+        </Field>
+        )}
+
+        <Field label={harvests.length ? `Harvested · ${harvests.length}` : 'Harvested'}>
+          {harvests.length > 0 && (
+            <ul className="sightings">
+              {harvests.map((h) => (
+                <HarvestCard
+                  key={h.id}
+                  harvest={h}
+                  sightings={report.sightings}
+                  onChange={(patch) => setHarvest(h.id, patch)}
+                  onRemove={() => setHarvest(h.id, { deletedAt: new Date().toISOString() })}
+                />
+              ))}
+            </ul>
+          )}
+          <button className="harvest-add" onClick={() => onChange(addHarvest(report, newHarvest(report, { hunter: report.loggedBy ?? props.hunterName })))}>
+            + We got one
           </button>
         </Field>
 
@@ -145,7 +190,11 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
   // Moving either end of the in-and-out line turns the deer to match it.
   const setCameIn = (fromStand: Sighting['fromStand']) =>
     onChange({ fromStand, lat: null, lng: null, ...(s.wentTo ? { headingDeg: headingBetween(fromStand ?? null, s.wentTo) } : {}) });
-  const setWentTo = (wentTo: Sighting['wentTo']) => onChange({ wentTo, ...(wentTo ? { headingDeg: headingBetween(s.fromStand ?? null, wentTo) } : {}) });
+  const setWentTo = (wentTo: Sighting['wentTo']) =>
+    onChange({ wentTo, ...(wentTo ? { headingDeg: headingBetween(s.fromStand ?? null, wentTo) } : s.cameFrom ? { headingDeg: headingBetween(s.cameFrom, s.fromStand ?? { bearingDeg: 0, yards: 0 }) } : {}) });
+  // With no went-to spot, where it was first seen sets the way it was heading.
+  const setCameFrom = (cameFrom: Sighting['cameFrom']) =>
+    onChange({ cameFrom, ...(cameFrom && !s.wentTo ? { headingDeg: headingBetween(cameFrom, s.fromStand ?? { bearingDeg: 0, yards: 0 }) } : {}) });
   const date = toDateInput(s.time);
   return (
     <li className="sighting">
@@ -252,7 +301,8 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
         <input type="text" placeholder="e.g. came from the creek" value={s.comment ?? ''} onChange={(e) => onChange({ comment: e.target.value || null })} />
       </label>
 
-      <SpotFields label="Came in (from the stand)" none="At the stand" value={s.fromStand ?? null} onChange={setCameIn} />
+      <SpotFields label="First saw it (from the stand)" none="Not noted" value={s.cameFrom ?? null} onChange={setCameFrom} />
+      <SpotFields label="Closest it got (from the stand)" none="At the stand" value={s.fromStand ?? null} onChange={setCameIn} />
       <SpotFields label="Went to (from the stand)" none="Not noted" value={s.wentTo ?? null} onChange={setWentTo} />
 
       <div className="sighting-where">
@@ -260,7 +310,7 @@ function SightingCard(props: { sighting: Sighting; onChange(patch: Partial<Sight
           {s.lat !== null ? 'Placed on the map (overrides distance)' : inOutLabel(s) ? `${inOutLabel(s)} of the stand` : whereLabel(s) ? `${whereLabel(s)} of the stand` : 'Shown at the stand'}
         </span>
         <button className="link" onClick={props.onPlace}>
-          {s.lat !== null ? 'Move on map' : 'Place on map'}
+          {s.lat !== null || s.fromStand ? 'Redraw on map' : 'Draw on map'}
         </button>
         {s.lat !== null && (
           <button className="link" onClick={() => onChange({ lat: null, lng: null })}>

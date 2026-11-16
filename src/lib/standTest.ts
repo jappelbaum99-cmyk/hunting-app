@@ -41,6 +41,15 @@ const THERMALS_LEAD = 0.55;
 const PATH_REACH_M = 15;
 const PATH_SPREAD = 0.12;
 const PATH_STEP_M = 8;
+// Thermals only take over from the wind when they really move the scent: past
+// the distance to the deer's way, or this much further from it than the stand
+// is. Scent that just settles at the stand (flat ground, a bench or a bottom)
+// still drifts on whatever breeze there is, so the wind decides there.
+const THERMAL_AWAY_M = 15;
+// However close the deer's way is, thermals have to move scent at least this far.
+const THERMAL_MIN_CARRY_M = 10;
+// Scent that drains away and pools in a low spot spreads around it about this far.
+const POOL_SPREAD_M = 20;
 
 // What a moment at the spot comes to: scent stays clear of the deer, swirls
 // (thermals switching), or the wind or the thermals carry it onto their way.
@@ -224,9 +233,18 @@ export function momentAt(forecast: Forecast, time: number, ctx: MomentContext): 
     }
   }
   const pull = thermal?.pull ?? 0;
+  const end = path ? ctx.toM(path.points[path.points.length - 1]) : null;
+  const carriedM = end ? Math.hypot(end[0], end[1]) : 0;
+  const atStandM = route.length > 0 ? distToRoute([0, 0], ctx.routeM) : Infinity;
+  const movedAwayM = end && route.length > 0 ? distToRoute(end, ctx.routeM) - atStandM : 0;
+  const thermalsMoveIt = carriedM >= THERMAL_MIN_CARRY_M && (carriedM >= atStandM || movedAwayM >= THERMAL_AWAY_M);
+  const thermalsLead = pull >= THERMALS_LEAD && thermalsMoveIt;
+  // Scent that drains off and pools where the deer walk. Rising air lifts it
+  // off the ground instead, and scent pooling at the stand is left to the wind.
+  const settlesOnWay = path !== null && end !== null && path.ends === 'pools' && thermalsMoveIt && route.length > 0 && distToRoute(end, ctx.routeM) < POOL_SPREAD_M;
   let verdict: MomentVerdict = 'clean';
-  if (path && pull >= BAD_PULL && route.length > 0 && pathReachesRoute(path, ctx)) verdict = 'thermal';
-  else if (windHits && pull < THERMALS_LEAD) verdict = 'wind';
+  if (path && pull >= BAD_PULL && route.length > 0 && (pathReachesRoute(path, ctx) || settlesOnWay)) verdict = 'thermal';
+  else if (windHits && !thermalsLead) verdict = 'wind';
   else if (thermal?.phase === 'switching' && pull >= WEAK_PULL) verdict = 'swirl';
   return { time, verdict, hour, cone, thermal, path };
 }

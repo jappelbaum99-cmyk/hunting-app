@@ -26,8 +26,11 @@ interface LayerPanelProps {
 // Preview pictures for the map chooser: one USGS tile over Salem, MO
 // (zoom 13, x 2013, y 3170) from each source.
 const TILE_BBOX = '-10189972.3,4525071.3,-10185080.3,4529963.3';
+const NAIP_THUMB = `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage?bbox=${TILE_BBOX}&bboxSR=3857&imageSR=3857&size=160,160&format=jpg&f=image&renderingRule=`;
 const THUMBNAILS: Record<BaseMapId, string> = {
   satellite: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/13/3170/2013',
+  infrared: NAIP_THUMB + encodeURIComponent('{"rasterFunction":"FalseColorComposite"}'),
+  greenness: NAIP_THUMB + encodeURIComponent('{"rasterFunction":"NDVI_Color"}'),
   topo: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/13/3170/2013',
   lidar: `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${TILE_BBOX}&bboxSR=3857&imageSR=3857&size=160,160&format=png&f=image&renderingRule=${encodeURIComponent('{"rasterFunction":"Hillshade Gray-Stretch"}')}`,
 };
@@ -102,6 +105,13 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
                   : 'Summer NAIP photos with the trees leafed out.'}
               </p>
             </>
+          )}
+
+          {layers.base === 'infrared' && (
+            <p className="hint">Living plants show red: bright red for green fields and food plots, darker red for cedars and pines. Bare ground and water are blue-gray. Shown from closer in; each part can take a while to come in.</p>
+          )}
+          {layers.base === 'greenness' && (
+            <p className="hint">How green the plants were when the photo was taken: dark green is thick, growing cover, pale green is thin, orange and red are bare ground, roads and roofs, blue is water. Shown from closer in; this one is the slowest to come in.</p>
           )}
 
           {layers.base !== 'lidar' && (

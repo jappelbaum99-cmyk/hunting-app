@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@/components/Icon';
+import { closestOnLine } from '@/lib/geo';
 import { compassPointOf } from '@/lib/standRating';
 import { fetchSeasons, momentAt, momentContext, testSeasons, testStand, type Moment, type MomentVerdict, type StandTestResult, type TestSit } from '@/lib/standTest';
 import { elevationAt, loadElevationAround } from '@/map/elevation';
@@ -190,6 +191,8 @@ export function StandTestPanel(props: StandTestPanelProps) {
         </div>
       )}
 
+      {spot && route.length >= 2 && step !== 'spot' && <DeerWayDistance spot={spot} route={route} />}
+
       {step === 'ready' && (
         <div className="button-row stand-test-edit">
           <button onClick={props.onPlaceSpot}>{props.stand ? 'Other spot' : 'Move spot'}</button>
@@ -265,6 +268,19 @@ export function StandTestPanel(props: StandTestPanelProps) {
         </>
       )}
     </div>
+  );
+}
+
+// How close the deer's way comes to the spot, in yards, and which way that is.
+function DeerWayDistance({ spot, route }: { spot: [number, number]; route: [number, number][] }) {
+  const closest = closestOnLine(spot, route);
+  if (!closest) return null;
+  const yards = Math.round(closest.meters * 1.09361);
+  return (
+    <p className="stand-test-distance">
+      Closest to the deer's way: <strong>{yards < 1 ? 'right on it' : `${yards} yd`}</strong>
+      {yards >= 1 && <span className="muted"> to the {compassPointOf(closest.bearingDeg)}</span>}
+    </p>
   );
 }
 

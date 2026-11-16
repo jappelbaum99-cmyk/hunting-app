@@ -6,6 +6,7 @@ import { isPlotType, pinTypeInfo, isHuntingSpot } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
 import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/huntStats';
 import { entryTitle, formatPlotDate, plotEntries, todayDate } from '@/lib/plotLog';
+import { allHarvests, harvestCounts, harvestDetail, harvestTitle } from '@/lib/harvests';
 import { huntPlaceName, sightingSummary } from '@/lib/reports';
 import { cadenceLabel, comingUp, isOverdue, scheduleTitle } from '@/lib/schedules';
 import { areaTypeInfo } from '@/lib/styles';
@@ -24,6 +25,9 @@ interface SummaryPanelProps {
   onPickStand(id: string): void;
   onPickArea(id: string): void;
   onPickSection(id: string): void;
+  // Opens a harvest's hunt.
+  onPickReport(id: string): void;
+  onLogHarvest(): void;
   onClose(): void;
 }
 
@@ -91,7 +95,11 @@ export function SummaryPanel(props: SummaryPanelProps) {
   const seasons = [...new Set(reports.map((r) => seasonOf(r.start)))].sort().reverse();
   const [seasonPick, setSeasonPick] = useState<string | null>(null);
   const season = seasonPick && seasons.includes(seasonPick) ? seasonPick : seasons[0] ?? null;
-  const seasonReports = season ? reports.filter((r) => seasonOf(r.start) === season) : [];
+  // Harvests logged on their own aren't hunts: left out of hunt counts and hours.
+  const hunts = reports.filter((r) => !r.harvestOnly);
+  const seasonReports = season ? hunts.filter((r) => seasonOf(r.start) === season) : [];
+  const seasonHarvests = season ? allHarvests(reports).filter((x) => seasonOf(x.harvest.time) === season) : [];
+  const harvestsAt = (standId: string) => seasonHarvests.filter((x) => x.report.standId === standId).length;
   const hours = seasonReports.reduce((t, r) => t + (r.end ? Math.max(0, Date.parse(r.end) - Date.parse(r.start)) / 3_600_000 : 0), 0);
   const deer = deerCount(seasonReports);
   const bucks = deerCount(seasonReports, 'buck');
@@ -307,7 +315,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
           )}
           {seasons.length === 1 && <span className="muted">{season} season</span>}
         </h2>
-        <RecentHunts reports={reports} markers={props.markers} />
+        <RecentHunts reports={hunts} markers={props.markers} />
         {seasonReports.length === 0 ? (
           <p className="hint">No hunts logged yet.</p>
         ) : (
@@ -348,13 +356,49 @@ export function SummaryPanel(props: SummaryPanelProps) {
                         {r.stand.name}
                       </button>
                       <strong>
-                        {(r.deer / r.hunts).toFixed(1)} <span className="muted">deer/hunt · {r.hunts} hunts</span>
+                        {(r.deer / r.hunts).toFixed(1)}{' '}
+                        <span className="muted">
+                          deer/hunt · {r.hunts} hunts{harvestsAt(r.stand.id) ? ` · ${harvestsAt(r.stand.id)} taken` : ''}
+                        </span>
                       </strong>
                     </li>
                   ))}
                 </ul>
               </>
             )}
+          </>
+        )}
+
+        <h3 className="summary-subhead harvest-head">
+          <span>Harvested{seasonHarvests.length ? ` · ${seasonHarvests.length}` : ''}</span>
+          <button className="link-button" onClick={props.onLogHarvest}>
+            + Log a harvest
+          </button>
+        </h3>
+        {seasonHarvests.length === 0 ? (
+          <p className="hint">Nothing taken{season ? ' this season' : ''} yet.</p>
+        ) : (
+          <>
+            <p className="hint">{harvestCounts(seasonHarvests.map((x) => x.harvest))}</p>
+            <ul className="harvest-list">
+              {seasonHarvests.map(({ harvest: h, report: r }) => (
+                <li key={h.id}>
+                  <button className="link-button" onClick={() => props.onPickReport(r.id)}>
+                    {harvestTitle(h)}
+                  </button>
+                  <span className="muted">
+                    {[
+                      new Date(h.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                      r.standId || r.spot ? huntPlaceName(r, props.markers) : null,
+                      h.hunter,
+                      harvestDetail(h) || null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </>
         )}
       </section>

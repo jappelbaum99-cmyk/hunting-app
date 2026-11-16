@@ -15,6 +15,11 @@ export interface FieldStand {
   place?: string | null;
 }
 
+// Phone map: names and lines you can turn on and off, and how big things draw.
+export type MapLabelKind = 'properties' | 'sections' | 'areas' | 'trails' | 'stands' | 'pins' | 'small';
+export type MapLineKind = 'property' | 'section' | 'area' | 'trail';
+export type MapSize = 'small' | 'medium' | 'large';
+
 export interface FieldData {
   pins: FieldPin[];
   reports: HuntReport[];
@@ -43,7 +48,19 @@ export interface FieldData {
   // The camp map from the hub (Map tab), as last seen.
   map?: CampMap | null;
   // The Map tab's picked map and whether names show.
-  mapView?: { base?: 'topo' | 'satellite' | 'lidar'; labels?: boolean };
+  mapView?: {
+    base?: 'topo' | 'satellite' | 'lidar' | 'infrared';
+    // Maps a property's offline save keeps besides topo.
+    saveExtras?: { photos?: boolean; lidar?: boolean };
+    // Older all-or-nothing labels switch; each kind below wins once picked.
+    labels?: boolean;
+    // Which names show, and which lines draw, by kind (missing = the default).
+    labelKinds?: Partial<Record<MapLabelKind, boolean>>;
+    lineKinds?: Partial<Record<MapLineKind, boolean>>;
+    pinSize?: MapSize;
+    lineSize?: MapSize;
+    textSize?: MapSize;
+  };
   // Properties whose map tiles are saved on this phone, by property id.
   offlineMaps?: Record<string, { savedAt: string; tiles: number; failed: number; layers: string }>;
 }

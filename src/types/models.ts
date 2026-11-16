@@ -472,6 +472,9 @@ export interface Sighting {
   // Where they went, the same way (from the stand): the end of the line dragged
   // from where they came in. Null or missing = only a direction, or not moving.
   wentTo?: { bearingDeg: number; yards: number } | null;
+  // Where they were first seen, the same way (from the stand); fromStand is then
+  // the closest they came. Null or missing = not noted.
+  cameFrom?: { bearingDeg: number; yards: number } | null;
   // For "other", what it was (e.g. "coyote").
   notes: string | null;
   // Anything else worth remembering, e.g. "came from the creek".
@@ -517,6 +520,42 @@ export interface HuntReport extends Syncable {
   source: 'hub' | 'phone';
   // Who logged it, from the phone's camp name.
   loggedBy?: string | null;
+  // Animals taken on this hunt. Kept on the hunt so they sync with it.
+  harvests?: Harvest[];
+  // Made only to hold a harvest logged on its own (not a real sit), so it's
+  // left out of hunt counts and hours.
+  harvestOnly?: boolean;
+}
+
+export type HarvestKind = 'buck' | 'doe' | 'button_buck' | 'gobbler' | 'jake' | 'hen';
+export type HarvestWeapon = 'bow' | 'crossbow' | 'rifle' | 'muzzleloader' | 'shotgun' | 'handgun' | 'other';
+
+// A deer or turkey taken. Lives on its hunt report; removing one sets deletedAt.
+export interface Harvest {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  time: string;
+  kind: HarvestKind;
+  // Who took it.
+  hunter: string | null;
+  weapon: HarvestWeapon | null;
+  // The sighting it was, when picked.
+  sightingId: string | null;
+  // Where it was when shot, from the stand (as on sightings).
+  fromStand?: { bearingDeg: number; yards: number } | null;
+  // Deer.
+  points: number | null;
+  spreadIn: number | null;
+  buckName: string | null;
+  // Turkey.
+  beardIn: number | null;
+  spurIn: number | null;
+  weightLb: number | null;
+  // The state's check-in number (Missouri Telecheck).
+  checkNumber: string | null;
+  notes: string | null;
 }
 
 // A GPS pin dropped on the phone, waiting to become a stand or pin here.

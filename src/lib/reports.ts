@@ -133,11 +133,18 @@ export function whereLabel(s: Pick<Sighting, 'fromStand'>): string | null {
   return s.fromStand ? spotLabel(s.fromStand) : null;
 }
 
-// "Came in ~50 yd NW, went to ~90 yd SE", or null without a went-to spot.
-export function inOutLabel(s: Pick<Sighting, 'fromStand' | 'wentTo'>): string | null {
-  if (!s.wentTo) return null;
-  const came = s.fromStand ? `Came in ${spotLabel(s.fromStand)}` : 'Came in at the stand';
-  return `${came}, went to ${spotLabel(s.wentTo)}`;
+// "First seen ~120 yd W, closest ~50 yd NW, went to ~90 yd SE", or null when
+// neither where it was first seen nor where it went is noted.
+export function inOutLabel(s: Pick<Sighting, 'fromStand' | 'wentTo' | 'cameFrom'>): string | null {
+  if (!s.wentTo && !s.cameFrom) return null;
+  return [
+    s.cameFrom ? `first seen ${spotLabel(s.cameFrom)}` : null,
+    s.fromStand ? `closest ${spotLabel(s.fromStand)}` : 'closest at the stand',
+    s.wentTo ? `went to ${spotLabel(s.wentTo)}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ')
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
 // The way from one spot to another (both from the stand), to the nearest of 8 points.

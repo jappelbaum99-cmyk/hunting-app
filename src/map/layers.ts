@@ -8,7 +8,7 @@ import { readElevationTiff, toTerrariumPng } from '@/map/terrain';
 import { tintPng } from '@/map/tint';
 import { slopePng } from '@/map/slope';
 
-export type BaseMapId = 'satellite' | 'topo' | 'lidar';
+export type BaseMapId = 'satellite' | 'infrared' | 'greenness' | 'topo' | 'lidar';
 export type LidarStyleId = 'stretch' | 'multidirectional' | 'tinted' | 'slope';
 export type ContourInterval = 'off' | '10' | '5' | '2';
 
@@ -49,9 +49,18 @@ export const DEFAULT_LAYERS: MapLayersState = {
 
 export const BASE_MAPS: { id: BaseMapId; label: string }[] = [
   { id: 'satellite', label: 'Satellite' },
+  { id: 'infrared', label: 'Infrared' },
+  { id: 'greenness', label: 'Greenness' },
   { id: 'topo', label: 'Topo' },
   { id: 'lidar', label: 'Lidar' },
 ];
+
+// The bases drawn from the NAIP photos' near-infrared band. The satellite tiles
+// show underneath while they load (the server takes a while to make each one).
+export const NAIP_BANDS_BASES: Partial<Record<BaseMapId, string>> = { infrared: 'FalseColorComposite', greenness: 'NDVI_Color' };
+// Below this map zoom the satellite tiles show instead: zoomed out, each band
+// tile would cover miles and take the server even longer.
+export const NAIP_BANDS_MIN_ZOOM = 12;
 
 // Raster functions offered by the USGS 3DEP elevation service. The stretched
 // hillshade has the strongest shadows, which shows benches, ditches and old roads best.
@@ -94,6 +103,10 @@ export const MISSOURI_BOUNDS: [number, number, number, number] = [-95.8, 35.95, 
 export const MO_AERIAL_MAX_ZOOM = 18;
 export const SATELLITE_TILE_URL = `${BASEMAP_TILES}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`;
 export const TOPO_TILE_URL = `${BASEMAP_TILES}/USGSTopo/MapServer/tile/{z}/{y}/{x}`;
+// NAIP photos through one of the image server's raster functions (infrared, greenness).
+export function naipBandsTileUrl(rasterFunction: string): string {
+  return `${AERIAL_TILE_URL}&renderingRule=${encodeURIComponent(JSON.stringify({ rasterFunction }))}`;
+}
 const ATTRIBUTION = '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">USGS The National Map</a>';
 
 // The USGS elevation server often answers 502/504 under load, so every USGS
@@ -308,6 +321,8 @@ export const LAYER_IDS = {
   aerial: 'base-aerial',
   aerialMo: 'base-aerial-mo',
   topo: 'base-topo',
+  infrared: 'base-infrared',
+  greenness: 'base-greenness',
   lidar: 'base-lidar',
   lidarBlend: 'overlay-lidar',
   contours: 'overlay-contours',
@@ -361,6 +376,23 @@ export function buildBaseStyle(): StyleSpecification {
         tileSize: 256,
         maxzoom: 16,
         attribution: ATTRIBUTION,
+      },
+      // 512 px tiles, so source zoom 11 is map zoom 12.
+      infrared: {
+        type: 'raster',
+        tiles: [`${RETRY_PROTOCOL}://${naipBandsTileUrl(NAIP_BANDS_BASES.infrared!)}`],
+        tileSize: 512,
+        minzoom: NAIP_BANDS_MIN_ZOOM - 1,
+        maxzoom: 18,
+        attribution: `${ATTRIBUTION} NAIP`,
+      },
+      greenness: {
+        type: 'raster',
+        tiles: [`${RETRY_PROTOCOL}://${naipBandsTileUrl(NAIP_BANDS_BASES.greenness!)}`],
+        tileSize: 512,
+        minzoom: NAIP_BANDS_MIN_ZOOM - 1,
+        maxzoom: 18,
+        attribution: `${ATTRIBUTION} NAIP`,
       },
       lidar: {
         type: 'raster',
@@ -422,6 +454,14 @@ export function buildBaseStyle(): StyleSpecification {
         },
       },
       { id: LAYER_IDS.topo, type: 'raster', source: 'topo', layout: { visibility: 'none' } },
+      ...(['infrared', 'greenness'] as const).map((id) => ({
+        id: LAYER_IDS[id],
+        type: 'raster' as const,
+        source: id,
+        minzoom: NAIP_BANDS_MIN_ZOOM,
+        layout: { visibility: 'none' as const },
+        paint: { 'raster-fade-duration': TILE_FADE_MS },
+      })),
       {
         id: LAYER_IDS.lidar,
         type: 'raster',

@@ -30,6 +30,7 @@ import { CameraView } from '@/components/CameraView';
 import { StandHistory } from '@/components/StandHistory';
 import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
+import { addHarvest, newHarvest } from '@/lib/harvests';
 import { useHubCamp } from '@/data/useHubCamp';
 import { usePartnerSync } from '@/data/usePartnerSync';
 import { useAutoOffline } from '@/map/useAutoOffline';
@@ -44,11 +45,11 @@ import { combineLines, cutParts, feetToMeters, joinParts, nearestLine, overlaps,
 import { removeEntry, saveEntry, todayDate } from '@/lib/plotLog';
 import { dueCards, logEntryFor, markDone, skipSeason, undoDone, type SchedulePlace } from '@/lib/schedules';
 import { isHuntingSpot, isPlotType, pinTypeInfo, pinTypeList } from '@/lib/featureTypes';
-import { acresOf, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
+import { acresOf, bearingAndMeters, boundsOf, formatAcres, offsetPosition, placeName, pointsToPolygon, propertyContaining } from '@/lib/geo';
 import { formatDistance, lineBounds, lineLengthM, metersBetween, TRAIL_KINDS, trailParts, trailStyle, trailTypeStyle, unpackPoints, withParts } from '@/lib/trails';
 import { overlayCorners } from '@/lib/georef';
 import { importGeoFile } from '@/lib/importGeo';
-import { huntPosition, kindInfo, reportWeather } from '@/lib/reports';
+import { huntPosition, kindInfo, MAX_YARDS, reportWeather } from '@/lib/reports';
 import { newPlan, placeOfPlan, plansFor, type PlanPlace } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
 import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
@@ -61,7 +62,7 @@ import { elevationAt, loadElevationAround } from '@/map/elevation';
 import { UpdateBanner, useUpdateCheck } from '@/components/UpdateBanner';
 import { DEFAULT_LAYERS, type MapLayersState } from '@/map/layers';
 import { DEFAULT_CENTER, MapView, STAND_TEST_DEER, type AlignMarker, type MapViewHandle, type HuntSpotView, type OverlayView, type SightingView } from '@/map/MapView';
-import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, PosterSettings, Property, HubSettings, Selection } from '@/types/models';
+import type { ActionItem, AreaGeometry, AreaType, FieldNote, FieldPin, FieldTrack, HuntReport, Sighting, MapArea, MapTrail, TrailKind, MapImageOverlay, MapMarker, MarkerType, PosterSettings, Property, HubSettings, Selection } from '@/types/models';
 
 // How far around each stand lidar elevation is loaded for thermal paths, meters.
 const THERMAL_RADIUS_M = 400;
@@ -96,7 +97,7 @@ type Mode =
   | { kind: 'trailPick'; action: TrailPickAction; id: string; otherId?: string }
   | { kind: 'align' }
   // Clicking the map sets where a sighting in a hunt report happened.
-  | { kind: 'placeSighting'; reportId: string; sightingId: string };
+  | { kind: 'placeSighting'; reportId: string; sightingId: string; step: 'from' | 'in' | 'out' };
 
 const MAX_IMPORTED_SHAPES = 50;
 const STAND_NAME = /\b(stand|blind|tree ?stand|ladder|box)\b/i;
@@ -982,6 +983,28 @@ export function App() {
     }
   };
 
+  // A deer or turkey taken without a hunt logged here (or from a past season):
+  // a hunt record that only holds it, so it syncs like any hunt.
+  const startHarvest = () => {
+    const now = new Date().toISOString();
+    const base: HuntReport = {
+      ...newRecordFields(),
+      standId: null,
+      propertyId: null,
+      start: now,
+      end: now,
+      weather: null,
+      sightings: [],
+      notes: null,
+      source: 'hub',
+      harvestOnly: true,
+    };
+    const report = addHarvest(base, newHarvest(base, { hunter: hub.settings.camp?.hunter ?? null }));
+    hub.saveReport(report);
+    cancelMode();
+    setSelection({ kind: 'report', id: report.id });
+  };
+
   const startReport = (standId: string | null) => {
     const stand = hub.markers.find((m) => m.id === standId) ?? null;
     const report: HuntReport = {
@@ -1001,6 +1024,54 @@ export function App() {
     void fillWeather(report);
   };
 
+  // Drawing a sighting on the map: where it was first seen, the closest it got, then
+  // where it went. `position` null is Skip. Spots are kept as distance and
+  // direction from the stand (like the phone's); the exact spot only when there's
+  // no stand or it's past MAX_YARDS.
+  const placeSightingStep = (position: Position | null) => {
+    if (mode.kind !== 'placeSighting') return;
+    const report = hub.reports.find((r) => r.id === mode.reportId);
+    const sighting = report?.sightings.find((s) => s.id === mode.sightingId);
+    if (!report || !sighting) {
+      cancelMode();
+      return;
+    }
+    const clicked: [number, number] | null = position ? [position[0], position[1]] : null;
+    const stand = huntPosition(report, hub.markers);
+    const fromStand = (p: [number, number]) => {
+      if (!stand) return null;
+      const { bearingDeg, meters } = bearingAndMeters(stand, p);
+      const yards = Math.max(1, Math.round(meters / 0.9144));
+      return yards <= MAX_YARDS ? { bearingDeg: Math.round(bearingDeg), yards } : null;
+    };
+    const atOf = (w: { bearingDeg: number; yards: number }) => (stand ? offsetPosition(stand[0], stand[1], w.bearingDeg, w.yards * 0.9144) : null);
+    const save = (patch: Partial<Sighting>) =>
+      hub.saveReport({ ...report, sightings: report.sightings.map((s) => (s.id === sighting.id ? { ...s, ...patch } : s)) });
+    const way = (a: [number, number] | null, b: [number, number] | null) => (a && b ? (Math.round(bearingAndMeters(a, b).bearingDeg / 45) * 45) % 360 : null);
+    const finish = () => {
+      cancelMode();
+      setSelection({ kind: 'report', id: mode.reportId });
+    };
+    if (mode.step === 'from') {
+      save({ cameFrom: clicked ? fromStand(clicked) : null, wentTo: null });
+      setMode({ ...mode, step: 'in' });
+      return;
+    }
+    if (mode.step === 'in') {
+      if (!clicked) return;
+      const spot = fromStand(clicked);
+      save(spot ? { fromStand: spot, lat: null, lng: null } : { lng: clicked[0], lat: clicked[1], fromStand: null });
+      setMode({ ...mode, step: 'out' });
+      return;
+    }
+    // Where it went, and the way it was heading: closest to went, or first seen to closest.
+    const seen: [number, number] | null = sighting.lat !== null && sighting.lng !== null ? [sighting.lng, sighting.lat] : sighting.fromStand ? atOf(sighting.fromStand) : stand;
+    const came = sighting.cameFrom ? atOf(sighting.cameFrom) : null;
+    const went = clicked && sighting.lat === null ? fromStand(clicked) : null;
+    save({ wentTo: went, headingDeg: clicked ? way(seen, clicked) : came ? way(came, seen) : sighting.headingDeg });
+    finish();
+  };
+
   const handleMapClick = (position: Position) => {
     if (testing && testing.step !== 'ready') {
       const p: [number, number] = [position[0], position[1]];
@@ -1013,15 +1084,7 @@ export function App() {
       return;
     }
     if (mode.kind === 'placeSighting') {
-      const report = hub.reports.find((r) => r.id === mode.reportId);
-      if (report) {
-        hub.saveReport({
-          ...report,
-          sightings: report.sightings.map((s) => (s.id === mode.sightingId ? { ...s, lng: position[0], lat: position[1] } : s)),
-        });
-      }
-      cancelMode();
-      setSelection({ kind: 'report', id: mode.reportId });
+      placeSightingStep(position);
       return;
     }
     if (mode.kind === 'align' && alignDraft) {
@@ -1216,7 +1279,7 @@ export function App() {
   let draftColor = '#ffffff';
   let modeTitle = '';
   if (mode.kind === 'placeSighting') {
-    modeTitle = 'deer you saw';
+    modeTitle = mode.step === 'from' ? 'where you first saw it' : mode.step === 'in' ? 'closest it got' : 'way it went';
   } else if (mode.kind === 'place') {
     modeTitle = pinTypeInfo(mode.markerType, hub.settings.customPinTypes).label.toLowerCase();
   } else if (mode.kind === 'draw' && mode.target === 'property') {
@@ -1559,6 +1622,7 @@ export function App() {
         const info = kindInfo(s.kind);
         // Where it went, when the line was drawn on the phone.
         const went = stand && s.wentTo && s.lat === null ? offsetPosition(stand.lng, stand.lat, s.wentTo.bearingDeg, s.wentTo.yards * YARD_M) : null;
+        const came = stand && s.cameFrom && s.lat === null ? offsetPosition(stand.lng, stand.lat, s.cameFrom.bearingDeg, s.cameFrom.yards * YARD_M) : null;
         if (at)
           sightingViews.push({
             reportId: report.id,
@@ -1569,6 +1633,7 @@ export function App() {
             kind: s.kind,
             color: info.color,
             ...(went ? { wentTo: went } : {}),
+            ...(came ? { cameFrom: came } : {}),
             ...(info.deer ? {} : { icon: info.icon }),
           });
       }
@@ -1682,6 +1747,7 @@ export function App() {
         onMakePoster={() => setPosterBounds(mapRef.current?.getBounds() ?? [-91.54, 37.64, -91.53, 37.65])}
         onFieldPin={handleFieldPin}
         onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
+        onLogHarvest={startHarvest}
         areas={hub.areas}
         markers={hub.markers}
         overlays={hub.overlays}
@@ -1713,6 +1779,8 @@ export function App() {
                 setSelection({ kind: 'marker', id });
                 zoomTo({ kind: 'marker', id });
               }}
+              onPickReport={(id) => setSelection({ kind: 'report', id })}
+              onLogHarvest={startHarvest}
               onPickSection={(id) => {
                 setSelection({ kind: 'section', id });
                 zoomTo({ kind: 'section', id });
@@ -2017,7 +2085,28 @@ export function App() {
             onDone={finishEdit}
           />
         )}
-        {(mode.kind === 'draw' || mode.kind === 'place' || mode.kind === 'placeSighting') && (
+        {mode.kind === 'placeSighting' && (
+          <div className="draw-bar">
+            <span>
+              {mode.step === 'from' ? (
+                <>
+                  1 of 3: click where you <strong>first saw</strong> it.
+                </>
+              ) : mode.step === 'in' ? (
+                <>
+                  2 of 3: click the <strong>closest</strong> it got to you.
+                </>
+              ) : (
+                <>
+                  3 of 3: click where it <strong>went</strong>.
+                </>
+              )}
+            </span>
+            {mode.step !== 'in' && <button onClick={() => placeSightingStep(null)}>Skip</button>}
+            <button onClick={cancelMode}>Cancel</button>
+          </div>
+        )}
+        {(mode.kind === 'draw' || mode.kind === 'place') && (
           <DrawBar
             kind={mode.kind === 'draw' ? 'draw' : 'place'}
             title={modeTitle}
@@ -2112,7 +2201,17 @@ export function App() {
           onFillWeather={() => void fillWeather(record)}
           spotTypes={pinTypeList(hub.settings.customPinTypes).filter((t) => t.huntingSpot)}
           onMakeStand={(type) => makeStandFromSpot(record, type)}
-          onPlaceSighting={(sightingId) => setMode({ kind: 'placeSighting', reportId: record.id, sightingId })}
+          onPlaceSighting={(sightingId) => {
+            // Show the deer on the map while it's drawn.
+            setLayers((l) => (l.sightings ? l : { ...l, sightings: true }));
+            const at = huntPosition(record, hub.markers);
+            if (at) mapRef.current?.flyTo(at[0], at[1]);
+            setMode({ kind: 'placeSighting', reportId: record.id, sightingId, step: 'from' });
+          }}
+          onStandPicked={(id) => {
+            if (id) zoomTo({ kind: 'marker', id });
+          }}
+          hunterName={hub.settings.camp?.hunter ?? null}
           onDelete={() => {
             hub.deleteReport(record.id);
             setSelection(null);

@@ -60,6 +60,42 @@ export function offsetPosition(lng: number, lat: number, bearingDeg: number, met
   return [lng + dLng, lat + dLat];
 }
 
+// The closest a line ([lng, lat] points) comes to a spot: meters, and the
+// compass bearing from the spot to that closest point. Flat-earth math, which is
+// plenty for property-sized distances.
+export function closestOnLine(spot: [number, number], line: [number, number][]): { meters: number; bearingDeg: number } | null {
+  if (line.length === 0) return null;
+  const mPerLng = 111_320 * Math.cos((spot[1] * Math.PI) / 180);
+  const xy = (p: [number, number]) => [(p[0] - spot[0]) * mPerLng, (p[1] - spot[1]) * 111_320];
+  let best: { meters: number; x: number; y: number } | null = null;
+  const consider = (x: number, y: number) => {
+    const meters = Math.hypot(x, y);
+    if (!best || meters < best.meters) best = { meters, x, y };
+  };
+  if (line.length === 1) consider(xy(line[0])[0], xy(line[0])[1]);
+  for (let i = 1; i < line.length; i++) {
+    const [ax, ay] = xy(line[i - 1]);
+    const [bx, by] = xy(line[i]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    // Where along this piece the spot is closest, clamped to its ends.
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+    consider(ax + t * dx, ay + t * dy);
+  }
+  const b = best as { meters: number; x: number; y: number } | null;
+  if (!b) return null;
+  return { meters: b.meters, bearingDeg: ((Math.atan2(b.x, b.y) * 180) / Math.PI + 360) % 360 };
+}
+
+// Compass bearing (0 = north) and meters from one [lng, lat] point to another.
+export function bearingAndMeters(from: [number, number], to: [number, number]): { bearingDeg: number; meters: number } {
+  const mPerLng = 111_320 * Math.cos((from[1] * Math.PI) / 180);
+  const x = (to[0] - from[0]) * mPerLng;
+  const y = (to[1] - from[1]) * 111_320;
+  return { bearingDeg: ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360, meters: Math.hypot(x, y) };
+}
+
 export function formatLatLng(lat: number, lng: number): string {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }

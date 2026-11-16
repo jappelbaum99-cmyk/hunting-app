@@ -9,6 +9,7 @@ import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { CampQr } from '@/components/CampQr';
 import { huntPlaceName } from '@/lib/reports';
+import { harvestLine } from '@/lib/harvests';
 import { formatDistance, metersBetween, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
 import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
@@ -19,6 +20,7 @@ interface SidebarProps {
   plans: Plan[];
   reports: HuntReport[];
   onLogHunt(): void;
+  onLogHarvest(): void;
   // GPS pins from the phone that haven't been added or dismissed yet.
   newFieldPins: FieldPin[];
   // The camp phones send hunts and pins to, and the last problem reaching it.
@@ -358,6 +360,7 @@ export function Sidebar(props: SidebarProps) {
             isSelected={(id) => isSelected('report', id)}
             onPick={(id) => onPick({ kind: 'report', id })}
             onLogHunt={props.onLogHunt}
+            onLogHarvest={props.onLogHarvest}
           />
         )}
 
@@ -562,6 +565,7 @@ function HuntReports(props: {
   isSelected(id: string): boolean;
   onPick(id: string): void;
   onLogHunt(): void;
+  onLogHarvest(): void;
 }) {
   const { reports, markers } = props;
   const [open, setOpen] = useState(() => {
@@ -621,9 +625,14 @@ function HuntReports(props: {
 
       {open && (
         <>
-          <button className="log-hunt" onClick={props.onLogHunt}>
-            + Log a hunt
-          </button>
+          <div className="log-hunt-row">
+            <button className="log-hunt" onClick={props.onLogHunt}>
+              + Log a hunt
+            </button>
+            <button className="log-hunt" onClick={props.onLogHarvest} title="A deer or turkey taken, with or without a hunt logged">
+              + Log a harvest
+            </button>
+          </div>
           {shownDays.map((day) => (
             <div key={day.key} className="hunt-day">
               <div className="hunt-day-head">
@@ -641,8 +650,8 @@ function HuntReports(props: {
                         <Icon name="track" size={16} />
                       </span>
                     }
-                    title={standName(r)}
-                    detail={`${clock(r.start)}${r.loggedBy ? ` · ${r.loggedBy}` : ''} · ${sightingSummary(r)}`}
+                    title={r.harvestOnly ? `Harvest · ${standName(r)}` : standName(r)}
+                    detail={[`${clock(r.start)}${r.loggedBy ? ` · ${r.loggedBy}` : ''}`, r.harvestOnly ? null : sightingSummary(r), harvestLine(r)].filter(Boolean).join(' · ')}
                   />
                 ))}
               </ul>
