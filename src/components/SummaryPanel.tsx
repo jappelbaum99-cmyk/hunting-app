@@ -4,7 +4,7 @@ import { AreaBadge } from '@/components/AreaBadge';
 import { placeLabel, placeOf, type Places } from '@/lib/photoPlaces';
 import { isPlotType, pinTypeInfo, isHuntingSpot } from '@/lib/featureTypes';
 import { acresOf, formatAcres } from '@/lib/geo';
-import { daySummary, deerCount, huntsByDay, isLive, otherAnimals } from '@/lib/huntStats';
+import { daySummary, deerCount, huntsByDay, huntSeason, isLive, otherAnimals } from '@/lib/huntStats';
 import { entryTitle, formatPlotDate, plotEntries, todayDate } from '@/lib/plotLog';
 import { allHarvests, harvestCounts, harvestDetail, harvestTitle } from '@/lib/harvests';
 import { huntPlaceName, sightingSummary } from '@/lib/reports';
@@ -31,12 +31,7 @@ interface SummaryPanelProps {
   onClose(): void;
 }
 
-// A season runs July through June, so one fall's hunting stays together: "2026–27".
-function seasonOf(iso: string): string {
-  const d = new Date(iso);
-  const start = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1;
-  return `${start}–${String(start + 1).slice(-2)}`;
-}
+const seasonOf = huntSeason;
 
 // Months in season order, July first.
 const SEASON_MONTHS = [6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5];

@@ -13,6 +13,13 @@ import type { CompassPoint, DeerKind, HuntReport } from '@/types/models';
 export const HUNT_AUTO_END_MS = 13 * 60 * 60 * 1000;
 const LIVE_FOR_MS = HUNT_AUTO_END_MS;
 
+// A season runs July through June, so one fall's hunting stays together: "2026–27".
+export function huntSeason(iso: string): string {
+  const d = new Date(iso);
+  const start = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1;
+  return `${start}–${String(start + 1).slice(-2)}`;
+}
+
 export function isLive(report: HuntReport, now = Date.now()): boolean {
   if (report.end || report.source !== 'phone') return false;
   const started = Date.parse(report.start);

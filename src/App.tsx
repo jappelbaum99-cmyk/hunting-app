@@ -23,6 +23,8 @@ import { AreaPlansPanel } from '@/components/AreaPlansPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ActionBoardPanel } from '@/components/ActionBoardPanel';
 import { ComingUpList, comingUpRows } from '@/components/SchedulesPanel';
+import { HuntLogPanel } from '@/components/HuntLogPanel';
+import { huntSeason, isLive } from '@/lib/huntStats';
 import { LandManagementPanel } from '@/components/LandManagementPanel';
 import { SummaryPanel } from '@/components/SummaryPanel';
 import { CameraPhotosInfo } from '@/components/CameraPhotosInfo';
@@ -30,7 +32,7 @@ import { CameraView } from '@/components/CameraView';
 import { StandHistory } from '@/components/StandHistory';
 import { Sidebar, SIDEBAR_WIDTH } from '@/components/Sidebar';
 import { newRecordFields, useHubData } from '@/data/HubDataProvider';
-import { addHarvest, newHarvest } from '@/lib/harvests';
+import { addHarvest, allHarvests, newHarvest } from '@/lib/harvests';
 import { useHubCamp } from '@/data/useHubCamp';
 import { usePartnerSync } from '@/data/usePartnerSync';
 import { useAutoOffline } from '@/map/useAutoOffline';
@@ -214,6 +216,8 @@ export function App() {
   const [boardOpen, setBoardOpen] = useState(false);
   // Land Management (soil tests and the land tools to come).
   const [landOpen, setLandOpen] = useState(false);
+  // Hunt Log: hunt reports and harvest reports.
+  const [huntsOpen, setHuntsOpen] = useState(false);
   // The pin unlocked to be moved. It locks again once it's no longer selected.
   const [unlockedPinId, setUnlockedPinId] = useState<string | null>(null);
   // What the last Combine changed, so it can be undone.
@@ -983,31 +987,31 @@ export function App() {
     }
   };
 
-  // A deer or turkey taken without a hunt logged here (or from a past season):
-  // a hunt record that only holds it, so it syncs like any hunt.
-  const startHarvest = () => {
-    const now = new Date().toISOString();
-    const base: HuntReport = {
-      ...newRecordFields(),
-      standId: null,
-      propertyId: null,
-      start: now,
-      end: now,
-      weather: null,
-      sightings: [],
-      notes: null,
-      source: 'hub',
-      harvestOnly: true,
-    };
-    const report = addHarvest(base, newHarvest(base, { hunter: hub.settings.camp?.hunter ?? null }));
-    hub.saveReport(report);
+  // A harvest always goes on a hunt: the one it was taken on, picked in the Hunt
+  // Log, or a new hunt made for it.
+  const [pickingHarvestHunt, setPickingHarvestHunt] = useState(false);
+  const logHarvest = () => {
+    if (mode.kind === 'align') return;
+    setForecastOpen(false);
+    setSummaryOpen(false);
+    setBoardOpen(false);
+    setLandOpen(false);
+    setHuntsOpen(true);
+    setPickingHarvestHunt(true);
+  };
+  const addHarvestTo = (reportId: string) => {
+    const report = hub.reports.find((r) => r.id === reportId);
+    if (!report) return;
+    hub.saveReport(addHarvest(report, newHarvest(report, { hunter: report.loggedBy ?? hub.settings.camp?.hunter ?? null })));
+    setPickingHarvestHunt(false);
     cancelMode();
     setSelection({ kind: 'report', id: report.id });
+    zoomTo({ kind: 'report', id: report.id });
   };
 
-  const startReport = (standId: string | null) => {
+  const startReport = (standId: string | null, withHarvest = false) => {
     const stand = hub.markers.find((m) => m.id === standId) ?? null;
-    const report: HuntReport = {
+    const base: HuntReport = {
       ...newRecordFields(),
       standId: stand?.id ?? null,
       propertyId: stand?.propertyId ?? null,
@@ -1018,7 +1022,9 @@ export function App() {
       notes: null,
       source: 'hub',
     };
+    const report = withHarvest ? addHarvest(base, newHarvest(base, { hunter: hub.settings.camp?.hunter ?? null })) : base;
     hub.saveReport(report);
+    setPickingHarvestHunt(false);
     cancelMode();
     setSelection({ kind: 'report', id: report.id });
     void fillWeather(report);
@@ -1386,6 +1392,15 @@ export function App() {
   const schedulePlaces: SchedulePlace[] = [...hub.areas.map((a) => ({ ...a, kind: 'area' as const })), ...hub.sections.map((s) => ({ ...s, kind: 'section' as const }))];
   const comingUp = comingUpRows(schedulePlaces, hub.plans, hub.actionItems, hub.settings.scheduleOrder);
 
+  // The Hunt Log card's one-liner: this season's hunts and harvests, and who's in the stand.
+  const thisSeason = huntSeason(new Date().toISOString());
+  const seasonHunts = hub.reports.filter((r) => !r.harvestOnly && huntSeason(r.start) === thisSeason).length;
+  const seasonTaken = allHarvests(hub.reports).filter((x) => huntSeason(x.harvest.time) === thisSeason).length;
+  const liveNow = hub.reports.filter((r) => isLive(r)).length;
+  const huntTeaser =
+    [liveNow ? `${liveNow} in the stand now` : null, `${seasonHunts} hunt${seasonHunts === 1 ? '' : 's'} this season`, seasonTaken ? `${seasonTaken} taken` : null]
+      .filter(Boolean)
+      .join(' · ');
   // The Action Board card's one-liner.
   const boardCount = (status: ActionItem['status']) => hub.actionItems.filter((i) => i.status === status).length;
   const boardTeaser =
@@ -1746,8 +1761,6 @@ export function App() {
         onImportMap={(file) => void importMap(file)}
         onMakePoster={() => setPosterBounds(mapRef.current?.getBounds() ?? [-91.54, 37.64, -91.53, 37.65])}
         onFieldPin={handleFieldPin}
-        onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
-        onLogHarvest={startHarvest}
         areas={hub.areas}
         markers={hub.markers}
         overlays={hub.overlays}
@@ -1780,7 +1793,7 @@ export function App() {
                 zoomTo({ kind: 'marker', id });
               }}
               onPickReport={(id) => setSelection({ kind: 'report', id })}
-              onLogHarvest={startHarvest}
+              onLogHarvest={logHarvest}
               onPickSection={(id) => {
                 setSelection({ kind: 'section', id });
                 zoomTo({ kind: 'section', id });
@@ -1840,6 +1853,27 @@ export function App() {
               onClosedChange={(boardClosed) => hub.saveSettings({ ...hub.settings, boardClosed })}
               onClose={() => setBoardOpen(false)}
             />
+          ) : huntsOpen ? (
+            <HuntLogPanel
+              reports={hub.reports}
+              markers={hub.markers}
+              selectedId={selection?.kind === 'report' ? selection.id : null}
+              onPick={(id) => {
+                if (mode.kind === 'align') return;
+                cancelMode();
+                setSelection({ kind: 'report', id });
+                zoomTo({ kind: 'report', id });
+              }}
+              onLogHunt={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null)}
+              picking={pickingHarvestHunt}
+              onPicking={setPickingHarvestHunt}
+              onAddHarvestTo={addHarvestTo}
+              onNewHuntWithHarvest={() => startReport(selection?.kind === 'marker' && hub.markers.some((m) => m.id === selection.id && isStandMarker(m)) ? selection.id : null, true)}
+              onClose={() => {
+                setPickingHarvestHunt(false);
+                setHuntsOpen(false);
+              }}
+            />
           ) : landOpen && plansOpen ? (
             <AreaPlansPanel
               sections={hub.sections}
@@ -1875,6 +1909,7 @@ export function App() {
           setForecastOpen(false);
           setBoardOpen(false);
           setLandOpen(false);
+          setHuntsOpen(false);
           setSummaryOpen(true);
         }}
         boardTeaser={boardTeaser}
@@ -1883,7 +1918,18 @@ export function App() {
           setForecastOpen(false);
           setSummaryOpen(false);
           setLandOpen(false);
+          setHuntsOpen(false);
           setBoardOpen(true);
+        }}
+        huntTeaser={huntTeaser}
+        huntLive={hub.reports.some((r) => isLive(r))}
+        onOpenHunts={() => {
+          if (mode.kind === 'align') return;
+          setForecastOpen(false);
+          setSummaryOpen(false);
+          setBoardOpen(false);
+          setLandOpen(false);
+          setHuntsOpen(true);
         }}
         landTeaser={soilWaiting + soilDone === 0 ? 'Soil tests and area plans' : `Soil tests: ${soilTeaser}`}
         onOpenLand={() => {
@@ -1892,6 +1938,7 @@ export function App() {
           setSummaryOpen(false);
           setBoardOpen(false);
           setPlansOpen(false);
+          setHuntsOpen(false);
           setLandOpen(true);
         }}
         onOpenForecast={() => {
@@ -1901,6 +1948,7 @@ export function App() {
           setSummaryOpen(false);
           setBoardOpen(false);
           setLandOpen(false);
+          setHuntsOpen(false);
           setForecastOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(!settingsOpen)}

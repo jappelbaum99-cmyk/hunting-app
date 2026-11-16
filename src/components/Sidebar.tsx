@@ -5,13 +5,9 @@ import { AreaBadge } from '@/components/AreaBadge';
 import { Icon } from '@/components/Icon';
 import { areaTypeInfo, markerStyle, propertyColor } from '@/lib/styles';
 import { acresOf, formatAcres } from '@/lib/geo';
-import { daySummary, huntsByDay, isLive } from '@/lib/huntStats';
 import { FIELD_PAGE_URL } from '@/lib/site';
 import { CampQr } from '@/components/CampQr';
-import { huntPlaceName } from '@/lib/reports';
-import { harvestLine } from '@/lib/harvests';
 import { formatDistance, metersBetween, trailKindInfo, trailLengthM, trailStyle } from '@/lib/trails';
-import { sightingSummary } from '@/lib/reports';
 import type { CampLink, FieldPin, FieldTrack, MapTrail, HubSettings, HuntReport, MapArea, MapImageOverlay, MapMarker, Plan, Property, Section, Selection } from '@/types/models';
 
 interface SidebarProps {
@@ -19,8 +15,6 @@ interface SidebarProps {
   sections: Section[];
   plans: Plan[];
   reports: HuntReport[];
-  onLogHunt(): void;
-  onLogHarvest(): void;
   // GPS pins from the phone that haven't been added or dismissed yet.
   newFieldPins: FieldPin[];
   // The camp phones send hunts and pins to, and the last problem reaching it.
@@ -59,6 +53,11 @@ interface SidebarProps {
   // Land Management card: soil tests and the land tools to come.
   landTeaser: string;
   onOpenLand(): void;
+  // Hunt Log card: hunt reports and harvest reports.
+  huntTeaser: string;
+  // Someone is in the stand now (the card shows it).
+  huntLive: boolean;
+  onOpenHunts(): void;
   onOpenSettings(): void;
   settings: HubSettings;
   onPick(selection: Selection): void;
@@ -75,9 +74,6 @@ const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;
 // The sidebar's width in pixels: the default, and how narrow or wide it can be dragged.
 export const SIDEBAR_WIDTH = { default: 300, min: 260, max: 640 };
 
-// Days of hunts listed before "Show older".
-const DAYS_SHOWN = 7;
-const REPORTS_OPEN_KEY = 'hunting-hub-reports-open';
 // The sidebar lists folded shut on this PC, by title.
 const FOLDED_LISTS_KEY = 'hunting-hub-folded-lists';
 
@@ -238,6 +234,21 @@ export function Sidebar(props: SidebarProps) {
                 ›
               </span>
             </button>
+            <button className="forecast-card summary-card" onClick={props.onOpenHunts}>
+              <span className="forecast-card-icon" aria-hidden>
+                <Icon name="track" size={20} />
+              </span>
+              <span className="forecast-card-text">
+                <span className="row-title">Hunt Log</span>
+                <span className="row-detail">
+                  {props.huntLive && <span className="live-dot" title="In the stand now" />}
+                  {props.huntTeaser}
+                </span>
+              </span>
+              <span className="chevron" aria-hidden>
+                ›
+              </span>
+            </button>
             <button className="forecast-card summary-card" onClick={props.onOpenBoard}>
               <span className="forecast-card-icon" aria-hidden>
                 <Icon name="clipboard" size={20} />
@@ -351,17 +362,6 @@ export function Sidebar(props: SidebarProps) {
               </ul>
             )}
           </PhoneDrop>
-        )}
-
-        {needle === '' && (
-          <HuntReports
-            reports={props.reports}
-            markers={markers}
-            isSelected={(id) => isSelected('report', id)}
-            onPick={(id) => onPick({ kind: 'report', id })}
-            onLogHunt={props.onLogHunt}
-            onLogHarvest={props.onLogHarvest}
-          />
         )}
 
         {/* Everything drawn or placed on the map, under one banner that folds them all away. */}
@@ -554,119 +554,6 @@ function Row(props: { selected: boolean; onClick(): void; swatch: ReactNode; tit
   );
 }
 
-function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
-
-// Hunt Reports: folded into a dropdown, except for anyone in the stand right now.
-function HuntReports(props: {
-  reports: HuntReport[];
-  markers: MapMarker[];
-  isSelected(id: string): boolean;
-  onPick(id: string): void;
-  onLogHunt(): void;
-  onLogHarvest(): void;
-}) {
-  const { reports, markers } = props;
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(REPORTS_OPEN_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [showAll, setShowAll] = useState(false);
-  const toggle = () => {
-    setOpen(!open);
-    try {
-      localStorage.setItem(REPORTS_OPEN_KEY, open ? '0' : '1');
-    } catch {
-      // Only a convenience; the list still works.
-    }
-  };
-
-  const standName = (r: HuntReport) => huntPlaceName(r, markers);
-  const live = reports.filter((r) => isLive(r)).sort((a, b) => a.start.localeCompare(b.start));
-  const days = huntsByDay(reports.filter((r) => !isLive(r)));
-  const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
-
-  return (
-    <section className="sidebar-section hunt-reports">
-      <button className="section-toggle" onClick={toggle} aria-expanded={open}>
-        <h2>
-          Hunt Reports <span className="count">{reports.length}</span>
-        </h2>
-        <span className={`chevron${open ? ' open' : ''}`} aria-hidden>
-          ▾
-        </span>
-      </button>
-
-      {live.length > 0 && (
-        <ul className="live-hunts">
-          {live.map((r) => (
-            <Row
-              key={r.id}
-              selected={props.isSelected(r.id)}
-              onClick={() => props.onPick(r.id)}
-              swatch={<span className="live-dot" title="In the stand now" />}
-              title={`${r.loggedBy ? `${r.loggedBy} · ` : ''}${standName(r)}`}
-              detail={`In since ${clock(r.start)} · ${sightingSummary(r)}`}
-            />
-          ))}
-        </ul>
-      )}
-
-      {!open && days.length > 0 && (
-        <button className="reports-teaser" onClick={toggle}>
-          <span>{days[0].label}</span>
-          <span className="muted">{daySummary(days[0])}</span>
-        </button>
-      )}
-
-      {open && (
-        <>
-          <div className="log-hunt-row">
-            <button className="log-hunt" onClick={props.onLogHunt}>
-              + Log a hunt
-            </button>
-            <button className="log-hunt" onClick={props.onLogHarvest} title="A deer or turkey taken, with or without a hunt logged">
-              + Log a harvest
-            </button>
-          </div>
-          {shownDays.map((day) => (
-            <div key={day.key} className="hunt-day">
-              <div className="hunt-day-head">
-                <span>{day.label}</span>
-                <span className="muted">{daySummary(day)}</span>
-              </div>
-              <ul>
-                {day.reports.map((r) => (
-                  <Row
-                    key={r.id}
-                    selected={props.isSelected(r.id)}
-                    onClick={() => props.onPick(r.id)}
-                    swatch={
-                      <span className="swatch report">
-                        <Icon name="track" size={16} />
-                      </span>
-                    }
-                    title={r.harvestOnly ? `Harvest · ${standName(r)}` : standName(r)}
-                    detail={[`${clock(r.start)}${r.loggedBy ? ` · ${r.loggedBy}` : ''}`, r.harvestOnly ? null : sightingSummary(r), harvestLine(r)].filter(Boolean).join(' · ')}
-                  />
-                ))}
-              </ul>
-            </div>
-          ))}
-          {days.length > DAYS_SHOWN && (
-            <button className="link-button show-older" onClick={() => setShowAll(!showAll)}>
-              {showAll ? 'Show fewer days' : `Show ${days.length - DAYS_SHOWN} older days`}
-            </button>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
 
 // The grab strip on the sidebar's right edge.
 function ResizeHandle(props: { width: number; onResize(width: number): void; onResizeEnd(width: number): void }) {

@@ -160,7 +160,7 @@ export function ReportPanel(props: ReportPanelProps) {
             </ul>
           )}
           <button className="harvest-add" onClick={() => onChange(addHarvest(report, newHarvest(report, { hunter: report.loggedBy ?? props.hunterName })))}>
-            + We got one
+            + We got one on this hunt
           </button>
         </Field>
 

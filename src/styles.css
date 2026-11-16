@@ -5955,3 +5955,65 @@ body.resizing {
   align-self: flex-start;
   font-weight: 700;
 }
+
+/* Hunt Log: hunt reports and harvest reports, one tab each. */
+.hunt-log .log-hunt-row {
+  margin: 4px 0 10px;
+}
+
+.hunt-log-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--fill);
+  margin: 6px 0 4px;
+}
+
+.hunt-log-tabs button {
+  flex: 1;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: none;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hunt-log-tabs button.active {
+  background: var(--glass-strong);
+  color: var(--text);
+}
+
+.hunt-log-tabs .count {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+.swatch.harvest-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: #d9822b;
+}
+
+.forecast-card .row-detail .live-dot {
+  margin-right: 6px;
+}
+
+/* Hunt Log › Log a harvest: the hunts to pick from. */
+.harvest-pick {
+  border: 1px solid #d9822b;
+  border-radius: 14px;
+  padding: 10px 10px 4px;
+  margin-bottom: 8px;
+}
+
+.harvest-pick ul {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+}
+
+button.log-hunt.active {
+  outline: 2px solid #d9822b;
+}
