@@ -142,7 +142,7 @@ export function WherePicker(props: {
   onChange(next: { where: Where | null; headingDeg: number | null; wentTo: Where | null; cameFrom: Where | null }): void;
   logged: Sighting[];
   // The stand on the map, when the hunt has one.
-  map?: { at: [number, number]; base: 'topo' | 'satellite' | 'lidar' | 'infrared'; campMap: CampMap | null } | null;
+  map?: { at: [number, number]; base: 'topo' | 'satellite' | 'esri' | 'lidar' | 'infrared'; campMap: CampMap | null; note?: string | null; lidarStyle?: 'stretch' | 'shade' | 'relief' } | null;
 }) {
   const compass = useCompass();
   // Up on the target: north, or the way the phone faces.
@@ -238,6 +238,7 @@ export function WherePicker(props: {
           at={props.map.at}
           sightings={props.logged}
           base={props.map.base}
+          lidarStyle={props.map.lidarStyle}
           campMap={props.map.campMap}
           draft={{ cameFrom: props.cameFrom, fromStand: props.where, wentTo: props.wentTo, color: props.color }}
           onTap={tapMap}
@@ -306,7 +307,11 @@ export function WherePicker(props: {
         {pillAt && <Pill x={pillAt[0]} y={pillAt[1]} heading={props.headingDeg === null ? null : props.headingDeg - rotation} color={props.color} size={1} />}
       </svg>
       )}
-      {props.map && <p className="field-hint where-map-hint">Rings are 25, 50, 100 and 150 yd from the stand. Two fingers move the map.</p>}
+      {props.map && (
+        <p className="field-hint where-map-hint">
+          {props.map.note ? `${props.map.note} ` : ''}Rings are 25, 50, 100 and 150 yd from the stand. Two fingers move the map.
+        </p>
+      )}
 
       <div className="where-yards-row">
         <label>

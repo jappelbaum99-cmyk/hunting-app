@@ -731,6 +731,42 @@ function clearDraft() {
 }
 
 // Logging what you see from the stand: what, how many, which way, tap Save.
+type MapBase = 'topo' | 'satellite' | 'esri' | 'lidar' | 'infrared';
+
+// Whether the phone has signal, kept up to date.
+function useOnline(): boolean {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return online;
+}
+
+// The map under the stand: the one picked on the Map tab, or with no signal,
+// one that's saved on the phone (Esri photos and infrared never are).
+function standMapBase(data: FieldData, online: boolean): { base: MapBase; note: string | null } {
+  const view = data.mapView ?? {};
+  // Satellite from Esri draws the Esri photos.
+  // Infrared isn't offered on the phone any more: it shows as topo, as on the Map tab.
+  const picked: MapBase = view.base === 'satellite' && view.photoSource === 'esri' ? 'esri' : view.base === 'infrared' ? 'topo' : (view.base ?? 'topo');
+  if (online) return { base: picked, note: null };
+  // "lidar:dem" (lidar drawn on the phone) counts as lidar.
+  const saved = new Set(Object.values(data.offlineMaps ?? {}).flatMap((m) => m.layers.split(',').map((l) => l.split(':')[0])));
+  if (saved.has(picked)) return { base: picked, note: null };
+  const names: Record<MapBase, string> = { topo: 'Topo', satellite: 'Satellite', esri: 'Esri photos', lidar: 'Lidar', infrared: 'Infrared' };
+  // Photos stand in for photos.
+  const order: MapBase[] = picked === 'esri' ? ['satellite', 'topo', 'lidar'] : ['topo', 'satellite', 'lidar'];
+  const fallback = order.find((b) => saved.has(b));
+  if (!fallback) return { base: picked, note: 'No signal and no map saved for this property, so the map is blank; the rings and your taps still work.' };
+  return { base: fallback, note: `No signal: showing the saved ${names[fallback].toLowerCase()} map (${names[picked]} isn't saved on this phone).` };
+}
+
 // Tap a sighting in the list to change or delete it. Also used to edit a past hunt.
 function QuickLog(props: {
   report: HuntReport;
@@ -833,6 +869,7 @@ function QuickLog(props: {
 
   const info = DEER_KINDS[kind];
   const standAt = huntPosition(report, props.data.stands);
+  const online = useOnline();
   const saveLabel = `${editingId ? 'Update' : 'Save'} ${sightingLabel({ kind, count, notes: kind === 'other' ? otherName : null })}`;
 
   return (
@@ -889,7 +926,7 @@ function QuickLog(props: {
           setCameFrom(next.cameFrom);
         }}
         logged={report.sightings.filter((s) => s.id !== editingId)}
-        map={standAt ? { at: standAt, base: props.data.mapView?.base ?? 'topo', campMap: props.data.map ?? null } : null}
+        map={standAt ? { at: standAt, ...standMapBase(props.data, online), campMap: props.data.map ?? null, lidarStyle: props.data.mapView?.lidarStyle } : null}
       />
 
       <input

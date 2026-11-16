@@ -138,6 +138,9 @@ export interface HubSettings {
   // Close-up satellite photos: Missouri's leaf-off winter ones where saved (the
   // default), or the leaf-on summer NAIP ones everywhere.
   aerialPhotos?: 'leafOff' | 'leafOn';
+  // Where Satellite's photos come from: USGS (NAIP, and Missouri's 6 inch where
+  // saved) or Esri (live, needs signal). Missing = USGS.
+  photoSource?: 'usgs' | 'esri';
   // Contour line color, e.g. '#8b5a2b'. Missing = the original look (black, lightened over satellite).
   contourColor?: string | null;
   // The last poster laid out, to pick up where it was left (see src/map/poster.ts).

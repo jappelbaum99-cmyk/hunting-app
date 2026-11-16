@@ -6017,3 +6017,25 @@ body.resizing {
 button.log-hunt.active {
   outline: 2px solid #d9822b;
 }
+
+/* Choose Map › Satellite: where the photos come from. */
+.layer-row.photo-source .segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.layer-row.photo-source .segmented button {
+  padding: 5px 14px;
+  border-radius: 8px;
+  background: none;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.layer-row.photo-source .segmented button.active {
+  background: var(--glass-strong);
+  color: var(--text);
+}

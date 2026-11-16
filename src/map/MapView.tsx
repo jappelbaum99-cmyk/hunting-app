@@ -17,6 +17,7 @@ import {
   contourTiles,
   DEFAULT_LAYERS,
   LAYER_IDS,
+  isDeviceLidar,
   lidarStyleTiles,
   retryFailedTiles,
   setUpMapLibre,
@@ -1031,20 +1032,28 @@ export function MapView(props: MapViewProps) {
     const show = (id: string, visible: boolean) => map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     // Infrared and greenness load slowly, so the photos show under them meanwhile.
     const bands = layers.base === 'infrared' || layers.base === 'greenness';
-    const photos = layers.base === 'satellite' || bands;
+    // Satellite's photos from Esri instead of USGS.
+    const esri = layers.base === 'satellite' && settings.photoSource === 'esri';
+    const photos = (layers.base === 'satellite' && !esri) || bands;
     show(LAYER_IDS.satellite, photos);
     show(LAYER_IDS.aerial, photos);
     show(LAYER_IDS.aerialMo, photos && settings.aerialPhotos !== 'leafOn');
     show(LAYER_IDS.infrared, layers.base === 'infrared');
     show(LAYER_IDS.greenness, layers.base === 'greenness');
     show(LAYER_IDS.topo, layers.base === 'topo');
-    show(LAYER_IDS.lidar, layers.base === 'lidar');
-    show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0);
+    show(LAYER_IDS.esri, esri);
+    // Lidar from the USGS server, or drawn on the device (its own 1 m source).
+    const device = isDeviceLidar(layers.lidarStyle);
+    show(LAYER_IDS.lidar, layers.base === 'lidar' && !device);
+    show(LAYER_IDS.lidarDem, layers.base === 'lidar' && device);
+    show(LAYER_IDS.lidarBlend, layers.base !== 'lidar' && layers.lidarBlend > 0 && !device);
+    show(LAYER_IDS.lidarDemBlend, layers.base !== 'lidar' && layers.lidarBlend > 0 && device);
     map.setPaintProperty(LAYER_IDS.lidarBlend, 'raster-opacity', layers.lidarBlend);
+    map.setPaintProperty(LAYER_IDS.lidarDemBlend, 'raster-opacity', layers.lidarBlend);
     // setTiles reloads every tile, so only call it when the style really changed.
     if (loadedTiles.current.lidar !== layers.lidarStyle) {
       loadedTiles.current.lidar = layers.lidarStyle;
-      map.getSource<RasterTileSource>('lidar')?.setTiles(lidarStyleTiles(layers.lidarStyle));
+      map.getSource<RasterTileSource>(device ? 'lidarDem' : 'lidar')?.setTiles(lidarStyleTiles(layers.lidarStyle));
     }
 
     const contourColor = settings.contourColor ?? null;
@@ -1069,9 +1078,9 @@ export function MapView(props: MapViewProps) {
     show(LAYER_IDS.slope, layers.slope);
     map.setPaintProperty(LAYER_IDS.slope, 'raster-opacity', layers.slopeOpacity);
     // The original black lines are lightened over satellite; a picked color is drawn as is.
-    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', !contourColor && photos ? 0.85 : 0);
+    map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', !contourColor && (photos || esri) ? 0.85 : 0);
     map.setPaintProperty(LAYER_IDS.contours, 'raster-opacity', layers.contourOpacity);
-  }, [layers, settings.aerialPhotos, settings.contourColor, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layers, settings.aerialPhotos, settings.photoSource, settings.contourColor, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Property and area shapes.
   const selectedId = selection?.id ?? null;

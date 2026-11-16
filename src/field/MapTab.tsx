@@ -9,7 +9,7 @@ import * as maplibregl from 'maplibre-gl';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Icon } from '@/components/Icon';
-import type { FieldData, MapLabelKind, MapLineKind, MapSize } from '@/field/fieldData';
+import type { FieldData, MapLabelKind, MapLineKind, MapSize, PhoneLidarStyle } from '@/field/fieldData';
 import type { FieldPin } from '@/types/models';
 import { clearSavedTiles, saveTile, storageUsedMb, tileStoreAvailable, turnOnSavedTiles } from '@/field/tileStore';
 import type { CampMap } from '@/lib/campMap';
@@ -17,10 +17,10 @@ import { isHuntingSpot, pinTypeInfo } from '@/lib/featureTypes';
 import { boundsOf } from '@/lib/geo';
 import { compassPointOf } from '@/lib/standRating';
 import { formatDistance, lineLengthM, metersBetween } from '@/lib/trails';
-import { AERIAL_TILE_URL, buildBaseStyle, DEFAULT_LAYERS, LAYER_IDS, MO_AERIAL_TILE_URL, retryFailedTiles, setUpMapLibre } from '@/map/layers';
+import { AERIAL_TILE_URL, buildBaseStyle, DEFAULT_LAYERS, isDeviceLidar, LAYER_IDS, lidarStyleTiles, MO_AERIAL_TILE_URL, retryFailedTiles, setUpMapLibre } from '@/map/layers';
 import { DEFAULT_OFFLINE_RADIUS_M, planDownload, runDownload } from '@/map/offline';
 
-type Base = 'satellite' | 'topo' | 'lidar' | 'infrared';
+type Base = 'satellite' | 'esri' | 'topo' | 'lidar' | 'infrared';
 type Fix = { lat: number; lng: number; accuracyM: number };
 type Tool = 'pin' | 'walk' | 'soil';
 // A pin tapped on the map: one from the hub (moving it asks the hub), or one of
@@ -32,12 +32,19 @@ type Picked = { id: string; source: 'hub' | 'mine'; type: string; name: string; 
 // 1 MB a property); satellite photos (with Missouri's 6 inch ones where a
 // property is in Missouri) and lidar are kept too when picked in Offline maps.
 // Infrared is for looking while there's signal.
-const PHONE_BASES: Base[] = ['topo', 'satellite', 'lidar', 'infrared'];
+// Infrared is hub only; a phone that had it picked opens on topo.
+const PHONE_BASES: Base[] = ['topo', 'satellite', 'lidar'];
 const PHONE_CONTOURS = false;
 type SaveExtras = NonNullable<NonNullable<FieldData['mapView']>['saveExtras']>;
 function savedBases(extras: SaveExtras): Base[] {
-  return ['topo', ...(extras.photos ? (['satellite'] as const) : []), ...(extras.lidar ? (['lidar'] as const) : [])];
+  return [...(extras.topo !== false ? (['topo'] as const) : []), ...(extras.photos ? (['satellite'] as const) : []), ...(extras.lidar ? (['lidar'] as const) : [])];
 }
+// The maps that can be saved, with what turns each on in saveExtras.
+const SAVE_CHOICES: { base: Base; key: keyof SaveExtras; label: string; detail: string }[] = [
+  { base: 'topo', key: 'topo', label: 'Topo', detail: 'Contours, creeks and roads. Small.' },
+  { base: 'satellite', key: 'photos', label: 'Satellite photos', detail: "The sharpest photos up close, with Missouri's 6 inch photos for a property in Missouri." },
+  { base: 'lidar', key: 'lidar', label: 'Lidar', detail: 'The shaded ground: benches, draws, ditches and old roads.' },
+];
 function phoneSkip(saved: Base[]): string[] {
   return [
     '3D terrain',
@@ -47,10 +54,20 @@ function phoneSkip(saved: Base[]): string[] {
   ];
 }
 // Saved maps: what's included, so a change can ask for a fresh save.
-const phoneLayers = (saved: Base[]) => [...saved, ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
-const BASE_LABELS: Record<Base, string> = { topo: 'Topo', satellite: 'Satellite', lidar: 'Lidar', infrared: 'Infrared' };
+// Lidar drawn on the phone saves the elevation it's drawn from ("lidar:dem"),
+// which both of its styles use; the USGS picture is plain "lidar".
+const phoneLayers = (saved: Base[], lidarStyle: PhoneLidarStyle) =>
+  [...saved.map((b) => (b === 'lidar' && isDeviceLidar(lidarStyle) ? 'lidar:dem' : b)), ...(PHONE_CONTOURS ? ['contours10'] : [])].join(',');
+const LIDAR_CHOICES: [PhoneLidarStyle, string][] = [
+  ['stretch', 'USGS'],
+  ['shade', 'Sharp'],
+  ['relief', 'Micro-relief'],
+];
+// The device-drawn lidar style a map's elevation tiles are set to, so they're only reloaded on a change.
+const demStyle = new WeakMap<maplibregl.Map, PhoneLidarStyle>();
+const BASE_LABELS: Record<Base, string> = { topo: 'Topo', satellite: 'Satellite', esri: 'Esri photos', lidar: 'Lidar', infrared: 'Infrared' };
 // Topo tiles stop at zoom 16; a little past that is still readable.
-const MAX_ZOOM: Record<Base, number> = { topo: 17.5, satellite: 19, lidar: 19, infrared: 19 };
+const MAX_ZOOM: Record<Base, number> = { topo: 17.5, satellite: 19, esri: 19.5, lidar: 19, infrared: 19 };
 // Sign and cameras: small dots with no name (tap one to see it), so they
 // don't crowd out the stands.
 const SMALL_PINS = ['rub', 'scrape', 'camera'];
@@ -186,7 +203,12 @@ function addCampLayers(map: maplibregl.Map) {
   map.addLayer({ id: 'me-accuracy-line', type: 'line', source: 'me', paint: { 'line-color': ME_COLOR, 'line-width': 1, 'line-opacity': 0.5 } });
 }
 
-function setBase(map: maplibregl.Map, base: Base, contours: boolean) {
+function setBase(map: maplibregl.Map, base: Base, contours: boolean, lidarStyle: PhoneLidarStyle) {
+  const device = isDeviceLidar(lidarStyle);
+  if (device && demStyle.get(map) !== lidarStyle) {
+    demStyle.set(map, lidarStyle);
+    (map.getSource('lidarDem') as maplibregl.RasterTileSource | undefined)?.setTiles(lidarStyleTiles(lidarStyle));
+  }
   const show = (id: string, on: boolean) => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   // Infrared shows the satellite photos underneath while its slow tiles come in.
   const photos = base === 'satellite' || base === 'infrared';
@@ -194,8 +216,10 @@ function setBase(map: maplibregl.Map, base: Base, contours: boolean) {
   show(LAYER_IDS.aerial, photos);
   show(LAYER_IDS.aerialMo, photos);
   show(LAYER_IDS.topo, base === 'topo');
+  show(LAYER_IDS.esri, base === 'esri');
   show(LAYER_IDS.infrared, base === 'infrared');
-  show(LAYER_IDS.lidar, base === 'lidar');
+  show(LAYER_IDS.lidar, base === 'lidar' && !device);
+  show(LAYER_IDS.lidarDem, base === 'lidar' && device);
   show(LAYER_IDS.contours, contours);
   // Black lines read poorly on photos, so they're lightened there.
   map.setPaintProperty(LAYER_IDS.contours, 'raster-brightness-min', base === 'topo' || base === 'lidar' ? 0 : 0.85);
@@ -225,10 +249,14 @@ export function MapTab(props: {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
   const prefs = data.mapView ?? {};
-  const base: Base = prefs.base && PHONE_BASES.includes(prefs.base) ? prefs.base : PHONE_BASES[0];
+  // The map picked, and what's drawn: Satellite from Esri draws the Esri photos.
+  const pickedBase: Base = prefs.base === 'esri' ? 'satellite' : prefs.base && PHONE_BASES.includes(prefs.base) ? prefs.base : PHONE_BASES[0];
+  const photoSource = prefs.base === 'esri' ? 'esri' : (prefs.photoSource ?? 'usgs');
+  const base: Base = pickedBase === 'satellite' && photoSource === 'esri' ? 'esri' : pickedBase;
   const extras = prefs.saveExtras ?? {};
   const SAVED_BASES = savedBases(extras);
-  const PHONE_LAYERS = phoneLayers(SAVED_BASES);
+  const lidarStyle: PhoneLidarStyle = prefs.lidarStyle ?? 'stretch';
+  const PHONE_LAYERS = phoneLayers(SAVED_BASES, lidarStyle);
   const labelOn = (kind: MapLabelKind) => prefs.labelKinds?.[kind] ?? (prefs.labels === false ? false : LABEL_KINDS.find((k) => k.kind === kind)!.on);
   const lineOn = (kind: MapLineKind) => prefs.lineKinds?.[kind] ?? true;
   const pinSize = prefs.pinSize ?? 'medium';
@@ -319,9 +347,9 @@ export function MapTab(props: {
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
-    setBase(mapRef.current, base, contours);
+    setBase(mapRef.current, base, contours, lidarStyle);
     mapRef.current.setMaxZoom(MAX_ZOOM[base]);
-  }, [ready, base, contours]);
+  }, [ready, base, contours, lidarStyle]);
 
   // Lines and outlines.
   useEffect(() => {
@@ -457,11 +485,23 @@ export function MapTab(props: {
     map.fitBounds([w, s, e, n], { padding: 40, duration: 600 });
   };
 
+  // How big each map is to save, for all the camp's properties together.
+  const choiceMb = useMemo(() => {
+    const out: Partial<Record<Base, number>> = {};
+    for (const c of SAVE_CHOICES) {
+      out[c.base] = (campMap?.properties ?? []).reduce(
+        (mb, p) => mb + planDownload(p.boundary, { ...DEFAULT_LAYERS, lidarStyle, contours: 'off' }, DEFAULT_OFFLINE_RADIUS_M, phoneSkip([c.base])).estimatedMb,
+        0,
+      );
+    }
+    return out;
+  }, [campMap, lidarStyle]);
+
   const plans = useMemo(
     () =>
       (campMap?.properties ?? []).map((p) => ({
         property: p,
-        plan: planDownload(p.boundary, { ...DEFAULT_LAYERS, contours: PHONE_CONTOURS ? '10' : 'off' }, DEFAULT_OFFLINE_RADIUS_M, phoneSkip(SAVED_BASES)),
+        plan: planDownload(p.boundary, { ...DEFAULT_LAYERS, lidarStyle, contours: PHONE_CONTOURS ? '10' : 'off' }, DEFAULT_OFFLINE_RADIUS_M, phoneSkip(SAVED_BASES)),
       })),
     [campMap, PHONE_LAYERS],
   );
@@ -606,7 +646,7 @@ export function MapTab(props: {
       <div className="fm-top">
         <div className="fm-bases">
           {PHONE_BASES.map((b) => (
-            <button key={b} className={base === b ? 'active' : ''} onClick={() => setPrefs({ base: b })}>
+            <button key={b} className={pickedBase === b ? 'active' : ''} onClick={() => setPrefs({ base: b, ...(prefs.base === 'esri' ? { photoSource: 'esri' as const } : {}) })}>
               {BASE_LABELS[b]}
             </button>
           ))}
@@ -619,10 +659,35 @@ export function MapTab(props: {
         <button className="fm-chip active" onClick={() => setDisplay(true)}>
           Labels
         </button>
+        {pickedBase === 'lidar' && (
+          <div className="fm-bases fm-sources" role="group" aria-label="How lidar is drawn">
+            {LIDAR_CHOICES.map(([id, label]) => (
+              <button key={id} className={lidarStyle === id ? 'active' : ''} aria-pressed={lidarStyle === id} onClick={() => setPrefs({ lidarStyle: id })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {pickedBase === 'satellite' && (
+          <div className="fm-bases fm-sources" role="group" aria-label="Satellite photos from">
+            {(
+              [
+                ['usgs', 'USGS'],
+                ['esri', 'Esri'],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} className={photoSource === id ? 'active' : ''} aria-pressed={photoSource === id} onClick={() => setPrefs({ base: 'satellite', photoSource: id })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {!online && !SAVED_BASES.includes(base) && (
-        <div className="fm-note fm-note-top">{BASE_LABELS[base]} needs signal; it isn't saved on the phone. Switch to {BASE_LABELS[SAVED_BASES[0]]} to see the saved map.</div>
+        <div className="fm-note fm-note-top">
+          {BASE_LABELS[base]} needs signal; it isn't saved on the phone. {SAVED_BASES.length ? `Switch to ${BASE_LABELS[SAVED_BASES[0]]} to see the saved map.` : ''}
+        </div>
       )}
 
       <div className="fm-side">
@@ -794,18 +859,38 @@ export function MapTab(props: {
               </button>
             </div>
             <p className="hint">
-              Save a property and its map works with no signal, ¼ mile past the line. Topo is always saved; pick more below (they take more room).
-              Infrared needs signal. Your GPS dot works without signal too.
+              Save a property and its maps work with no signal, ¼ mile past the line. Pick which maps to save; the bigger ones take longer and more room.
+              Esri photos need signal (Esri's can't be saved). Your GPS dot works without signal too.
             </p>
-            <div className="fm-toggles fm-save-extras">
-              <button className={extras.photos ? 'active' : ''} aria-pressed={!!extras.photos} onClick={() => setPrefs({ saveExtras: { ...extras, photos: !extras.photos } })}>
-                Satellite photos
-              </button>
-              <button className={extras.lidar ? 'active' : ''} aria-pressed={!!extras.lidar} onClick={() => setPrefs({ saveExtras: { ...extras, lidar: !extras.lidar } })}>
-                Lidar
-              </button>
-            </div>
-            {extras.photos && <p className="hint">Satellite saves the sharpest photos up close, including Missouri's 6 inch photos for a property in Missouri.</p>}
+            <h3 className="fm-save-head">Maps to save</h3>
+            <ul className="fm-save-choices">
+              {SAVE_CHOICES.map((c) => {
+                const on = SAVED_BASES.includes(c.base);
+                const last = on && SAVED_BASES.length === 1;
+                const mb = choiceMb[c.base];
+                return (
+                  <li key={c.base}>
+                    <button
+                      className={`fm-save-choice${on ? ' on' : ''}`}
+                      aria-pressed={on}
+                      disabled={last}
+                      title={last ? 'Keep at least one map to save' : undefined}
+                      onClick={() => setPrefs({ saveExtras: { ...extras, [c.key]: !on } })}
+                    >
+                      <span className="fm-save-check" aria-hidden>
+                        {on ? '✓' : ''}
+                      </span>
+                      <span className="fm-save-text">
+                        <strong>{c.label}</strong>
+                        <span className="muted">{c.detail}</span>
+                      </span>
+                      <span className="fm-save-size">{mb !== undefined && campMap?.properties.length ? `~${Math.max(1, Math.round(mb))} MB` : ''}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {campMap && campMap.properties.length > 1 && <p className="hint">Sizes are for all {campMap.properties.length} properties together.</p>}
             {plans.length === 0 && <p className="hint">No properties from the hub yet.</p>}
             {plans.map(({ property, plan }) => {
               const saved = data.offlineMaps?.[property.id];

@@ -6,6 +6,9 @@ import {
   AERIAL_MIN_ZOOM,
   AERIAL_TILE_URL,
   contourTiles,
+  isDeviceLidar,
+  LIDAR_DEM_MAX_ZOOM,
+  LIDAR_DEM_URL,
   lidarStyleTiles,
   MISSOURI_BOUNDS,
   MO_AERIAL_MAX_ZOOM,
@@ -16,6 +19,7 @@ import {
   TOPO_TILE_URL,
   type MapLayersState,
 } from '@/map/layers';
+import { padDemUrl } from '@/map/relief';
 import type { AreaGeometry } from '@/types/models';
 
 // How far around the property line maps are saved: a quarter or half mile.
@@ -48,7 +52,10 @@ function layerPlans(layers: MapLayersState, bbox: [number, number, number, numbe
     { label: 'Satellite', template: SATELLITE_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 30 },
     { label: 'Satellite close-up', template: AERIAL_TILE_URL, minZoom: AERIAL_MIN_ZOOM - 1, maxZoom: 18, kbPerTile: 70 },
     { label: 'Topo', template: TOPO_TILE_URL, minZoom: 11, maxZoom: 16, kbPerTile: 25 },
-    { label: 'Lidar', template: strip(lidarStyleTiles(layers.lidarStyle)[0]), minZoom: 10, maxZoom: 18, kbPerTile: 120 },
+    // Lidar drawn on the device saves the 1 m elevation it's drawn from (256 px tiles, with a margin).
+    isDeviceLidar(layers.lidarStyle)
+      ? { label: 'Lidar', template: LIDAR_DEM_URL, minZoom: 10, maxZoom: LIDAR_DEM_MAX_ZOOM, kbPerTile: 330 }
+      : { label: 'Lidar', template: strip(lidarStyleTiles(layers.lidarStyle)[0]), minZoom: 10, maxZoom: 18, kbPerTile: 120 },
     { label: '3D terrain', template: TERRAIN_TILE_URL, minZoom: 10, maxZoom: 15, kbPerTile: 260 },
   ];
   // Missouri's 6 inch photos, for a property in (or touching) Missouri. The map only
@@ -81,8 +88,9 @@ export function tileUrl(template: string, z: number, x: number, y: number, size:
   const minX = -EARTH_HALF + x * size;
   const maxY = EARTH_HALF - y * size;
   const bbox = `${minX},${maxY - size},${minX + size},${maxY}`;
-  return normalizeTileUrl(
-    template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)).replace('{bbox-epsg-3857}', bbox),
+  // A tile with a margin (device-drawn lidar) is saved under the padded request the map makes.
+  return padDemUrl(
+    normalizeTileUrl(template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)).replace('{bbox-epsg-3857}', bbox)),
   );
 }
 

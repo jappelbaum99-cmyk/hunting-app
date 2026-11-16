@@ -12,7 +12,8 @@ import { turnOnSavedTiles } from '@/field/tileStore';
 import type { CampMap } from '@/lib/campMap';
 import { offsetPosition } from '@/lib/geo';
 import { kindInfo } from '@/lib/reports';
-import { buildBaseStyle, LAYER_IDS, retryFailedTiles, setUpMapLibre } from '@/map/layers';
+import { buildBaseStyle, isDeviceLidar, LAYER_IDS, lidarStyleTiles, retryFailedTiles, setUpMapLibre } from '@/map/layers';
+import type { PhoneLidarStyle } from '@/field/fieldData';
 import type { Sighting } from '@/types/models';
 
 const YARD_M = 0.9144;
@@ -21,7 +22,7 @@ const STAND_COLOR = '#f08a24';
 const RINGS = [25, 50, 100, 150];
 const FIT_YARDS = 165;
 
-type Base = 'topo' | 'satellite' | 'lidar' | 'infrared';
+type Base = 'topo' | 'satellite' | 'esri' | 'lidar' | 'infrared';
 type Where = NonNullable<Sighting['fromStand']>;
 
 // The deer being logged: its three points so far, drawn brighter than the rest.
@@ -35,6 +36,7 @@ export interface DraftDeer {
 const BASE_LAYERS: Record<Base, string[]> = {
   topo: [LAYER_IDS.topo],
   satellite: [LAYER_IDS.satellite, LAYER_IDS.aerial, LAYER_IDS.aerialMo],
+  esri: [LAYER_IDS.esri],
   lidar: [LAYER_IDS.lidar],
   infrared: [LAYER_IDS.satellite, LAYER_IDS.aerial, LAYER_IDS.aerialMo, LAYER_IDS.infrared],
 };
@@ -89,6 +91,7 @@ export function StandMap(props: {
   onMovePoint?(which: PointKind, position: [number, number]): void;
   // Which way is up (the phone's compass), 0 = north.
   bearing?: number;
+  lidarStyle?: PhoneLidarStyle;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -214,10 +217,19 @@ export function StandMap(props: {
     if (!ready || !map) return;
     // A map this version no longer offers (saved on the phone earlier) shows as topo.
     const shown = new Set(BASE_LAYERS[props.base] ?? BASE_LAYERS.topo);
-    for (const id of [LAYER_IDS.topo, LAYER_IDS.satellite, LAYER_IDS.aerial, LAYER_IDS.aerialMo, LAYER_IDS.lidar, LAYER_IDS.infrared, LAYER_IDS.greenness]) {
+    // Lidar drawn on the phone comes from its own elevation tiles.
+    const style = props.lidarStyle ?? 'stretch';
+    if (props.base === 'lidar' && isDeviceLidar(style)) {
+      shown.delete(LAYER_IDS.lidar);
+      shown.add(LAYER_IDS.lidarDem);
+      (map.getSource('lidarDem') as maplibregl.RasterTileSource | undefined)?.setTiles(lidarStyleTiles(style));
+    }
+    for (const id of [LAYER_IDS.topo, LAYER_IDS.satellite, LAYER_IDS.aerial, LAYER_IDS.aerialMo, LAYER_IDS.esri, LAYER_IDS.lidar, LAYER_IDS.lidarDem, LAYER_IDS.infrared, LAYER_IDS.greenness]) {
       map.setLayoutProperty(id, 'visibility', shown.has(id) ? 'visible' : 'none');
     }
-  }, [ready, props.base]);
+    // Light rings vanish on the light topo map, so they're dark there.
+    map.setPaintProperty('hunt-rings', 'line-color', props.base === 'topo' ? '#5a3d2b' : '#f7efe6');
+  }, [ready, props.base, props.lidarStyle]);
 
   // Range rings, with their yards as small labels (HTML: no glyph server).
   useEffect(() => {

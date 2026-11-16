@@ -20,6 +20,8 @@ export type MapLabelKind = 'properties' | 'sections' | 'areas' | 'trails' | 'sta
 export type MapLineKind = 'property' | 'section' | 'area' | 'trail';
 export type MapSize = 'small' | 'medium' | 'large';
 
+export type PhoneLidarStyle = 'stretch' | 'shade' | 'relief';
+
 export interface FieldData {
   pins: FieldPin[];
   reports: HuntReport[];
@@ -49,9 +51,14 @@ export interface FieldData {
   map?: CampMap | null;
   // The Map tab's picked map and whether names show.
   mapView?: {
-    base?: 'topo' | 'satellite' | 'lidar' | 'infrared';
-    // Maps a property's offline save keeps besides topo.
-    saveExtras?: { photos?: boolean; lidar?: boolean };
+    // 'esri' only from a version that had it as its own map: now Satellite from Esri.
+    base?: 'topo' | 'satellite' | 'esri' | 'lidar' | 'infrared';
+    // Where Satellite's photos come from (missing = USGS).
+    photoSource?: 'usgs' | 'esri';
+    // How Lidar is drawn: the USGS picture, or on the phone (sharp, micro-relief).
+    lidarStyle?: PhoneLidarStyle;
+    // Which maps a property's offline save keeps (topo unless turned off).
+    saveExtras?: { topo?: boolean; photos?: boolean; lidar?: boolean };
     // Older all-or-nothing labels switch; each kind below wins once picked.
     labels?: boolean;
     // Which names show, and which lines draw, by kind (missing = the default).

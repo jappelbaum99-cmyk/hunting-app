@@ -7,9 +7,10 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { readElevationTiff, toTerrariumPng } from '@/map/terrain';
 import { tintPng } from '@/map/tint';
 import { slopePng } from '@/map/slope';
+import { DEM_PAD, padDemUrl, reliefPng, type ReliefStyle } from '@/map/relief';
 
 export type BaseMapId = 'satellite' | 'infrared' | 'greenness' | 'topo' | 'lidar';
-export type LidarStyleId = 'stretch' | 'multidirectional' | 'tinted' | 'slope';
+export type LidarStyleId = 'stretch' | 'shade' | 'relief' | 'multidirectional' | 'tinted' | 'slope';
 export type ContourInterval = 'off' | '10' | '5' | '2';
 
 export interface MapLayersState {
@@ -64,8 +65,11 @@ export const NAIP_BANDS_MIN_ZOOM = 12;
 
 // Raster functions offered by the USGS 3DEP elevation service. The stretched
 // hillshade has the strongest shadows, which shows benches, ditches and old roads best.
-export const LIDAR_STYLES: { id: LidarStyleId; label: string; rasterFunction: string }[] = [
+// shade and relief are drawn on the device from the 1 m elevation (src/map/relief.ts).
+export const LIDAR_STYLES: { id: LidarStyleId; label: string; rasterFunction: string | null }[] = [
   { id: 'stretch', label: 'Hillshade', rasterFunction: 'Hillshade Gray-Stretch' },
+  { id: 'shade', label: 'Sharp hillshade (2 lights)', rasterFunction: null },
+  { id: 'relief', label: 'Micro-relief (trails, ditches)', rasterFunction: null },
   { id: 'multidirectional', label: 'Hillshade (soft)', rasterFunction: 'Hillshade Multidirectional' },
   { id: 'tinted', label: 'Elevation tinted', rasterFunction: 'Hillshade Elevation Tinted' },
   { id: 'slope', label: 'Slope', rasterFunction: 'Slope Map' },
@@ -103,6 +107,14 @@ export const MISSOURI_BOUNDS: [number, number, number, number] = [-95.8, 35.95, 
 export const MO_AERIAL_MAX_ZOOM = 18;
 export const SATELLITE_TILE_URL = `${BASEMAP_TILES}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`;
 export const TOPO_TILE_URL = `${BASEMAP_TILES}/USGSTopo/MapServer/tile/{z}/{y}/{x}`;
+// Esri World Imagery: often sharper or newer photos (in Missouri, the state's
+// 6 inch ones), live with signal only. It is the one map that isn't USGS (the
+// owner OK'd it). Esri's terms don't allow keeping its tiles for offline use,
+// so it's fetched straight from Esri (not through the desktop's tile cache) and
+// never part of an offline download or a poster.
+export const ESRI_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const ESRI_ATTRIBUTION =
+  'Powered by <a href="https://www.esri.com">Esri</a>. Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community';
 // NAIP photos through one of the image server's raster functions (infrared, greenness).
 export function naipBandsTileUrl(rasterFunction: string): string {
   return `${AERIAL_TILE_URL}&renderingRule=${encodeURIComponent(JSON.stringify({ rasterFunction }))}`;
@@ -120,6 +132,8 @@ const RETRY_DEM_PROTOCOL = 'retry-dem';
 const RETRY_TINT_PROTOCOL = 'retry-tint';
 // Same retries, then the elevation TIFF is colored by steepness (src/map/slope.ts).
 const RETRY_SLOPE_PROTOCOL = 'retry-slope';
+// Same retries, then lidar drawn on the device: retry-relief://shade|relief/<url with pad> (src/map/relief.ts).
+const RETRY_RELIEF_PROTOCOL = 'retry-relief';
 // Kept short: MapLibre loads only so many images at once, saved tiles included,
 // so a tile waiting out a busy server holds up tiles that are already on disk.
 // One that gives up is tried again later by retryFailedTiles; meanwhile it shows
@@ -235,6 +249,14 @@ export function setUpMapLibre(): void {
     const tiff = await withRetries(url, abortController.signal);
     return { data: await slopePng(readElevationTiff(tiff), url) };
   });
+  maplibregl.addProtocol(RETRY_RELIEF_PROTOCOL, async (params, abortController) => {
+    const rest = params.url.slice(`${RETRY_RELIEF_PROTOCOL}://`.length);
+    const slash = rest.indexOf('/');
+    const style = rest.slice(0, slash) as ReliefStyle;
+    const url = padDemUrl(normalizeTileUrl(rest.slice(slash + 1)));
+    const tiff = await withRetries(url, abortController.signal);
+    return { data: await reliefPng(readElevationTiff(tiff), url, style) };
+  });
   maplibregl.addProtocol(RETRY_TINT_PROTOCOL, async (params, abortController) => {
     const rest = params.url.slice(`${RETRY_TINT_PROTOCOL}://`.length);
     const slash = rest.indexOf('/');
@@ -295,8 +317,18 @@ function elevationTiles(rasterFunction: string): string[] {
 // Bare-earth elevation in meters as float TIFFs, for 3D terrain.
 export const TERRAIN_TILE_URL = `${ELEVATION_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=tiff&pixelType=F32&compression=None&interpolation=RSP_BilinearInterpolation&f=image`;
 
+// Drawn on the device rather than by the USGS server.
+export const isDeviceLidar = (id: LidarStyleId): id is ReliefStyle => id === 'shade' || id === 'relief';
+
+// Bare-earth elevation for the device-drawn lidar: 256 px tiles (about 1 m a pixel
+// at the closest zoom), with a margin marked by "pad" (see padDemUrl).
+export const LIDAR_DEM_URL = `${ELEVATION_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=tiff&pixelType=F32&compression=None&interpolation=RSP_BilinearInterpolation&f=image&pad=${DEM_PAD}`;
+export const LIDAR_DEM_MAX_ZOOM = 17;
+
 export function lidarStyleTiles(id: LidarStyleId): string[] {
-  return elevationTiles(LIDAR_STYLES.find((s) => s.id === id)!.rasterFunction);
+  if (isDeviceLidar(id)) return [`${RETRY_RELIEF_PROTOCOL}://${id}/${LIDAR_DEM_URL}`];
+  const fn = LIDAR_STYLES.find((s) => s.id === id)?.rasterFunction ?? 'Hillshade Gray-Stretch';
+  return elevationTiles(fn);
 }
 
 // Contour line colors offered in Choose map; null is the original look
@@ -322,9 +354,12 @@ export const LAYER_IDS = {
   aerialMo: 'base-aerial-mo',
   topo: 'base-topo',
   infrared: 'base-infrared',
+  esri: 'base-esri',
   greenness: 'base-greenness',
   lidar: 'base-lidar',
   lidarBlend: 'overlay-lidar',
+  lidarDem: 'base-lidar-dem',
+  lidarDemBlend: 'overlay-lidar-dem',
   contours: 'overlay-contours',
   slope: 'overlay-slope',
 } as const;
@@ -377,6 +412,13 @@ export function buildBaseStyle(): StyleSpecification {
         maxzoom: 16,
         attribution: ATTRIBUTION,
       },
+      esri: {
+        type: 'raster',
+        tiles: [ESRI_TILE_URL],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: ESRI_ATTRIBUTION,
+      },
       // 512 px tiles, so source zoom 11 is map zoom 12.
       infrared: {
         type: 'raster',
@@ -400,6 +442,15 @@ export function buildBaseStyle(): StyleSpecification {
         tileSize: 512,
         minzoom: 8,
         maxzoom: 18,
+        attribution: `${ATTRIBUTION} 3DEP lidar`,
+      },
+      // Lidar drawn on the device (sharp hillshade, micro-relief), 256 px tiles to about 1 m a pixel.
+      lidarDem: {
+        type: 'raster',
+        tiles: lidarStyleTiles('relief'),
+        tileSize: 256,
+        minzoom: 10,
+        maxzoom: LIDAR_DEM_MAX_ZOOM,
         attribution: `${ATTRIBUTION} 3DEP lidar`,
       },
       terrain: {
@@ -454,6 +505,7 @@ export function buildBaseStyle(): StyleSpecification {
         },
       },
       { id: LAYER_IDS.topo, type: 'raster', source: 'topo', layout: { visibility: 'none' } },
+      { id: LAYER_IDS.esri, type: 'raster', source: 'esri', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': TILE_FADE_MS } },
       ...(['infrared', 'greenness'] as const).map((id) => ({
         id: LAYER_IDS[id],
         type: 'raster' as const,
@@ -475,6 +527,8 @@ export function buildBaseStyle(): StyleSpecification {
         layout: { visibility: 'none' },
         paint: { 'raster-opacity': 0.5 },
       },
+      { id: LAYER_IDS.lidarDem, type: 'raster', source: 'lidarDem', layout: { visibility: 'none' } },
+      { id: LAYER_IDS.lidarDemBlend, type: 'raster', source: 'lidarDem', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.5 } },
       // Under the contours, so lines stay readable over the colors.
       {
         id: LAYER_IDS.slope,

@@ -88,6 +88,34 @@ export function LayerPanel({ layers, onChange, settings, onChangeSettings }: Lay
 
           {layers.base === 'satellite' && (
             <>
+              <div className="layer-row photo-source">
+                <span>Photos from</span>
+                <div className="segmented" role="group" aria-label="Photos from">
+                  {(
+                    [
+                      ['usgs', 'USGS'],
+                      ['esri', 'Esri'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={(settings.photoSource ?? 'usgs') === id ? 'active' : ''}
+                      aria-pressed={(settings.photoSource ?? 'usgs') === id}
+                      onClick={() => onChangeSettings({ ...settings, photoSource: id })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {layers.base === 'satellite' && settings.photoSource === 'esri' && (
+            <p className="hint">Esri World Imagery: often the sharpest or newest photos (in Missouri, the state's 6 inch ones). Needs signal; it can't be saved for offline use.</p>
+          )}
+
+          {layers.base === 'satellite' && settings.photoSource !== 'esri' && (
+            <>
               <label className="layer-row">
                 <span>Close-up photos</span>
                 <select

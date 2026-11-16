@@ -544,7 +544,7 @@ export function PosterEditor({ data, initial, startBounds, onSave, onClose }: Pr
           )}
           {(p.base === 'lidar' || p.lidarBlend > 0) && (
             <select value={p.lidarStyle} onChange={(e) => set({ lidarStyle: e.target.value as PosterSettings['lidarStyle'] })} aria-label="Lidar style">
-              {LIDAR_STYLES.map((s) => (
+              {LIDAR_STYLES.filter((s) => s.rasterFunction).map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
                 </option>
