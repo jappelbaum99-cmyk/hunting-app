@@ -40,6 +40,10 @@ export function MapLabelToggles({ settings, onChange }: { settings: HubSettings;
 
   return (
     <div className="label-toggles">
+      <label className="check hover-labels-toggle">
+        <input type="checkbox" checked={settings.hoverLabels !== false} onChange={(e) => onChange({ ...settings, hoverLabels: e.target.checked })} />
+        <span>Show a turned-off name when you point at it</span>
+      </label>
       <div className="label-toggle-actions">
         <button onClick={() => onChange({ ...settings, hiddenLabels: [], hiddenTypeLabels: [] })}>Show all</button>
         <button onClick={() => onChange({ ...settings, hiddenLabels: LABEL_KINDS.map((k) => k.id) })}>Hide all</button>

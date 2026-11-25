@@ -107,12 +107,17 @@ export interface HubSettings {
   // How property and section outlines are drawn (see src/lib/styles.ts outlineLook).
   propertyLook?: OutlineLook | null;
   sectionLook?: OutlineLook | null;
+  // How see-through areas are: their shading and their border, 0-1.
+  areaLook?: { fillOpacity?: number; lineOpacity?: number } | null;
   // Drawing snaps onto property and section lines within this many screen pixels.
-  snapping: { enabled: boolean; distancePx: number };
+  // trails: drawn shapes also snap to and follow trails and roads (on unless false).
+  snapping: { enabled: boolean; distancePx: number; trails?: boolean };
   // The kinds of names left off the map.
   hiddenLabels: LabelKind[];
   // The pin and area types left off the map, like "pin:camera" or "area:timber".
   hiddenTypeLabels: string[];
+  // Names turned off show while the pointer is over the thing (on unless false).
+  hoverLabels?: boolean;
   // The label choices saved as "My default", to come back to after Show all or Hide all.
   labelDefault?: { hiddenLabels: LabelKind[]; hiddenTypeLabels: string[] } | null;
   // The look of each trail type. Anything left out uses the built-in default.

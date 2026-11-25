@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 import { Icon } from '@/components/Icon';
 import { PlansField } from '@/components/PlanEditor';
 import { SchedulesField } from '@/components/SchedulesField';
@@ -144,14 +145,7 @@ export function DetailPanel(props: DetailPanelProps) {
             Share
           </button>
         )}
-        <button
-          className="danger"
-          onClick={() => {
-            if (window.confirm(`Delete "${props.record.name}"?`)) onDelete();
-          }}
-        >
-          Delete
-        </button>
+        <ConfirmDelete question={`Delete "${props.record.name}"?`} onDelete={onDelete} />
       </footer>
     </aside>
   );

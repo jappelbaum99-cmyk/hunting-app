@@ -104,6 +104,13 @@ export const OUTLINE_DEFAULTS: Record<'property' | 'section', Required<OutlineLo
   section: { pattern: 'dashed', width: 2, lineOpacity: 0.9, fillOpacity: 0.05 },
 };
 
+export const AREA_LOOK_DEFAULTS = { fillOpacity: 0.3, lineOpacity: 1 };
+
+// How see-through areas are: Settings, else the defaults.
+export function areaLook(settings: HubSettings): { fillOpacity: number; lineOpacity: number } {
+  return { ...AREA_LOOK_DEFAULTS, ...settings.areaLook };
+}
+
 // How property or section outlines look: Settings, else the defaults.
 export function outlineLook(kind: 'property' | 'section', settings: HubSettings): Required<OutlineLook> {
   return { ...OUTLINE_DEFAULTS[kind], ...(kind === 'property' ? settings.propertyLook : settings.sectionLook) };

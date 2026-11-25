@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 import { Icon } from '@/components/Icon';
 import { PlansField } from '@/components/PlanEditor';
 import { SchedulesField } from '@/components/SchedulesField';
@@ -58,15 +59,10 @@ export function SectionPanel(props: SectionPanelProps) {
             Edit shape
           </button>
         )}
-        <button
-          className="danger"
-          onClick={() => {
-            const extra = plans.length ? ` and its ${plans.length} plan${plans.length === 1 ? '' : 's'}` : '';
-            if (window.confirm(`Delete "${section.name}"${extra}?`)) props.onDelete();
-          }}
-        >
-          Delete
-        </button>
+        <ConfirmDelete
+          question={`Delete "${section.name}"${plans.length ? ` and its ${plans.length} plan${plans.length === 1 ? '' : 's'}` : ''}?`}
+          onDelete={props.onDelete}
+        />
       </footer>
     </aside>
   );

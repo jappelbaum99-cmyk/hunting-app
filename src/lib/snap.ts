@@ -201,3 +201,117 @@ export function followNearbyLines(ring: Position[], lines: Position[][], distanc
   // strip whose two long sides are both near the line.
   return cleaned.length >= 4 && areaM2(cleaned) >= areaM2(ring) / 2 ? cleaned : ring;
 }
+
+// How far a shape's edge can be from a trail and still be pulled onto it, and
+// how long it has to run beside it, for "Follow a trail".
+export const TRAIL_FOLLOW_DISTANCE_M = 30;
+const TRAIL_FOLLOW_MIN_LENGTH_M = 25;
+
+// Where a shape's edge runs beside a trail (within distanceM), that stretch is
+// swapped for the trail itself, so the trail is the true border and two shapes
+// on either side of it meet exactly. Trails are open lines (unlike property
+// lines), each part followed separately. Takes and returns a closed ring (first
+// point repeated at the end); returns the same ring when nothing changes.
+export function followTrail(ring: Position[], parts: Position[][], distanceM = TRAIL_FOLLOW_DISTANCE_M): Position[] {
+  if (ring.length < 4 || parts.length === 0) return ring;
+  const scaleX = 111320 * Math.cos((ring[0][1] * Math.PI) / 180);
+  const scaleY = 110540;
+  const gapM = (a: Position, b: Position) => Math.hypot((a[0] - b[0]) * scaleX, (a[1] - b[1]) * scaleY);
+  const areaM2 = (r: Position[]) => {
+    let sum = 0;
+    for (let i = 0; i < r.length - 1; i++) sum += r[i][0] * scaleX * (r[i + 1][1] * scaleY) - r[i + 1][0] * scaleX * (r[i][1] * scaleY);
+    return Math.abs(sum) / 2;
+  };
+  const lines = parts
+    .filter((line) => line.length >= 2)
+    .map((line) => {
+      const distances = [0];
+      for (let i = 1; i < line.length; i++) distances.push(distances[i - 1] + gapM(line[i - 1], line[i]));
+      return { line, distances };
+    });
+
+  // The closest point on any trail part within distanceM, and how far along that part it is.
+  const nearest = (p: Position): (NearLine & { dir: [number, number] }) | null => {
+    let best: (NearLine & { gap: number; dir: [number, number] }) | null = null;
+    lines.forEach(({ line, distances }, lineIndex) => {
+      for (let i = 0; i < line.length - 1; i++) {
+        const [a, b] = [line[i], line[i + 1]];
+        const dx = (b[0] - a[0]) * scaleX;
+        const dy = (b[1] - a[1]) * scaleY;
+        const len2 = dx * dx + dy * dy;
+        if (len2 === 0) continue;
+        const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * scaleX * dx + (p[1] - a[1]) * scaleY * dy) / len2));
+        const at = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+        const gap = gapM(p, at);
+        const len = Math.sqrt(len2);
+        if (gap <= distanceM && (!best || gap < best.gap)) best = { gap, line: lineIndex, along: distances[i] + t * (distances[i + 1] - distances[i]), at, dir: [dx / len, dy / len] };
+      }
+    });
+    return best;
+  };
+
+  // Walk the shape's edges in short steps, noting the trail each step is beside.
+  const stepM = Math.max(2, distanceM / 4);
+  // near: the trail beside an edge running alongside it; raw: any trail close by.
+  const samples: { at: Position; corner: boolean; near: NearLine | null; raw: NearLine | null }[] = [];
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [a, b] = [ring[i], ring[i + 1]];
+    const length = gapM(a, b);
+    const steps = Math.max(1, Math.ceil(length / stepM));
+    const edge = [((b[0] - a[0]) * scaleX) / (length || 1), ((b[1] - a[1]) * scaleY) / (length || 1)];
+    for (let s = 0; s < steps; s++) {
+      const at = [a[0] + (s / steps) * (b[0] - a[0]), a[1] + (s / steps) * (b[1] - a[1])];
+      // Only an edge running alongside the trail follows it; one that comes in
+      // across the trail keeps its line, so the corner lands where it meets it.
+      const n = nearest(at);
+      const alongside = n && Math.abs(edge[0] * n.dir[0] + edge[1] * n.dir[1]) >= 0.7;
+      samples.push({ at, corner: s === 0, near: alongside ? n : null, raw: n });
+    }
+  }
+  const sameLine = (a: NearLine | null, b: NearLine | null) => (a && b ? a.line === b.line : a === b);
+  const start = samples.findIndex((sample, i) => !sameLine(sample.near, samples[(i + samples.length - 1) % samples.length].near));
+  // All of it beside one trail (a strip along it): following would flatten it.
+  if (start === -1) return ring;
+  const ordered = [...samples.slice(start), ...samples.slice(0, start)];
+
+  // The trail between two points on it, in the order the shape's edge runs.
+  const trailBetween = (from: NearLine, to: NearLine): Position[] => {
+    const { line, distances } = lines[from.line];
+    const [lo, hi] = from.along <= to.along ? [from.along, to.along] : [to.along, from.along];
+    const inside = line.filter((_, i) => distances[i] > lo && distances[i] < hi);
+    if (from.along > to.along) inside.reverse();
+    return [from.at, ...inside, to.at];
+  };
+
+  const next: Position[] = [];
+  let changed = false;
+  // The corner that ends a stretch along the trail lands on the trail too.
+  const consumed = new Set<number>();
+  for (let i = 0; i < ordered.length; ) {
+    const near = ordered[i].near;
+    let end = i;
+    while (end + 1 < ordered.length && sameLine(ordered[end + 1].near, near)) end++;
+    let length = 0;
+    for (let k = i; k < end; k++) length += gapM(ordered[k].at, ordered[k + 1].at);
+    if (near && length >= TRAIL_FOLLOW_MIN_LENGTH_M) {
+      let to = ordered[end].near as NearLine;
+      const after = (end + 1) % ordered.length;
+      const corner = ordered[after];
+      if (corner.corner && corner.raw && corner.raw.line === near.line) {
+        to = corner.raw;
+        consumed.add(after);
+      }
+      next.push(...trailBetween(ordered[i].near as NearLine, to));
+      changed = true;
+    } else {
+      for (let k = i; k <= end; k++) if (ordered[k].corner && !consumed.has(k)) next.push(ordered[k].at);
+    }
+    i = end + 1;
+  }
+  if (!changed) return ring;
+  const cleaned = next.filter((p, i) => i === 0 || gapM(p, next[i - 1]) > 0.01);
+  if (gapM(cleaned[0], cleaned[cleaned.length - 1]) > 0.01) cleaned.push(cleaned[0]);
+  else cleaned[cleaned.length - 1] = cleaned[0];
+  // Keep the shape as it was if following would collapse it.
+  return cleaned.length >= 4 && areaM2(cleaned) >= areaM2(ring) / 3 ? cleaned : ring;
+}

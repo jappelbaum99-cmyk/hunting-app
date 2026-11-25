@@ -6039,3 +6039,48 @@ button.log-hunt.active {
   background: var(--glass-strong);
   color: var(--text);
 }
+
+/* Names turned off in Map labels come back while the pointer is over the
+   thing: pins and hunt spots by CSS hover, shapes and lines by a class the map
+   sets (map-label-hover). Later in the file than the rules that hide them, so
+   these win; a hovered name also ignores label crowding. */
+.hover-labels .map-pin:hover .map-pin-label,
+.hover-labels .hunt-spot:hover .hunt-spot-label,
+.hover-labels .map-label.map-label-hover {
+  display: revert;
+}
+
+.hover-labels .map-pin:hover .map-pin-label.label-collided,
+.hover-labels .hunt-spot:hover .hunt-spot-label.label-collided,
+.hover-labels .map-label.map-label-hover.label-collided {
+  visibility: visible;
+  opacity: 1;
+}
+
+.hover-labels .map-label.map-label-hover {
+  z-index: 5;
+}
+
+.hover-labels-toggle {
+  margin-bottom: 6px;
+}
+
+/* Reshaping a shape: make its edge follow a trail. */
+.draw-bar select.follow-trail {
+  max-width: 180px;
+}
+
+/* Delete, asked in place: the question and its two answers in the footer. */
+.confirm-delete {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1 1 100%;
+}
+
+.confirm-delete-question {
+  font-size: 13px;
+  font-weight: 600;
+}

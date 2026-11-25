@@ -14,6 +14,7 @@ import {
   MARKER_SHAPES,
   MAX_MARKER_SIZE,
   MIN_MARKER_SIZE,
+  areaLook,
   outlineLook,
   propertyColor,
   type AreaTypeView,
@@ -105,6 +106,18 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
           </li>
           {settings.snapping.enabled && (
             <li className="setting-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={settings.snapping.trails !== false}
+                  onChange={(e) => onChange({ ...settings, snapping: { ...settings.snapping, trails: e.target.checked } })}
+                />
+                <span>Snap to trails and roads, and follow them</span>
+              </label>
+            </li>
+          )}
+          {settings.snapping.enabled && (
+            <li className="setting-row">
               <span className="row-title">How close</span>
               <input
                 type="range"
@@ -120,8 +133,8 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
           )}
         </ul>
         <p className="hint">
-          While drawing a section or area, a click near the property line (or another section) lands exactly on it, and on its corners
-          first. An orange ring shows when it will snap.
+          While drawing a section or area, a click near the property line (or another section, area or trail) lands exactly on it, and on
+          its corners first. When you finish, edges you drew close to the property line, or along a trail or road (with that on), move onto it. An orange ring shows when it will snap.
         </p>
       </section>
 
@@ -145,10 +158,9 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         <p className="hint">How long before a schedule's months a card appears on the Action Board. Set schedules on an area or section.</p>
       </section>
 
-      <section className="sidebar-section">
-        <h2>Map labels</h2>
+      <SettingsGroup title="Map labels" summary={settings.hiddenLabels.length ? `${settings.hiddenLabels.length} off` : 'All on'}>
         <MapLabelToggles settings={settings} onChange={onChange} />
-      </section>
+      </SettingsGroup>
 
       <section className="sidebar-section look-defaults">
         <h2>Default looks</h2>
@@ -365,6 +377,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         >
           + Add area type
         </button>
+        <AreaLookControls settings={settings} onChange={onChange} />
       </SettingsGroup>
 
       <SettingsGroup title="Property lines">
@@ -392,7 +405,7 @@ export function SettingsPanel({ settings, onChange, onClose, onImportPhone, onSe
         className="reset-look"
         onClick={() => {
           if (window.confirm('Put every color, shape and size back to the defaults? Colors set on single stands and properties stay.')) {
-            onChange({ ...settings, markerStyles: {}, areaColors: {}, areaIcons: {}, propertyLineColor: null, propertyLook: null, sectionLook: null });
+            onChange({ ...settings, markerStyles: {}, areaColors: {}, areaIcons: {}, propertyLineColor: null, propertyLook: null, sectionLook: null, areaLook: null });
           }
         }}
       >
@@ -438,6 +451,26 @@ function SettingsGroup({ title, summary, children }: { title: string; summary?: 
       </button>
       {open && <div className="settings-group-body">{children}</div>}
     </section>
+  );
+}
+
+// How see-through every area is on the map: its shading and its border.
+function AreaLookControls({ settings, onChange }: { settings: HubSettings; onChange(s: HubSettings): void }) {
+  const look = areaLook(settings);
+  const set = (patch: Partial<typeof look>) => onChange({ ...settings, areaLook: { ...look, ...patch } });
+  return (
+    <div className="outline-controls">
+      <label className="outline-row">
+        <span>Shading</span>
+        <input type="range" min={0} max={0.9} step={0.05} value={look.fillOpacity} onChange={(e) => set({ fillOpacity: Number(e.target.value) })} aria-label="Area shading" />
+        <span className="muted">{Math.round(look.fillOpacity * 100)}%</span>
+      </label>
+      <label className="outline-row">
+        <span>Border</span>
+        <input type="range" min={0.1} max={1} step={0.05} value={look.lineOpacity} onChange={(e) => set({ lineOpacity: Number(e.target.value) })} aria-label="Area border opacity" />
+        <span className="muted">{Math.round(look.lineOpacity * 100)}%</span>
+      </label>
+    </div>
   );
 }
 

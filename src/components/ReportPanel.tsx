@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import { HarvestCard } from '@/components/HarvestCard';
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 import { Icon } from '@/components/Icon';
 import { addHarvest, harvestsOf, newHarvest, withHarvest } from '@/lib/harvests';
 import { compassPointOf } from '@/lib/standRating';
@@ -172,14 +173,7 @@ export function ReportPanel(props: ReportPanelProps) {
 
       <footer className="detail-footer">
         <button onClick={props.onZoom}>Zoom to</button>
-        <button
-          className="danger"
-          onClick={() => {
-            if (window.confirm('Delete this hunt report?')) props.onDelete();
-          }}
-        >
-          Delete
-        </button>
+        <ConfirmDelete question="Delete this hunt report?" onDelete={props.onDelete} />
       </footer>
     </aside>
   );

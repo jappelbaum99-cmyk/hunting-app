@@ -13,9 +13,11 @@ interface DrawBarProps {
   onFinish(): void;
   // 2 for a line (trail), 3 for a closed shape.
   minPoints?: number;
+  // Set when the shape sticks out past the property line: finish cut to it.
+  onFitFinish?(): void;
 }
 
-export function DrawBar({ kind, title, points, onUndo, onCancel, onFinish, minPoints = 3 }: DrawBarProps) {
+export function DrawBar({ kind, title, points, onUndo, onCancel, onFinish, minPoints = 3, onFitFinish }: DrawBarProps) {
   const line = minPoints === 2;
   if (kind === 'place') {
     return (
@@ -41,7 +43,12 @@ export function DrawBar({ kind, title, points, onUndo, onCancel, onFinish, minPo
       <button onClick={onCancel} title="Esc">
         Cancel
       </button>
-      <button className="primary" onClick={onFinish} disabled={!canFinish} title="Enter">
+      {onFitFinish && canFinish && (
+        <button className="primary" onClick={onFitFinish} title="Cut off what sticks out past the property line, then finish">
+          Fit to property line
+        </button>
+      )}
+      <button className={onFitFinish && canFinish ? undefined : 'primary'} onClick={onFinish} disabled={!canFinish} title="Enter">
         Done
       </button>
     </div>
@@ -105,6 +112,9 @@ export function LineEditBar(props: {
 export function EditBar(props: {
   title: string;
   rings: Position[][];
+  // Trails near the shape, to make its edge follow (the trail becomes the border).
+  trails?: { id: string; name: string }[];
+  onFollowTrail?(id: string | 'all'): void;
   canUndo: boolean;
   onUndo(): void;
   onCancel(): void;
@@ -116,6 +126,23 @@ export function EditBar(props: {
       <span>
         Editing <strong>{props.title}</strong>: drag corners, click + to add one, right-click a corner to remove it. · {size}
       </span>
+      {props.trails && props.trails.length > 0 && props.onFollowTrail && (
+        <select
+          className="follow-trail"
+          value=""
+          onChange={(e) => e.target.value && props.onFollowTrail!(e.target.value)}
+          aria-label="Make the edge follow a property line or trail"
+          title="Where this edge runs close to the line, it moves onto it"
+        >
+          <option value="">Follow a line…</option>
+          {props.trails.filter((t) => t.id !== 'property' && t.id !== 'fit').length > 1 && <option value="all">All trails nearby</option>}
+          {props.trails.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      )}
       <button onClick={props.onUndo} disabled={!props.canUndo} title="Ctrl+Z">
         Undo
       </button>

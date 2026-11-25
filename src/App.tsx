@@ -54,7 +54,8 @@ import { importGeoFile } from '@/lib/importGeo';
 import { huntPosition, kindInfo, MAX_YARDS, reportWeather } from '@/lib/reports';
 import { newPlan, placeOfPlan, plansFor, type PlanPlace } from '@/lib/plans';
 import { compassPointOf, rateStands, sitsFor, type StandRating } from '@/lib/standRating';
-import { followNearbyLines, ringsOf as ringsOfShapes } from '@/lib/snap';
+import { followNearbyLines, followTrail, ringsOf as ringsOfShapes, TRAIL_FOLLOW_DISTANCE_M } from '@/lib/snap';
+import { fitInside, sticksOut } from '@/lib/fitInside';
 import { areaTypeInfo, areaTypeList, categoryStyle, propertyColor } from '@/lib/styles';
 import { hourAt, weatherAt, weatherFor } from '@/lib/weather';
 import { terrainAt, thermalAt, thermalDay, withThermals } from '@/lib/thermals';
@@ -316,7 +317,19 @@ export function App() {
       }
     } else if (mode.target === 'area') {
       const a = hub.areas.find((r) => r.id === mode.id);
-      if (a) hub.saveArea({ ...a, geometry: withRings(a.geometry, editRings) });
+      if (a) {
+        // Stretches left close to the property line land exactly on it, as with sections.
+        const lines = ringsOfShapes(hub.properties.map((p) => p.boundary));
+        const followed = hub.settings.snapping.enabled
+          ? editRings.map((ring) => {
+              const closed = [...ring, ring[0]];
+              const result = followNearbyLines(closed, lines);
+              return result === closed ? ring : result.slice(0, -1);
+            })
+          : editRings;
+        hub.saveArea({ ...a, geometry: withRings(a.geometry, followed) });
+        if (followed.some((ring, i) => ring !== editRings[i])) setNotice(`${a.name} now follows the property line where it runs close to it.`);
+      }
     } else {
       const t = hub.trails.find((r) => r.id === mode.id);
       if (t) hub.saveTrail(withParts(t, editRings));
@@ -325,6 +338,71 @@ export function App() {
     cancelMode();
     setSelection(selected);
   }, [mode, editRings, hub, cancelMode]);
+
+  // Trails near the shape being reshaped, for "Follow a trail".
+  const NEAR_TRAIL_M = 150;
+  const nearTrails = (() => {
+    if (mode.kind !== 'edit' || mode.target === 'trail' || !editRings) return [];
+    const pts = editRings.flat();
+    if (pts.length === 0) return [];
+    const scaleX = 111320 * Math.cos((pts[0][1] * Math.PI) / 180);
+    const [w, s, e, n] = pts.reduce(([a, b, c, d], p) => [Math.min(a, p[0]), Math.min(b, p[1]), Math.max(c, p[0]), Math.max(d, p[1])], [Infinity, Infinity, -Infinity, -Infinity]);
+    const padX = NEAR_TRAIL_M / scaleX;
+    const padY = NEAR_TRAIL_M / 110540;
+    return hub.trails
+      .filter((t) => trailParts(t).some((part) => part.some((p) => p[0] >= w - padX && p[0] <= e + padX && p[1] >= s - padY && p[1] <= n + padY)))
+      .map((t) => ({ id: t.id, name: t.name }));
+  })();
+  // The shape's edge moves onto the trail wherever it runs beside it (Undo puts it back).
+  const followTrailEdge = (id: string | 'all') => {
+    if (!editRings) return;
+    if (id === 'fit') {
+      const next = editRings.map((ring) => {
+        const closed = [...ring, ring[0]];
+        const prop = propertyRingFor(closed);
+        const result = prop ? fitInside(closed, prop) : closed;
+        return result === closed ? ring : result.slice(0, -1);
+      });
+      if (next.every((ring, i) => ring === editRings[i])) {
+        setNotice("It doesn't stick out past the property line.");
+        return;
+      }
+      setEditHistory((h) => [...h, editRings]);
+      setEditRings(next);
+      setNotice('Cut to the property line. Undo puts it back; Done saves it.');
+      return;
+    }
+    if (id === 'property') {
+      const lines = ringsOfShapes(hub.properties.filter((p) => !(mode.kind === 'edit' && mode.target === 'property' && p.id === mode.id)).map((p) => p.boundary));
+      const next = editRings.map((ring) => {
+        const closed = [...ring, ring[0]];
+        const result = followNearbyLines(closed, lines);
+        return result === closed ? ring : result.slice(0, -1);
+      });
+      if (next.every((ring, i) => ring === editRings[i])) {
+        setNotice('No edge runs close to a property line. Drag a corner closer, then try again.');
+        return;
+      }
+      setEditHistory((h) => [...h, editRings]);
+      setEditRings(next);
+      setNotice('The edge now follows the property line where it ran close to it. Undo puts it back; Done saves it.');
+      return;
+    }
+    const parts = (id === 'all' ? hub.trails.filter((t) => nearTrails.some((n) => n.id === t.id)) : hub.trails.filter((t) => t.id === id)).flatMap(trailParts);
+    const next = editRings.map((ring) => {
+      const closed = [...ring, ring[0]];
+      const result = followTrail(closed, parts);
+      return result === closed ? ring : result.slice(0, -1);
+    });
+    const name = id === 'all' ? 'the trails' : (hub.trails.find((t) => t.id === id)?.name ?? 'the trail');
+    if (next.every((ring, i) => ring === editRings[i])) {
+      setNotice(`No edge runs within about ${Math.round(TRAIL_FOLLOW_DISTANCE_M * 3.28)} ft of ${name}. Drag a corner closer, then try again.`);
+      return;
+    }
+    setEditHistory((h) => [...h, editRings]);
+    setEditRings(next);
+    setNotice(`The edge now follows ${name} where it ran beside it. Undo puts it back; Done saves it.`);
+  };
 
   const undoEdit = useCallback(() => {
     setEditHistory((history) => {
@@ -340,7 +418,52 @@ export function App() {
     setMode(next);
   };
 
-  const finishDrawing = useCallback(() => {
+  // A drawn shape's edges that run along a trail or road move onto it, so it's
+  // the shape's true border. Returns the ring (the same one if nothing changed)
+  // and the names of the trails it now follows.
+  const followDrawnTrails = (ring: Position[]): { ring: Position[]; names: string[] } => {
+    if (!hub.settings.snapping.enabled || hub.settings.snapping.trails === false) return { ring, names: [] };
+    const names: string[] = [];
+    let next = ring;
+    for (const t of hub.trails) {
+      const result = followTrail(next, trailParts(t));
+      if (result !== next) {
+        names.push(t.name);
+        next = result;
+      }
+    }
+    return { ring: next, names };
+  };
+  const followedNote = (name: string, names: string[]) =>
+    names.length ? ` ${name} follows ${names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`} where you drew along it.` : '';
+
+  const propertyRingFor = (ring: Position[]): Position[] | null => {
+    const rings = ringsOfShapes(hub.properties.map((p) => p.boundary));
+    const holds = (r: Position[], p: Position) => {
+      let hit = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        if (r[i][1] > p[1] !== r[j][1] > p[1] && p[0] < ((r[j][0] - r[i][0]) * (p[1] - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) hit = !hit;
+      }
+      return hit;
+    };
+    // Corners snapped onto the line count as neither, so points along the edges are counted too.
+    const probes = ring.slice(0, -1).flatMap((p, i) => {
+      const q = ring[i + 1];
+      return [p, ...[0.25, 0.5, 0.75].map((t) => [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])])];
+    });
+    const scored = rings.map((r) => ({ r, n: probes.filter((p) => holds(r, p)).length }));
+    const best = scored.sort((a, b) => b.n - a.n)[0];
+    return best && best.n > 0 ? best.r : null;
+  };
+  // The draft shape sticks out past its property line (for "Fit to property line").
+  const draftSticksOut = (() => {
+    if (mode.kind !== 'draw' || (mode.target !== 'section' && mode.target !== 'area') || draftPoints.length < 3) return false;
+    const ring = [...draftPoints, draftPoints[0]];
+    const prop = propertyRingFor(ring);
+    return prop !== null && sticksOut(ring, prop);
+  })();
+
+  const finishDrawing = useCallback((fit = false) => {
     if (mode.kind !== 'draw' || draftPoints.length < (mode.target === 'trail' ? 2 : 3)) return;
     if (mode.target === 'trail') {
       const record: MapTrail = {
@@ -357,7 +480,12 @@ export function App() {
       cancelMode();
       return;
     }
-    const geometry = pointsToPolygon(draftPoints);
+    const drawnGeometry = pointsToPolygon(draftPoints);
+    // Fit to property line: what sticks out past it is cut off along the line.
+    const prop = fit ? propertyRingFor(drawnGeometry.coordinates[0]) : null;
+    const fitted = prop ? fitInside(drawnGeometry.coordinates[0], prop) : drawnGeometry.coordinates[0];
+    const followed = followDrawnTrails(fitted);
+    const geometry = { ...drawnGeometry, coordinates: [followed.ring] };
     if (mode.target === 'property') {
       const record = {
         ...newRecordFields(),
@@ -369,6 +497,7 @@ export function App() {
       };
       hub.saveProperty(record);
       setSelection({ kind: 'property', id: record.id });
+      if (followed.names.length) setNotice(followedNote(record.name, followed.names).trim());
     } else if (mode.target === 'section') {
       const drawn = geometry.coordinates[0];
       const ring = hub.settings.snapping.enabled ? followNearbyLines(drawn, ringsOfShapes(hub.properties.map((p) => p.boundary))) : drawn;
@@ -381,22 +510,27 @@ export function App() {
       };
       hub.saveSection(record);
       setSelection({ kind: 'section', id: record.id });
-      if (ring !== drawn) setNotice(`${record.name} now follows the property line where you drew close to it.`);
+      const notes = [ring !== drawn ? `${record.name} follows the property line where you drew close to it.` : '', followedNote(record.name, followed.names).trim()].filter(Boolean);
+      if (notes.length) setNotice(notes.join(' '));
     } else {
       const label = areaTypeInfo(mode.areaType, hub.settings).label;
+      const drawn = geometry.coordinates[0];
+      const ring = hub.settings.snapping.enabled ? followNearbyLines(drawn, ringsOfShapes(hub.properties.map((p) => p.boundary))) : drawn;
       const record = {
         ...newRecordFields(),
         propertyId: propertyContaining(hub.properties, draftPoints[0])?.id ?? null,
         type: mode.areaType,
         name: nextName(label, hub.areas),
-        geometry,
+        geometry: { ...geometry, coordinates: [ring] },
         notes: null,
       };
       hub.saveArea(record);
       setSelection({ kind: 'area', id: record.id });
+      const notes = [ring !== drawn ? `${record.name} follows the property line where you drew close to it.` : '', followedNote(record.name, followed.names).trim()].filter(Boolean);
+      if (notes.length) setNotice(notes.join(' '));
     }
     cancelMode();
-  }, [mode, draftPoints, hub, cancelMode]);
+  }, [mode, draftPoints, hub, cancelMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startAlignNew = async (file: File) => {
     const url = URL.createObjectURL(file);
@@ -1712,8 +1846,8 @@ export function App() {
             // Areas share edges with the areas next to them.
             ...(mode.kind === 'draw' && mode.target === 'property' ? [] : hub.areas.filter((a) => a.id !== editing?.id).map((a) => a.geometry)),
           ]),
-          // Trails can join existing trails.
-          ...((mode.kind === 'draw' && mode.target === 'trail') || editing?.target === 'trail'
+          // Trails can join existing trails, and shapes snap to trails and roads.
+          ...((mode.kind === 'draw' && mode.target === 'trail') || editing?.target === 'trail' || hub.settings.snapping.trails !== false
             ? hub.trails.filter((t) => t.id !== editing?.id).flatMap(trailParts)
             : []),
         ]
@@ -2127,6 +2261,8 @@ export function App() {
           <EditBar
             title={editTitle}
             rings={editRings}
+            trails={mode.target === 'property' ? nearTrails : [{ id: 'fit', name: 'Fit to property line' }, { id: 'property', name: 'Blend to property line' }, ...nearTrails]}
+            onFollowTrail={followTrailEdge}
             canUndo={editHistory.length > 0}
             onUndo={undoEdit}
             onCancel={cancelMode}
@@ -2161,7 +2297,8 @@ export function App() {
             points={draftPoints}
             onUndo={() => setDraftPoints((points) => points.slice(0, -1))}
             onCancel={cancelMode}
-            onFinish={finishDrawing}
+            onFinish={() => finishDrawing()}
+            onFitFinish={draftSticksOut ? () => finishDrawing(true) : undefined}
             minPoints={mode.kind === 'draw' && mode.target === 'trail' ? 2 : 3}
           />
         )}

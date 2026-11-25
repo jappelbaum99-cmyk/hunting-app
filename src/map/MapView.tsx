@@ -11,7 +11,7 @@ import { Compass } from '@/components/Compass';
 import type { StandRating } from '@/lib/standRating';
 import { areasToFeatures, boundsOf, closestOnLine, offsetPosition, propertiesToFeatures } from '@/lib/geo';
 import { findSnap, type Snap } from '@/lib/snap';
-import { areaTypeInfo, dashFor, LABEL_KINDS, markerStyle, outlineLook, propertyColor } from '@/lib/styles';
+import { areaLook, areaTypeInfo, dashFor, LABEL_KINDS, markerStyle, outlineLook, propertyColor } from '@/lib/styles';
 import {
   buildBaseStyle,
   contourTiles,
@@ -996,6 +996,27 @@ export function MapView(props: MapViewProps) {
       source?.setData(draftFeatures(latest.current.draftPoints, cursorRef.current, latest.current.draftColor, snap?.kind, latest.current.draftLine));
     });
 
+    // Names turned off in Map labels show while the pointer is over the shape or
+    // line (pins and hunt spots do this in CSS). The smallest thing under the
+    // pointer wins: a trail, then an area, a section, a property.
+    let hoverLabel: HTMLElement | null = null;
+    const setHoverLabel = (el: HTMLElement | null) => {
+      if (el === hoverLabel) return;
+      hoverLabel?.classList.remove('map-label-hover');
+      hoverLabel = el;
+      el?.classList.add('map-label-hover');
+    };
+    const HOVER_LAYERS = ['trail-casing', 'area-fill', 'section-fill', 'property-fill'];
+    map.on('mousemove', (event) => {
+      if (latest.current.interaction !== 'browse' || !map.getContainer().classList.contains('hover-labels')) return setHoverLabel(null);
+      const layers = HOVER_LAYERS.filter((id) => map.getLayer(id));
+      const hits = map.queryRenderedFeatures(event.point, { layers });
+      const hit = HOVER_LAYERS.map((id) => hits.find((h) => h.layer.id === id)).find(Boolean);
+      const id = hit?.properties?.id as string | undefined;
+      setHoverLabel(id ? (labelElements.current.get(id)?.getElement() ?? null) : null);
+    });
+    map.getCanvasContainer().addEventListener('mouseleave', () => setHoverLabel(null));
+
     for (const layer of ['area-fill', 'section-fill', 'trail-casing', 'sighting-pills', 'sighting-pills-still', 'sighting-pill-icons']) {
       map.on('mouseenter', layer, () => {
         if (latest.current.interaction === 'browse') map.getCanvas().style.cursor = 'pointer';
@@ -1161,6 +1182,15 @@ export function MapView(props: MapViewProps) {
     map.setPaintProperty('section-line', 'line-opacity', ['case', ['get', 'selected'], 1, sec.lineOpacity]);
   }, [settings.propertyLook, settings.sectionLook, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Area shading and borders, as set in Settings. A selected one stays easy to see.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const look = areaLook(settings);
+    map.setPaintProperty('area-fill', 'fill-opacity', ['case', ['get', 'selected'], Math.min(1, Math.max(0.5, look.fillOpacity + 0.2)), look.fillOpacity]);
+    map.setPaintProperty('area-line', 'line-opacity', ['case', ['get', 'selected'], 1, look.lineOpacity]);
+  }, [settings.areaLook, readyTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Point markers (stands, cameras, ...) as draggable HTML pins.
   useEffect(() => {
     const map = mapRef.current;
@@ -1219,6 +1249,7 @@ export function MapView(props: MapViewProps) {
     }
     const container = map.getContainer();
     for (const { id } of LABEL_KINDS) container.classList.toggle(`hide-label-${id}`, settings.hiddenLabels.includes(id));
+    container.classList.toggle('hover-labels', settings.hoverLabels !== false);
   }, [markers, selectedId, standRatings, settings, props.unlockedPinId, readyTick]);
 
   // New spots hunted from: a dashed ring, so they read differently from stands.
